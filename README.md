@@ -1,6 +1,6 @@
 # Karma: A Comprehensive Utility Library for Go
 
-[![Go Report Card](./docs/karma.png)]
+![Logo](./docs/karma.png)
 
 **Built with ❤️ by MelloB**
 
@@ -58,6 +58,8 @@ Contributions are welcome! Please fork the repository and open a pull request.
 ---
 
 ## License
+
+![GitHub](https://img.shields.io/github/license/MelloB1989/karma)
 
 © 2024 MelloB. All rights reserved.
 
