@@ -1,10 +1,12 @@
 # Karma: A Comprehensive Utility Library for Go
 
+[![Go Report Card](./docs/karma.png)]
+
 **Built with ❤️ by MelloB**
 
 ## Overview
 
-Karma is a powerful, modular library designed to simplify common tasks in Go development. Whether you're handling authentication, parsing SQL, managing middleware, integrating with third-party APIs, or dealing with file management, **Karma** has got you covered. 
+Karma is a powerful, modular library designed to simplify common tasks in Go development. Whether you're handling authentication, parsing SQL, managing middleware, integrating with third-party APIs, or dealing with file management, **Karma** has got you covered.
 
 With **Karma**, you can avoid repetitive boilerplate and focus on building your core application logic. This package provides modular utilities, so you can pick and choose the features you need.
 
