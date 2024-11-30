@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"karmaclips/utils"
 	"log"
 	"os"
 
-	c "karmaclips/config"
+	"github.com/MelloB1989/karma/utils"
+
+	c "github.com/MelloB1989/karma/config"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -16,10 +17,10 @@ import (
 )
 
 func UploadFile(objectKey string, fileName string) error {
-	bucketName := c.NewConfig().AwsBucketName
+	bucketName := c.DefaultConfig().AwsBucketName
 	sdkConfig, err := config.LoadDefaultConfig(context.TODO())
 	s3Config := aws.Config{
-		Region:      *aws.String(c.NewConfig().S3BucketRegion),
+		Region:      *aws.String(c.DefaultConfig().S3BucketRegion),
 		Credentials: sdkConfig.Credentials,
 	}
 	if err != nil {
@@ -53,7 +54,7 @@ func UploadFile(objectKey string, fileName string) error {
 }
 
 func GetFileByPath(objectKey string) (*os.File, error) {
-	bucketName := c.NewConfig().AwsBucketName
+	bucketName := c.DefaultConfig().AwsBucketName
 	destinationPath := "./tmp/" + utils.GenerateID()
 	sdkConfig, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {

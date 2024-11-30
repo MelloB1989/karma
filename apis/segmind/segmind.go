@@ -6,15 +6,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"karmaclips/aws/s3"
-	"karmaclips/config"
-	"karmaclips/utils"
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/MelloB1989/karma/apis/aws/s3"
+	"github.com/MelloB1989/karma/config"
+	"github.com/MelloB1989/karma/utils"
 )
 
-func RequestCreateImage(prompt string, model string, batch_size int, width int, height int) (*string, error) {
+type SegmindSecrets struct {
+	SegmindAPIKey         string `env:"SEGMIND_API_KEY"`
+	SegmindSDAPI          string `env:"SEGMIND_SD_API"`
+	SegmindSamaritanAPI   string `env:"SEGMIND_SAMARITAN_API"`
+	SegmindDreamshaperAPI string `env:"SEGMIND_DREAMSHAPER_API"`
+	SegmindProtovisAPI    string `env:"SEGMIND_PROTOVIS_API"`
+}
+
+func RequestCreateImage(prompt string, model string, batch_size int, width int, height int, s3dir string) (*string, error) {
 	data := map[string]interface{}{
 		"prompt":          prompt,
 		"negative_prompt": "low quality, blurry",
@@ -32,18 +41,25 @@ func RequestCreateImage(prompt string, model string, batch_size int, width int, 
 		"base64":          true,
 	}
 
+	segmindSecrets := &SegmindSecrets{}
+	err := config.CustomConfig(segmindSecrets)
+	if err != nil {
+		log.Printf("Error loading Segmind secrets: %v", err)
+		return nil, err
+	}
+
 	var api string
 	switch model {
 	case "sd":
-		api = config.NewConfig().SegmindSDAPI
+		api = segmindSecrets.SegmindSDAPI
 	case "protovis":
-		api = config.NewConfig().SegmindProtovisAPI
+		api = segmindSecrets.SegmindProtovisAPI
 	case "samaritan":
-		api = config.NewConfig().SegmindSamaritanAPI
+		api = segmindSecrets.SegmindSamaritanAPI
 	case "dreamshaper":
-		api = config.NewConfig().SegmindDreamshaperAPI
+		api = segmindSecrets.SegmindDreamshaperAPI
 	default:
-		api = config.NewConfig().SegmindSDAPI
+		api = segmindSecrets.SegmindSDAPI
 	}
 
 	jsonPayload, err := json.Marshal(data)
@@ -57,7 +73,7 @@ func RequestCreateImage(prompt string, model string, batch_size int, width int, 
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", config.NewConfig().SegmindAPIKey)
+	req.Header.Set("x-api-key", segmindSecrets.SegmindAPIKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -114,6 +130,6 @@ func RequestCreateImage(prompt string, model string, batch_size int, width int, 
 	os.Remove(fileName)
 
 	// Build the S3 URL
-	uri := fmt.Sprintf("https://%s.s3.ap-south-1.amazonaws.com/karmaclips/%s", config.NewConfig().AwsBucketName, fileId)
+	uri := fmt.Sprintf("https://%s.s3.ap-south-1.amazonaws.com/%s/%s", config.DefaultConfig().AwsBucketName, s3dir, fileId)
 	return &uri, nil
 }
