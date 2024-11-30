@@ -39,8 +39,8 @@ go get github.com/MelloB1989/karma
 import "github.com/MelloB1989/karma"
 ```
 
-### Example: Authentication
-Coming soon!
+### Examples:
+In progress...
 
 ---
 
