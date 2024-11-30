@@ -17,6 +17,11 @@ type Config struct {
 	BACKEND_URL      string
 	RedisURL         string
 	DatabaseURL      string
+	DatabaseName     string
+	DatabaseHost     string
+	DatabasePort     string
+	DatabaseUser     string
+	DatabasePassword string
 	LogLevel         string
 	ApiKey           string
 	ClientID         string
@@ -52,6 +57,11 @@ func DefaultConfig() *Config {
 		BACKEND_URL:      os.Getenv("BACKEND_URL"),
 		RedisURL:         os.Getenv("REDIS_URL"),
 		DatabaseURL:      os.Getenv("DATABASE_URL"),
+		DatabaseName:     os.Getenv("DATABASE_NAME"),
+		DatabaseHost:     os.Getenv("DATABASE_HOST"),
+		DatabasePort:     os.Getenv("DATABASE_PORT"),
+		DatabaseUser:     os.Getenv("DATABASE_USER"),
+		DatabasePassword: os.Getenv("DATABASE_PASSWORD"),
 		LogLevel:         os.Getenv("LOG_LEVEL"),
 		ApiKey:           os.Getenv("API_KEY"),
 		ClientID:         os.Getenv("CLIENT_ID"),
