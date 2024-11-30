@@ -10,32 +10,41 @@ import (
 )
 
 type Config struct {
-	Port             string
-	JWTSecret        string
-	AdminKey         string
-	AdministratorKey string
-	BACKEND_URL      string
-	RedisURL         string
-	DatabaseURL      string
-	DatabaseName     string
-	DatabaseHost     string
-	DatabasePort     string
-	DatabaseUser     string
-	DatabasePassword string
-	LogLevel         string
-	ApiKey           string
-	ClientID         string
-	ClientSecret     string
-	AwsAccessKey     string
-	AwsSecretKey     string
-	AwsRegion        string
-	AwsBucketName    string
-	S3BucketRegion   string
-	AwsBedrockRegion string
-	SendGridAPIKey   string
-	StripeSecretKey  string
-	MailgunAPIKey    string
-	Environment      string
+	Port              string
+	JWTSecret         string
+	AdminKey          string
+	AdministratorKey  string
+	BACKEND_URL       string
+	DatabaseURL       string
+	DatabaseName      string
+	DatabaseHost      string
+	DatabasePort      string
+	DatabaseUser      string
+	DatabasePassword  string
+	RedisURL          string
+	RedisToken        string
+	TwilioSID         string
+	TwilioToken       string
+	TwilioService     string
+	TestPhoneNumbers  []string
+	LogLevel          string
+	ApiKey            string
+	ClientID          string
+	ClientSecret      string
+	AwsAccessKey      string
+	AwsSecretKey      string
+	AwsRegion         string
+	AwsBucketName     string
+	S3BucketRegion    string
+	AwsBedrockRegion  string
+	SendGridAPIKey    string
+	StripeSecretKey   string
+	MailgunAPIKey     string
+	Environment       string
+	WebhookSecret     string
+	KARMAPAY_BASE_URL string
+	KARMAPAY_PG_ENUM  string
+	KARMAPAY_API_KEY  string
 }
 
 func DefaultConfig() *Config {
@@ -55,27 +64,55 @@ func DefaultConfig() *Config {
 		AdminKey:         os.Getenv("ADMIN_KEY"),
 		AdministratorKey: os.Getenv("ADMINISTRATOR_KEY"),
 		BACKEND_URL:      os.Getenv("BACKEND_URL"),
-		RedisURL:         os.Getenv("REDIS_URL"),
 		DatabaseURL:      os.Getenv("DATABASE_URL"),
 		DatabaseName:     os.Getenv("DATABASE_NAME"),
 		DatabaseHost:     os.Getenv("DATABASE_HOST"),
 		DatabasePort:     os.Getenv("DATABASE_PORT"),
 		DatabaseUser:     os.Getenv("DATABASE_USER"),
 		DatabasePassword: os.Getenv("DATABASE_PASSWORD"),
-		LogLevel:         os.Getenv("LOG_LEVEL"),
-		ApiKey:           os.Getenv("API_KEY"),
-		ClientID:         os.Getenv("CLIENT_ID"),
-		ClientSecret:     os.Getenv("CLIENT_SECRET"),
-		AwsAccessKey:     os.Getenv("AWS_ACCESS_KEY_ID"),
-		AwsSecretKey:     os.Getenv("AWS_SECRET_ACCESS_KEY"),
-		AwsRegion:        os.Getenv("AWS_REGION"),
-		AwsBucketName:    os.Getenv("BUCKET_NAME"),
-		S3BucketRegion:   os.Getenv("BUCKET_REGION"),
-		AwsBedrockRegion: os.Getenv("BEDROCK_REGION"),
-		SendGridAPIKey:   os.Getenv("SENDGRID_API_KEY"),
-		StripeSecretKey:  os.Getenv("STRIPE_SECRET_KEY"),
-		MailgunAPIKey:    os.Getenv("MAILGUN_API_KEY"),
-		Environment:      os.Getenv("ENVIRONMENT"),
+		RedisURL:         os.Getenv("REDIS_URL"),
+		RedisToken:       os.Getenv("REDIS_TOKEN"),
+		TwilioSID:        os.Getenv("TWILIO_SID"),
+		TwilioToken:      os.Getenv("TWILIO_TOKEN"),
+		TwilioService:    os.Getenv("TWILIO_SERVICE"),
+		TestPhoneNumbers: []string{"+919812940706",
+			"+917398394041",
+			"+919662105710",
+			"+918266187862",
+			"+919923104801",
+			"+917740674090",
+			"+913175523534",
+			"+912082265688",
+			"+916892770133",
+			"+911937243659",
+			"+912958198971",
+			"+917842248874",
+			"+916149247480",
+			"+912090090825",
+			"+910104982716",
+			"+911566326784",
+			"+912376627951",
+			"+912362790556",
+			"+913963969678",
+			"+914579253395"},
+		LogLevel:          os.Getenv("LOG_LEVEL"),
+		ApiKey:            os.Getenv("API_KEY"),
+		ClientID:          os.Getenv("CLIENT_ID"),
+		ClientSecret:      os.Getenv("CLIENT_SECRET"),
+		AwsAccessKey:      os.Getenv("AWS_ACCESS_KEY_ID"),
+		AwsSecretKey:      os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		AwsRegion:         os.Getenv("AWS_REGION"),
+		AwsBucketName:     os.Getenv("BUCKET_NAME"),
+		S3BucketRegion:    os.Getenv("BUCKET_REGION"),
+		AwsBedrockRegion:  os.Getenv("BEDROCK_REGION"),
+		SendGridAPIKey:    os.Getenv("SENDGRID_API_KEY"),
+		StripeSecretKey:   os.Getenv("STRIPE_SECRET_KEY"),
+		MailgunAPIKey:     os.Getenv("MAILGUN_API_KEY"),
+		Environment:       os.Getenv("ENVIRONMENT"),
+		WebhookSecret:     os.Getenv("WEBHOOK_SECRET"),
+		KARMAPAY_BASE_URL: os.Getenv("KARMAPAY_BASE_URL"),
+		KARMAPAY_PG_ENUM:  os.Getenv("KARMAPAY_PG_ENUM"),
+		KARMAPAY_API_KEY:  os.Getenv("KARMAPAY_API_KEY"),
 	}
 }
 
