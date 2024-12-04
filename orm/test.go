@@ -1,71 +1,38 @@
 package orm
 
 import (
-	"fmt"
+	"log"
 	"time"
-
-	"github.com/MelloB1989/karma/database"
 )
 
-type Referrals struct {
-	Model
-	ReferralId string `json:"referral_id"`
-	ReferredBy string `json:"referred_by"`
-	CreatedAt  string `json:"created_at"`
-}
-
-type User struct {
-	Model
-	Id           string    `json:"id" karma:"primary_key;unique"`
-	Username     string    `json:"username"`
-	Password     string    `json:"password"`
-	Email        string    `json:"email"`
-	Address      string    `json:"address" karma:"embedded_json"`
-	Phone        string    `json:"phone"`
-	Dob          time.Time `json:"dob"`
-	ReferralCode string    `json:"referral_code" karma:"foreign:referral_id"`
-	Region       string    `json:"region"`
-}
-
-func NewReferralCode() *Referrals {
-	return &Referrals{
-		Model: Model{
-			TableName:  "referral_codes",
-			PrimaryKey: "referral_code",
-		},
-	}
-}
-
-func NewUser() *User {
-	return &User{
-		Model: Model{
-			TableName:  "users",
-			PrimaryKey: "id",
-		},
-	}
+type Service struct {
+	TableName string    `karma_table:"services"`
+	ServiceId string    `json:"service_id" karma:"primary;unique"`
+	Type      string    `json:"type"` //"local", "online", "offline"
+	Name      string    `json:"name"`
+	Icon      string    `json:"icon"`
+	Banner    string    `json:"banner"`
+	Category  string    `json:"category"`   // "food", "clothing", "electronics", "services", "entertainment", "education", "health", "beauty", "travel", "venues
+	OfferedBy string    `json:"offered_by"` // "global", "service_provider_id"
+	Timestamp time.Time `json:"timestamp"`
 }
 
 func ORMTest() {
-	// Connect to your database
-	db, err := database.PostgresConn()
+	serviceORM := Load(&Service{})
+
+	// Get a booking by primary key
+	ser, err := serviceORM.GetByPrimaryKey("3abb1ealf_")
 	if err != nil {
-		fmt.Println("Error connecting to database:", err)
-		return
-	}
-
-	user := Load(NewUser())
-
-	// Load schema and initialize ORM
-	orm := &ORM{
-		DB:     db,
-		Schema: user,
-	}
-
-	// Fetch all users
-	var users []User
-	if err := orm.GetAll(&users); err != nil {
-		fmt.Println("Error fetching users:", err)
+		log.Println("Failed to get booking by primary key:", err)
 	} else {
-		fmt.Println("Fetched Users:", users)
+		log.Printf("Fetched booking: %+v\n", ser)
+	}
+
+	// Get all bookings
+	allServices, err := serviceORM.GetAll()
+	if err != nil {
+		log.Println("Failed to fetch all bookings:", err)
+	} else {
+		log.Printf("All bookings: %+v\n", allServices)
 	}
 }

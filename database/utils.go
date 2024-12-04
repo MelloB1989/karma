@@ -192,30 +192,37 @@ func InsertStruct(db *sqlx.DB, tableName string, data interface{}) error {
 			continue
 		}
 
-		// Handle JSON marshaling for fields marked as JSON
-		if dbTag == "json" {
-			jsonValue, err := json.Marshal(val.Field(i).Interface())
+		fieldValue := val.Field(i)
+
+		// Handle slice or struct fields with JSON serialization
+		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || dbTag == "json" {
+			jsonValue, err := json.Marshal(fieldValue.Interface())
 			if err != nil {
-				log.Println("Failed to marshal JSON field:", column, err)
-				return err
+				log.Printf("Failed to marshal JSON field '%s': %v\n", column, err)
+				return fmt.Errorf("failed to marshal JSON field '%s': %w", column, err)
 			}
-			values = append(values, jsonValue)
+			values = append(values, string(jsonValue)) // Add serialized JSON as string
 		} else {
-			// Use the actual value with correct type
-			values = append(values, val.Field(i).Interface())
+			// Use the actual value for other types
+			values = append(values, fieldValue.Interface())
 		}
 
 		columns = append(columns, column)
 	}
 
 	// Construct the SQL query with dynamic placeholders
-	query := fmt.Sprintf(`INSERT INTO %s (%s) VALUES (%s)`, tableName, strings.Join(columns, ", "), placeholders(len(values)))
+	query := fmt.Sprintf(
+		`INSERT INTO %s (%s) VALUES (%s)`,
+		tableName,
+		strings.Join(columns, ", "),
+		placeholders(len(values)),
+	)
 
 	// Execute the query
 	_, err := db.Exec(query, values...)
 	if err != nil {
-		log.Println("Failed to insert data into table:", err)
-		return err
+		log.Printf("Failed to insert data into table '%s': %v\n", tableName, err)
+		return fmt.Errorf("failed to insert data into table '%s': %w", tableName, err)
 	}
 
 	return nil
