@@ -10,41 +10,44 @@ import (
 )
 
 type Config struct {
-	Port              string
-	JWTSecret         string
-	AdminKey          string
-	AdministratorKey  string
-	BACKEND_URL       string
-	DatabaseURL       string
-	DatabaseName      string
-	DatabaseHost      string
-	DatabasePort      string
-	DatabaseUser      string
-	DatabasePassword  string
-	RedisURL          string
-	RedisToken        string
-	TwilioSID         string
-	TwilioToken       string
-	TwilioService     string
-	TestPhoneNumbers  []string
-	LogLevel          string
-	ApiKey            string
-	ClientID          string
-	ClientSecret      string
-	AwsAccessKey      string
-	AwsSecretKey      string
-	AwsRegion         string
-	AwsBucketName     string
-	S3BucketRegion    string
-	AwsBedrockRegion  string
-	SendGridAPIKey    string
-	StripeSecretKey   string
-	MailgunAPIKey     string
-	Environment       string
-	WebhookSecret     string
-	KARMAPAY_BASE_URL string
-	KARMAPAY_PG_ENUM  string
-	KARMAPAY_API_KEY  string
+	Port                string
+	JWTSecret           string
+	AdminKey            string
+	AdministratorKey    string
+	BACKEND_URL         string
+	DatabaseURL         string
+	DatabaseName        string
+	DatabaseHost        string
+	DatabasePort        string
+	DatabaseUser        string
+	DatabasePassword    string
+	RedisURL            string
+	RedisToken          string
+	TwilioSID           string
+	TwilioToken         string
+	TwilioService       string
+	TestPhoneNumbers    []string
+	LogLevel            string
+	ApiKey              string
+	ClientID            string
+	ClientSecret        string
+	AwsAccessKey        string
+	AwsSecretKey        string
+	AwsRegion           string
+	AwsBucketName       string
+	S3BucketRegion      string
+	AwsBedrockRegion    string
+	SendGridAPIKey      string
+	StripeSecretKey     string
+	MailgunAPIKey       string
+	Environment         string
+	WebhookSecret       string
+	KARMAPAY_WEBHOOK    string
+	KARMAPAY_PG_ENUM    string
+	KARMAPAY_API_KEY    string
+	KARMAPAY_IDENTIFIER string
+	KARMAPAY_APP_DOMAIN string
+	KARMAPAY_VERIFY_URL string
 }
 
 func DefaultConfig() *Config {
@@ -95,24 +98,27 @@ func DefaultConfig() *Config {
 			"+912362790556",
 			"+913963969678",
 			"+914579253395"},
-		LogLevel:          os.Getenv("LOG_LEVEL"),
-		ApiKey:            os.Getenv("API_KEY"),
-		ClientID:          os.Getenv("CLIENT_ID"),
-		ClientSecret:      os.Getenv("CLIENT_SECRET"),
-		AwsAccessKey:      os.Getenv("AWS_ACCESS_KEY_ID"),
-		AwsSecretKey:      os.Getenv("AWS_SECRET_ACCESS_KEY"),
-		AwsRegion:         os.Getenv("AWS_REGION"),
-		AwsBucketName:     os.Getenv("BUCKET_NAME"),
-		S3BucketRegion:    os.Getenv("BUCKET_REGION"),
-		AwsBedrockRegion:  os.Getenv("BEDROCK_REGION"),
-		SendGridAPIKey:    os.Getenv("SENDGRID_API_KEY"),
-		StripeSecretKey:   os.Getenv("STRIPE_SECRET_KEY"),
-		MailgunAPIKey:     os.Getenv("MAILGUN_API_KEY"),
-		Environment:       os.Getenv("ENVIRONMENT"),
-		WebhookSecret:     os.Getenv("WEBHOOK_SECRET"),
-		KARMAPAY_BASE_URL: os.Getenv("KARMAPAY_BASE_URL"),
-		KARMAPAY_PG_ENUM:  os.Getenv("KARMAPAY_PG_ENUM"),
-		KARMAPAY_API_KEY:  os.Getenv("KARMAPAY_API_KEY"),
+		LogLevel:            os.Getenv("LOG_LEVEL"),
+		ApiKey:              os.Getenv("API_KEY"),
+		ClientID:            os.Getenv("CLIENT_ID"),
+		ClientSecret:        os.Getenv("CLIENT_SECRET"),
+		AwsAccessKey:        os.Getenv("AWS_ACCESS_KEY_ID"),
+		AwsSecretKey:        os.Getenv("AWS_SECRET_ACCESS_KEY"),
+		AwsRegion:           os.Getenv("AWS_REGION"),
+		AwsBucketName:       os.Getenv("BUCKET_NAME"),
+		S3BucketRegion:      os.Getenv("BUCKET_REGION"),
+		AwsBedrockRegion:    os.Getenv("BEDROCK_REGION"),
+		SendGridAPIKey:      os.Getenv("SENDGRID_API_KEY"),
+		StripeSecretKey:     os.Getenv("STRIPE_SECRET_KEY"),
+		MailgunAPIKey:       os.Getenv("MAILGUN_API_KEY"),
+		Environment:         os.Getenv("ENVIRONMENT"),
+		WebhookSecret:       os.Getenv("WEBHOOK_SECRET"),
+		KARMAPAY_WEBHOOK:    os.Getenv("KARMAPAY_WEBHOOK"),
+		KARMAPAY_PG_ENUM:    os.Getenv("KARMAPAY_PG_ENUM"),
+		KARMAPAY_API_KEY:    os.Getenv("KARMAPAY_API_KEY"),
+		KARMAPAY_IDENTIFIER: os.Getenv("KARMAPAY_IDENTIFIER"),
+		KARMAPAY_APP_DOMAIN: os.Getenv("KARMAPAY_APP_DOMAIN"),
+		KARMAPAY_VERIFY_URL: os.Getenv("KARMAPAY_VERIFY_URL"),
 	}
 }
 
