@@ -8,7 +8,7 @@ import (
 
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/utils"
-	"github.com/gofiber/fiber"
+	"github.com/gofiber/fiber/v2"
 	"github.com/razorpay/razorpay-go"
 )
 
@@ -179,6 +179,33 @@ func VerifyPaymentAPI() func(c *fiber.Ctx) error {
 		return c.JSON(ResponseHTTP{
 			Success: false,
 			Message: "Payment not done.",
+			Data:    nil,
+		})
+	}
+}
+
+func KarmaPayWebhook(action func(data map[string]string) error) func(c *fiber.Ctx) error {
+	return func(c *fiber.Ctx) error {
+		webhookKey := c.Query("webhook_key")
+		if webhookKey != config.DefaultConfig().WebhookSecret {
+			return c.JSON(ResponseHTTP{
+				Success: false,
+				Message: "Invalid webhook key.",
+				Data:    nil,
+			})
+		}
+		queries := c.Queries()
+		err := action(queries)
+		if err != nil {
+			return c.JSON(ResponseHTTP{
+				Success: false,
+				Message: "Failed to process webhook.",
+				Data:    nil,
+			})
+		}
+		return c.JSON(ResponseHTTP{
+			Success: true,
+			Message: "Webhook verified.",
 			Data:    nil,
 		})
 	}
