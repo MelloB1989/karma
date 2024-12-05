@@ -50,7 +50,6 @@ type CreatePaymentOrder struct {
 	OrderCurrency    string `json:"order_currency"`
 	OrderDescription string `json:"order_description"`
 	OrderMode        string `json:"order_mode"`
-	WebhookURL       string `json:"webhook_url"`
 	RedirectURL      string `json:"redirect_url"`
 	Registration     string `json:"registration"`
 }
@@ -74,7 +73,7 @@ func CreateOrder(order CreatePaymentOrder) string {
 		KPAPI:            "",
 		Registration:     order.Registration,
 		RedirectURL:      order.RedirectURL,
-		WebhookURL:       order.WebhookURL,
+		WebhookURL:       config.DefaultConfig().KARMAPAY_WEBHOOK,
 		Timestamp:        time.Now().UTC().Format(time.RFC3339),
 	}
 	PushOrderToRedis(orderData)
