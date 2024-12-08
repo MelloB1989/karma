@@ -74,7 +74,7 @@ func CreateOrder(order CreatePaymentOrder) string {
 		KPAPI:            "",
 		Registration:     order.Registration,
 		RedirectURL:      order.RedirectURL,
-		WebhookURL:       order.WebhookURL,
+		WebhookURL:       fmt.Sprintf("%s&%s", order.WebhookURL, config.DefaultConfig().WebhookSecret),
 		Timestamp:        time.Now().UTC().Format(time.RFC3339),
 	}
 	PushOrderToRedis(orderData)
@@ -172,7 +172,7 @@ func VerifyPaymentAPI() func(c *fiber.Ctx) error {
 				TriggerWebhook(order.WebhookURL)
 				return c.JSON(ResponseHTTP{
 					Success: true,
-					Message: "Successfully created user.",
+					Message: "Payment verified",
 					Data:    nil,
 				})
 			}
