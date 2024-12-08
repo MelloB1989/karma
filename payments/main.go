@@ -189,6 +189,7 @@ func KarmaPayWebhook(action func(data map[string]string) error) func(c *fiber.Ct
 	return func(c *fiber.Ctx) error {
 		webhookKey := c.Query("webhook_key")
 		if webhookKey != config.DefaultConfig().WebhookSecret {
+			fmt.Println(webhookKey)
 			return c.JSON(ResponseHTTP{
 				Success: false,
 				Message: "Invalid webhook key.",
