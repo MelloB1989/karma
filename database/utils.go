@@ -253,27 +253,35 @@ func UpdateStruct(db *sqlx.DB, tableName string, data interface{}, conditionFiel
 			continue
 		}
 
-		// Handle JSON marshalling for fields marked as JSON
-		if dbTag == "json" {
-			jsonValue, err := json.Marshal(val.Field(i).Interface())
+		fieldValue := val.Field(i)
+
+		// Handle slice, map, or fields marked with `db:"json"`
+		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || dbTag == "json" {
+			jsonValue, err := json.Marshal(fieldValue.Interface())
 			if err != nil {
-				log.Println("Failed to marshal JSON field:", column, err)
-				return err
+				log.Printf("Failed to marshal JSON field '%s': %v\n", column, err)
+				return fmt.Errorf("failed to marshal JSON field '%s': %w", column, err)
 			}
-			values = append(values, jsonValue)
+			values = append(values, string(jsonValue)) // Add serialized JSON as string
 		} else {
-			// Convert values to the correct type based on the struct's field type
-			values = append(values, val.Field(i).Interface())
+			// Use the actual value for other types
+			values = append(values, fieldValue.Interface())
 		}
 
 		// Add the column update statement with the placeholder
-		columns = append(columns, fmt.Sprintf("%s = $%d", column, placeholderIdx))
+		columns = append(columns, fmt.Sprintf("%s = $%d", camelToSnake(column), placeholderIdx))
 		placeholderIdx++
 	}
 
 	// Add the condition field and its value as the last placeholder
 	values = append(values, conditionValue)
-	query := fmt.Sprintf(`UPDATE %s SET %s WHERE %s = $%d`, tableName, strings.Join(columns, ", "), conditionField, placeholderIdx)
+	query := fmt.Sprintf(
+		`UPDATE %s SET %s WHERE %s = $%d`,
+		tableName,
+		strings.Join(columns, ", "),
+		camelToSnake(conditionField), // Convert condition field to snake_case if necessary
+		placeholderIdx,
+	)
 
 	// Log the final query for debugging
 	fmt.Println("Generated SQL query:", query)
