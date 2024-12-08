@@ -74,7 +74,7 @@ func CreateOrder(order CreatePaymentOrder) string {
 		KPAPI:            "",
 		Registration:     order.Registration,
 		RedirectURL:      order.RedirectURL,
-		WebhookURL:       fmt.Sprintf("%s&webhook_key=%s", order.WebhookURL, config.DefaultConfig().WebhookSecret),
+		WebhookURL:       fmt.Sprintf("%s&webhook_key=%s&koid=%s", order.WebhookURL, config.DefaultConfig().WebhookSecret, oid),
 		Timestamp:        time.Now().UTC().Format(time.RFC3339),
 	}
 	PushOrderToRedis(orderData)
@@ -189,7 +189,6 @@ func KarmaPayWebhook(action func(data map[string]string) error) func(c *fiber.Ct
 	return func(c *fiber.Ctx) error {
 		webhookKey := c.Query("webhook_key")
 		if webhookKey != config.DefaultConfig().WebhookSecret {
-			fmt.Println(webhookKey)
 			return c.JSON(ResponseHTTP{
 				Success: false,
 				Message: "Invalid webhook key.",
