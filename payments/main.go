@@ -169,7 +169,14 @@ func VerifyPaymentAPI() func(c *fiber.Ctx) error {
 			})
 		} else {
 			if body["captured"].(bool) {
-				TriggerWebhook(order.WebhookURL)
+				err := TriggerWebhook(order.WebhookURL)
+				if err != nil {
+					return c.JSON(ResponseHTTP{
+						Success: false,
+						Message: "Failed to trigger webhook.",
+						Data:    nil,
+					})
+				}
 				return c.JSON(ResponseHTTP{
 					Success: true,
 					Message: "Payment verified",

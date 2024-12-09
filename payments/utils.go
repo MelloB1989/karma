@@ -84,6 +84,7 @@ func DecodeAPI(API string) (map[string]interface{}, error) {
 func TriggerWebhook(url string) error {
 
 	// Create a new POST request with the JSON payload
+	fmt.Println(url)
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)

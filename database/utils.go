@@ -284,7 +284,7 @@ func UpdateStruct(db *sqlx.DB, tableName string, data interface{}, conditionFiel
 	)
 
 	// Log the final query for debugging
-	fmt.Println("Generated SQL query:", query)
+	// fmt.Println("Generated SQL query:", query)
 
 	// Execute the query
 	_, err := db.Exec(query, values...)
