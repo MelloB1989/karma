@@ -196,7 +196,7 @@ func KarmaPayWebhook(action func(data map[string]string) error) func(c *fiber.Ct
 	return func(c *fiber.Ctx) error {
 		webhookKey := c.Query("webhook_key")
 		if webhookKey != config.DefaultConfig().WebhookSecret {
-			return c.JSON(ResponseHTTP{
+			return c.Status(fiber.StatusUnauthorized).JSON(ResponseHTTP{
 				Success: false,
 				Message: "Invalid webhook key.",
 				Data:    nil,
@@ -205,7 +205,7 @@ func KarmaPayWebhook(action func(data map[string]string) error) func(c *fiber.Ct
 		queries := c.Queries()
 		err := action(queries)
 		if err != nil {
-			return c.JSON(ResponseHTTP{
+			return c.Status(fiber.StatusUnauthorized).JSON(ResponseHTTP{
 				Success: false,
 				Message: "Failed to process webhook.",
 				Data:    nil,
