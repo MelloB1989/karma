@@ -98,7 +98,7 @@ func (o *ORM) GetByPrimaryKey(key string) (any, error) {
 	return slice.Index(0).Interface(), nil
 }
 
-func (o *ORM) GetByFieldCompare(fieldName string, value any, operator string) ([]any, error) {
+func (o *ORM) GetByFieldCompare(fieldName string, value any, operator string) (any, error) {
 	db, err := database.PostgresConn()
 	if err != nil {
 		log.Println("DB connection error:", err)
@@ -120,26 +120,22 @@ func (o *ORM) GetByFieldCompare(fieldName string, value any, operator string) ([
 		log.Println("Failed to get rows by field comparison:", err)
 		return nil, err
 	}
+	defer rows.Close()
 
 	// Dynamically create a slice to hold results
-	results := reflect.New(reflect.SliceOf(reflect.PointerTo(o.structType))).Interface()
+	sliceType := reflect.SliceOf(reflect.PointerTo(o.structType))
+	resultsPtr := reflect.New(sliceType) // *([]*structType)
 
-	if err := database.ParseRows(rows, results); err != nil {
+	if err := database.ParseRows(rows, resultsPtr.Interface()); err != nil {
 		log.Println("Failed to parse rows:", err)
 		return nil, err
 	}
 
-	// Type assert the result to the expected type (assuming it's a slice of pointers to the struct)
-	resultSlice, ok := reflect.ValueOf(results).Elem().Interface().([]any)
-	if !ok {
-		return nil, errors.New("failed to assert result slice to []any")
-	}
-
-	// Return the typed result directly, assuming the caller is expecting a slice of pointers to the struct
-	return resultSlice, nil
+	// Return the slice directly
+	return resultsPtr.Elem().Interface(), nil
 }
 
-func (o *ORM) GetByFieldIn(fieldName string, values []any) ([]any, error) {
+func (o *ORM) GetByFieldIn(fieldName string, values []any) (any, error) {
 	db, err := database.PostgresConn()
 	if err != nil {
 		log.Println("DB connection error:", err)
@@ -159,23 +155,19 @@ func (o *ORM) GetByFieldIn(fieldName string, values []any) ([]any, error) {
 		log.Println("Failed to get rows by field IN:", err)
 		return nil, err
 	}
+	defer rows.Close()
 
 	// Dynamically create a slice to hold results
-	results := reflect.New(reflect.SliceOf(reflect.PointerTo(o.structType))).Interface()
+	sliceType := reflect.SliceOf(reflect.PointerTo(o.structType))
+	resultsPtr := reflect.New(sliceType) // *([]*structType)
 
-	if err := database.ParseRows(rows, results); err != nil {
+	if err := database.ParseRows(rows, resultsPtr.Interface()); err != nil {
 		log.Println("Failed to parse rows:", err)
 		return nil, err
 	}
 
-	// Type assert the result to the expected type (assuming it's a slice of pointers to the struct)
-	resultSlice, ok := reflect.ValueOf(results).Elem().Interface().([]any)
-	if !ok {
-		return nil, errors.New("failed to assert result slice to []any")
-	}
-
-	// Return the typed result directly, assuming the caller is expecting a slice of pointers to the struct
-	return resultSlice, nil
+	// Return the slice directly
+	return resultsPtr.Elem().Interface(), nil
 }
 
 func (o *ORM) GetCount(fieldName string, value any, operator string) (int, error) {

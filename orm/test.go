@@ -20,19 +20,56 @@ type Service struct {
 func ORMTest() {
 	serviceORM := Load(&Service{})
 
-	// Get a booking by primary key
+	// Get a service by primary key
 	ser, err := serviceORM.GetByPrimaryKey("3abb1ealf_")
 	if err != nil {
-		log.Println("Failed to get booking by primary key:", err)
+		log.Println("Failed to get service by primary key:", err)
 	} else {
-		log.Printf("Fetched booking: %+v\n", ser)
+		log.Printf("Fetched service: %+v\n", ser)
 	}
 
-	// Get all bookings
+	// Get all services
 	allServices, err := serviceORM.GetAll()
 	if err != nil {
-		log.Println("Failed to fetch all bookings:", err)
+		log.Println("Failed to fetch all services:", err)
 	} else {
-		log.Printf("All bookings: %+v\n", allServices)
+		log.Printf("All services: %+v\n", allServices)
+	}
+
+	// Get services by type ("local")
+	servicesByType, err := serviceORM.GetByFieldCompare("type", "local", "=")
+	if err != nil {
+		log.Println("Failed to fetch services by type:", err)
+	} else {
+		// Assert the result to []*Service
+		services, ok := servicesByType.([]*Service)
+		if !ok {
+			log.Println("Failed to assert servicesByType to []*Service")
+			return
+		}
+		log.Printf("Services of type 'local': %+v\n", services)
+	}
+
+	// Get services with specific categories
+	categoryList := []any{"food", "clothing", "electronics"}
+	servicesByCategory, err := serviceORM.GetByFieldIn("Category", categoryList)
+	if err != nil {
+		log.Println("Failed to fetch services by category:", err)
+	} else {
+		// Assert the result to []*Service
+		services, ok := servicesByCategory.([]*Service)
+		if !ok {
+			log.Println("Failed to assert servicesByCategory to []*Service")
+			return
+		}
+		log.Printf("Services in categories: %+v\n", services)
+	}
+
+	// Get the count of services with a specific type
+	count, err := serviceORM.GetCount("Type", "local", "=")
+	if err != nil {
+		log.Println("Failed to get count of services by type:", err)
+	} else {
+		log.Printf("Count of 'local' services: %d\n", count)
 	}
 }
