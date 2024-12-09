@@ -3,10 +3,12 @@ package orm
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"reflect"
 	"strconv"
 	"strings"
+	"unsafe"
 
 	"github.com/MelloB1989/karma/database"
 	"github.com/MelloB1989/karma/utils"
@@ -16,6 +18,7 @@ import (
 type ORM struct {
 	tableName  string
 	structType reflect.Type
+	fieldMap   map[string]string
 }
 
 // Load initializes the ORM with the given struct.
@@ -28,9 +31,22 @@ func Load(entity any) *ORM {
 		tableName = field.Tag.Get("karma_table")
 	}
 
+	// Build the field mapping
+	fieldMap := make(map[string]string)
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		jsonTag := field.Tag.Get("json")
+		if jsonTag != "" {
+			fieldMap[field.Name] = jsonTag
+		} else {
+			fieldMap[field.Name] = field.Name
+		}
+	}
+
 	return &ORM{
 		tableName:  tableName,
 		structType: t,
+		fieldMap:   fieldMap,
 	}
 }
 
@@ -98,7 +114,53 @@ func (o *ORM) GetByPrimaryKey(key string) (any, error) {
 	return slice.Index(0).Interface(), nil
 }
 
-func (o *ORM) GetByFieldCompare(fieldName string, value any, operator string) (any, error) {
+// Helper function to get the field name from a field pointer
+func GetFieldName(structPtr any, fieldPtr any) (string, error) {
+	sValue := reflect.ValueOf(structPtr)
+	if sValue.Kind() != reflect.Ptr || sValue.Elem().Kind() != reflect.Struct {
+		return "", errors.New("structPtr must be a pointer to a struct")
+	}
+	sValue = sValue.Elem()
+
+	fValue := reflect.ValueOf(fieldPtr)
+	if fValue.Kind() != reflect.Ptr {
+		return "", errors.New("fieldPtr must be a pointer")
+	}
+	fValue = fValue.Elem()
+
+	// Get the base address of the struct
+	sPtr := unsafe.Pointer(sValue.UnsafeAddr())
+
+	// Get the address of the field
+	fPtr := unsafe.Pointer(fValue.UnsafeAddr())
+
+	// Calculate offset
+	offset := uintptr(fPtr) - uintptr(sPtr)
+
+	// Iterate over struct fields to find matching offset
+	sType := sValue.Type()
+	for i := 0; i < sType.NumField(); i++ {
+		field := sType.Field(i)
+		if field.Offset == offset {
+			// Field found; return the JSON tag or field name
+			if jsonTag := field.Tag.Get("json"); jsonTag != "" {
+				return jsonTag, nil
+			}
+			return field.Name, nil
+		}
+	}
+
+	return "", errors.New("field not found in struct")
+}
+
+func (o *ORM) GetByFieldCompare(structPtr any, fieldPtr any, value any, operator string) (any, error) {
+	// Use reflection to get the field name
+	fmt.Println(o.fieldMap)
+	fieldName, err := GetFieldName(structPtr, fieldPtr)
+	if err != nil {
+		return nil, err
+	}
+
 	db, err := database.PostgresConn()
 	if err != nil {
 		log.Println("DB connection error:", err)
@@ -135,7 +197,13 @@ func (o *ORM) GetByFieldCompare(fieldName string, value any, operator string) (a
 	return resultsPtr.Elem().Interface(), nil
 }
 
-func (o *ORM) GetByFieldIn(fieldName string, values []any) (any, error) {
+func (o *ORM) GetByFieldIn(structPtr any, fieldPtr any, values []any) (any, error) {
+	// Use reflection to get the field name
+	fieldName, err := GetFieldName(structPtr, fieldPtr)
+	if err != nil {
+		return nil, err
+	}
+
 	db, err := database.PostgresConn()
 	if err != nil {
 		log.Println("DB connection error:", err)
@@ -170,7 +238,13 @@ func (o *ORM) GetByFieldIn(fieldName string, values []any) (any, error) {
 	return resultsPtr.Elem().Interface(), nil
 }
 
-func (o *ORM) GetCount(fieldName string, value any, operator string) (int, error) {
+func (o *ORM) GetCount(structPtr any, fieldPtr any, value any, operator string) (int, error) {
+	// Use reflection to get the field name
+	fieldName, err := GetFieldName(structPtr, fieldPtr)
+	if err != nil {
+		return 0, err
+	}
+
 	db, err := database.PostgresConn()
 	if err != nil {
 		log.Println("DB connection error:", err)
