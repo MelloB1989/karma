@@ -8,7 +8,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"unsafe"
 
 	"github.com/MelloB1989/karma/database"
 	"github.com/MelloB1989/karma/utils"
@@ -114,51 +113,32 @@ func (o *ORM) GetByPrimaryKey(key string) (any, error) {
 	return slice.Index(0).Interface(), nil
 }
 
-// Helper function to get the field name from a field pointer
-func GetFieldName(structPtr any, fieldPtr any) (string, error) {
-	sValue := reflect.ValueOf(structPtr)
-	if sValue.Kind() != reflect.Ptr || sValue.Elem().Kind() != reflect.Struct {
-		return "", errors.New("structPtr must be a pointer to a struct")
-	}
-	sValue = sValue.Elem()
-
-	fValue := reflect.ValueOf(fieldPtr)
-	if fValue.Kind() != reflect.Ptr {
-		return "", errors.New("fieldPtr must be a pointer")
-	}
-	fValue = fValue.Elem()
-
-	// Get the base address of the struct
-	sPtr := unsafe.Pointer(sValue.UnsafeAddr())
-
-	// Get the address of the field
-	fPtr := unsafe.Pointer(fValue.UnsafeAddr())
-
-	// Calculate offset
-	offset := uintptr(fPtr) - uintptr(sPtr)
-
-	// Iterate over struct fields to find matching offset
-	sType := sValue.Type()
-	for i := 0; i < sType.NumField(); i++ {
-		field := sType.Field(i)
-		if field.Offset == offset {
-			// Field found; return the JSON tag or field name
-			if jsonTag := field.Tag.Get("json"); jsonTag != "" {
-				return jsonTag, nil
-			}
-			return field.Name, nil
-		}
+func AssertAndReturnSlice(targetType reflect.Type, value interface{}, e error) ([]interface{}, error) {
+	// Check if value is a slice
+	v := reflect.ValueOf(value)
+	if v.Kind() != reflect.Slice {
+		log.Println("Expected a slice but got:", v.Kind())
+		return nil, errors.New("value is not a slice")
 	}
 
-	return "", errors.New("field not found in struct")
+	// Create a new slice of the target type
+	result := reflect.MakeSlice(reflect.SliceOf(targetType), v.Len(), v.Cap())
+	reflect.Copy(result, v)
+
+	// Return the value as a slice of interfaces
+	var resultSlice []interface{}
+	for i := 0; i < result.Len(); i++ {
+		resultSlice = append(resultSlice, result.Index(i).Interface())
+	}
+
+	return resultSlice, nil
 }
 
-func (o *ORM) GetByFieldCompare(structPtr any, fieldPtr any, value any, operator string) (any, error) {
-	// Use reflection to get the field name
-	fmt.Println(o.fieldMap)
-	fieldName, err := GetFieldName(structPtr, fieldPtr)
-	if err != nil {
-		return nil, err
+func (o *ORM) GetByFieldLike(fieldName string, value any) (any, error) {
+	fmt.Println(reflect.TypeOf(o.structType))
+	columnName, ok := o.fieldMap[fieldName]
+	if !ok {
+		return nil, fmt.Errorf("field %s not found in struct", fieldName)
 	}
 
 	db, err := database.PostgresConn()
@@ -168,14 +148,8 @@ func (o *ORM) GetByFieldCompare(structPtr any, fieldPtr any, value any, operator
 	}
 	defer db.Close()
 
-	// Sanitize the operator to avoid SQL injection
-	allowedOperators := []string{"=", ">", "<", ">=", "<=", "LIKE"}
-	if !utils.Contains(allowedOperators, operator) {
-		return nil, errors.New("unsupported operator")
-	}
-
 	// Construct query
-	query := "SELECT * FROM " + o.tableName + " WHERE " + fieldName + " " + operator + " $1"
+	query := "SELECT * FROM " + o.tableName + " WHERE " + columnName + " " + "LIKE" + " $1"
 
 	rows, err := db.Query(query, value)
 	if err != nil {
@@ -197,11 +171,238 @@ func (o *ORM) GetByFieldCompare(structPtr any, fieldPtr any, value any, operator
 	return resultsPtr.Elem().Interface(), nil
 }
 
-func (o *ORM) GetByFieldIn(structPtr any, fieldPtr any, values []any) (any, error) {
-	// Use reflection to get the field name
-	fieldName, err := GetFieldName(structPtr, fieldPtr)
+func (o *ORM) GetByFieldGreaterThanEquals(fieldName string, value any) (any, error) {
+	fmt.Println(reflect.TypeOf(o.structType))
+	columnName, ok := o.fieldMap[fieldName]
+	if !ok {
+		return nil, fmt.Errorf("field %s not found in struct", fieldName)
+	}
+
+	db, err := database.PostgresConn()
 	if err != nil {
+		log.Println("DB connection error:", err)
 		return nil, err
+	}
+	defer db.Close()
+
+	// Construct query
+	query := "SELECT * FROM " + o.tableName + " WHERE " + columnName + " " + ">=" + " $1"
+
+	rows, err := db.Query(query, value)
+	if err != nil {
+		log.Println("Failed to get rows by field comparison:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Dynamically create a slice to hold results
+	sliceType := reflect.SliceOf(reflect.PointerTo(o.structType))
+	resultsPtr := reflect.New(sliceType) // *([]*structType)
+
+	if err := database.ParseRows(rows, resultsPtr.Interface()); err != nil {
+		log.Println("Failed to parse rows:", err)
+		return nil, err
+	}
+
+	// Return the slice directly
+	return resultsPtr.Elem().Interface(), nil
+}
+
+func (o *ORM) GetByFieldLessThanEquals(fieldName string, value any) (any, error) {
+	fmt.Println(reflect.TypeOf(o.structType))
+	columnName, ok := o.fieldMap[fieldName]
+	if !ok {
+		return nil, fmt.Errorf("field %s not found in struct", fieldName)
+	}
+
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return nil, err
+	}
+	defer db.Close()
+
+	// Construct query
+	query := "SELECT * FROM " + o.tableName + " WHERE " + columnName + " " + "<=" + " $1"
+
+	rows, err := db.Query(query, value)
+	if err != nil {
+		log.Println("Failed to get rows by field comparison:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Dynamically create a slice to hold results
+	sliceType := reflect.SliceOf(reflect.PointerTo(o.structType))
+	resultsPtr := reflect.New(sliceType) // *([]*structType)
+
+	if err := database.ParseRows(rows, resultsPtr.Interface()); err != nil {
+		log.Println("Failed to parse rows:", err)
+		return nil, err
+	}
+
+	// Return the slice directly
+	return resultsPtr.Elem().Interface(), nil
+}
+
+func (o *ORM) GetByFieldGreaterThan(fieldName string, value any) (any, error) {
+	fmt.Println(reflect.TypeOf(o.structType))
+	columnName, ok := o.fieldMap[fieldName]
+	if !ok {
+		return nil, fmt.Errorf("field %s not found in struct", fieldName)
+	}
+
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return nil, err
+	}
+	defer db.Close()
+
+	// Construct query
+	query := "SELECT * FROM " + o.tableName + " WHERE " + columnName + " " + ">" + " $1"
+
+	rows, err := db.Query(query, value)
+	if err != nil {
+		log.Println("Failed to get rows by field comparison:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Dynamically create a slice to hold results
+	sliceType := reflect.SliceOf(reflect.PointerTo(o.structType))
+	resultsPtr := reflect.New(sliceType) // *([]*structType)
+
+	if err := database.ParseRows(rows, resultsPtr.Interface()); err != nil {
+		log.Println("Failed to parse rows:", err)
+		return nil, err
+	}
+
+	// Return the slice directly
+	return resultsPtr.Elem().Interface(), nil
+}
+
+func (o *ORM) GetByFieldLessThan(fieldName string, value any) (any, error) {
+	fmt.Println(reflect.TypeOf(o.structType))
+	columnName, ok := o.fieldMap[fieldName]
+	if !ok {
+		return nil, fmt.Errorf("field %s not found in struct", fieldName)
+	}
+
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return nil, err
+	}
+	defer db.Close()
+
+	// Construct query
+	query := "SELECT * FROM " + o.tableName + " WHERE " + columnName + " " + "<" + " $1"
+
+	rows, err := db.Query(query, value)
+	if err != nil {
+		log.Println("Failed to get rows by field comparison:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Dynamically create a slice to hold results
+	sliceType := reflect.SliceOf(reflect.PointerTo(o.structType))
+	resultsPtr := reflect.New(sliceType) // *([]*structType)
+
+	if err := database.ParseRows(rows, resultsPtr.Interface()); err != nil {
+		log.Println("Failed to parse rows:", err)
+		return nil, err
+	}
+
+	// Return the slice directly
+	return resultsPtr.Elem().Interface(), nil
+}
+
+func (o *ORM) GetByFieldEquals(fieldName string, value any) (any, error) {
+	fmt.Println(reflect.TypeOf(o.structType))
+	columnName, ok := o.fieldMap[fieldName]
+	if !ok {
+		return nil, fmt.Errorf("field %s not found in struct", fieldName)
+	}
+
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return nil, err
+	}
+	defer db.Close()
+
+	// Construct query
+	query := "SELECT * FROM " + o.tableName + " WHERE " + columnName + " " + "=" + " $1"
+
+	rows, err := db.Query(query, value)
+	if err != nil {
+		log.Println("Failed to get rows by field comparison:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Dynamically create a slice to hold results
+	sliceType := reflect.SliceOf(reflect.PointerTo(o.structType))
+	resultsPtr := reflect.New(sliceType) // *([]*structType)
+
+	if err := database.ParseRows(rows, resultsPtr.Interface()); err != nil {
+		log.Println("Failed to parse rows:", err)
+		return nil, err
+	}
+
+	// Return the slice directly
+	return resultsPtr.Elem().Interface(), nil
+}
+
+func (o *ORM) GetByFieldCompare(fieldName string, value any, operator string) (any, error) {
+	fmt.Println(reflect.TypeOf(o.structType))
+	columnName, ok := o.fieldMap[fieldName]
+	if !ok {
+		return nil, fmt.Errorf("field %s not found in struct", fieldName)
+	}
+
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return nil, err
+	}
+	defer db.Close()
+
+	// Sanitize the operator to avoid SQL injection
+	allowedOperators := []string{"=", ">", "<", ">=", "<=", "LIKE"}
+	if !utils.Contains(allowedOperators, operator) {
+		return nil, errors.New("unsupported operator")
+	}
+
+	// Construct query
+	query := "SELECT * FROM " + o.tableName + " WHERE " + columnName + " " + operator + " $1"
+
+	rows, err := db.Query(query, value)
+	if err != nil {
+		log.Println("Failed to get rows by field comparison:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Dynamically create a slice to hold results
+	sliceType := reflect.SliceOf(reflect.PointerTo(o.structType))
+	resultsPtr := reflect.New(sliceType) // *([]*structType)
+
+	if err := database.ParseRows(rows, resultsPtr.Interface()); err != nil {
+		log.Println("Failed to parse rows:", err)
+		return nil, err
+	}
+
+	// Return the slice directly
+	return resultsPtr.Elem().Interface(), nil
+}
+
+func (o *ORM) GetByFieldIn(fieldName string, values []any) (any, error) {
+	columnName, ok := o.fieldMap[fieldName]
+	if !ok {
+		return nil, fmt.Errorf("field %s not found in struct", fieldName)
 	}
 
 	db, err := database.PostgresConn()
@@ -216,7 +417,7 @@ func (o *ORM) GetByFieldIn(structPtr any, fieldPtr any, values []any) (any, erro
 	for i := range values {
 		placeholders[i] = "$" + strconv.Itoa(i+1)
 	}
-	query := "SELECT * FROM " + o.tableName + " WHERE " + fieldName + " IN (" + strings.Join(placeholders, ", ") + ")"
+	query := "SELECT * FROM " + o.tableName + " WHERE " + columnName + " IN (" + strings.Join(placeholders, ", ") + ")"
 
 	rows, err := db.Query(query, values...)
 	if err != nil {
@@ -238,11 +439,10 @@ func (o *ORM) GetByFieldIn(structPtr any, fieldPtr any, values []any) (any, erro
 	return resultsPtr.Elem().Interface(), nil
 }
 
-func (o *ORM) GetCount(structPtr any, fieldPtr any, value any, operator string) (int, error) {
-	// Use reflection to get the field name
-	fieldName, err := GetFieldName(structPtr, fieldPtr)
-	if err != nil {
-		return 0, err
+func (o *ORM) GetCount(fieldName string, value any, operator string) (int, error) {
+	columnName, ok := o.fieldMap[fieldName]
+	if !ok {
+		return 0, fmt.Errorf("field %s not found in struct", fieldName)
 	}
 
 	db, err := database.PostgresConn()
@@ -259,7 +459,7 @@ func (o *ORM) GetCount(structPtr any, fieldPtr any, value any, operator string) 
 	}
 
 	// Construct query for count
-	query := "SELECT COUNT(*) FROM " + o.tableName + " WHERE " + fieldName + " " + operator + " $1"
+	query := "SELECT COUNT(*) FROM " + o.tableName + " WHERE " + columnName + " " + operator + " $1"
 
 	var count int
 	err = db.QueryRow(query, value).Scan(&count)

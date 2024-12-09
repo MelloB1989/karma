@@ -19,10 +19,10 @@ type Service struct {
 
 func ORMTest() {
 	serviceORM := Load(&Service{})
-
-	// Get services by type ("local")
-	s := &Service{}
-	servicesByType, err := serviceORM.GetByFieldCompare(s, &s.Type, "local", "=")
+	// r, e := serviceORM.GetByFieldCompare("Type", "local", "=")
+	// s, err := AssertAndReturnSlice(reflect.TypeOf(&Service{}), r, e)
+	// fmt.Println(s[0])
+	servicesByType, err := serviceORM.GetByFieldCompare("Type", "local", "=")
 	if err != nil {
 		log.Println("Failed to fetch services by type:", err)
 	} else {
@@ -32,12 +32,12 @@ func ORMTest() {
 			log.Println("Failed to assert servicesByType to []*Service")
 			return
 		}
-		log.Printf("Services of type 'local': %+v\n", services)
+		log.Printf("Services of type 'local': %+v\n", services[0].Banner)
 	}
 
 	// Get services with specific categories
 	categoryList := []any{"venues", "clothing", "electronics"}
-	servicesByCategory, err := serviceORM.GetByFieldIn(s, &s.Category, categoryList)
+	servicesByCategory, err := serviceORM.GetByFieldIn("Category", categoryList)
 	if err != nil {
 		log.Println("Failed to fetch services by category:", err)
 	} else {
@@ -51,7 +51,7 @@ func ORMTest() {
 	}
 
 	// Get the count of services with a specific type
-	count, err := serviceORM.GetCount(s, &s.Type, "local", "=")
+	count, err := serviceORM.GetCount("Type", "local", "=")
 	if err != nil {
 		log.Println("Failed to get count of services by type:", err)
 	} else {
