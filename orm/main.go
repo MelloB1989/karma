@@ -5,9 +5,11 @@ import (
 	"errors"
 	"log"
 	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/MelloB1989/karma/database"
+	"github.com/MelloB1989/karma/utils"
 )
 
 // ORM struct encapsulates the metadata and methods for a table.
@@ -94,6 +96,113 @@ func (o *ORM) GetByPrimaryKey(key string) (any, error) {
 	}
 
 	return slice.Index(0).Interface(), nil
+}
+
+func (o *ORM) GetByFieldCompare(fieldName string, value any, operator string) ([]any, error) {
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return nil, err
+	}
+	defer db.Close()
+
+	// Sanitize the operator to avoid SQL injection
+	allowedOperators := []string{"=", ">", "<", ">=", "<=", "LIKE"}
+	if !utils.Contains(allowedOperators, operator) {
+		return nil, errors.New("unsupported operator")
+	}
+
+	// Construct query
+	query := "SELECT * FROM " + o.tableName + " WHERE " + fieldName + " " + operator + " $1"
+
+	rows, err := db.Query(query, value)
+	if err != nil {
+		log.Println("Failed to get rows by field comparison:", err)
+		return nil, err
+	}
+
+	// Dynamically create a slice to hold results
+	results := reflect.New(reflect.SliceOf(reflect.PointerTo(o.structType))).Interface()
+
+	if err := database.ParseRows(rows, results); err != nil {
+		log.Println("Failed to parse rows:", err)
+		return nil, err
+	}
+
+	// Type assert the result to the expected type (assuming it's a slice of pointers to the struct)
+	resultSlice, ok := reflect.ValueOf(results).Elem().Interface().([]any)
+	if !ok {
+		return nil, errors.New("failed to assert result slice to []any")
+	}
+
+	// Return the typed result directly, assuming the caller is expecting a slice of pointers to the struct
+	return resultSlice, nil
+}
+
+func (o *ORM) GetByFieldIn(fieldName string, values []any) ([]any, error) {
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return nil, err
+	}
+	defer db.Close()
+
+	// Construct query with IN clause
+	placeholders := make([]string, len(values))
+	for i := range values {
+		placeholders[i] = "$" + strconv.Itoa(i+1)
+	}
+	query := "SELECT * FROM " + o.tableName + " WHERE " + fieldName + " IN (" + strings.Join(placeholders, ", ") + ")"
+
+	rows, err := db.Query(query, values...)
+	if err != nil {
+		log.Println("Failed to get rows by field IN:", err)
+		return nil, err
+	}
+
+	// Dynamically create a slice to hold results
+	results := reflect.New(reflect.SliceOf(reflect.PointerTo(o.structType))).Interface()
+
+	if err := database.ParseRows(rows, results); err != nil {
+		log.Println("Failed to parse rows:", err)
+		return nil, err
+	}
+
+	// Type assert the result to the expected type (assuming it's a slice of pointers to the struct)
+	resultSlice, ok := reflect.ValueOf(results).Elem().Interface().([]any)
+	if !ok {
+		return nil, errors.New("failed to assert result slice to []any")
+	}
+
+	// Return the typed result directly, assuming the caller is expecting a slice of pointers to the struct
+	return resultSlice, nil
+}
+
+func (o *ORM) GetCount(fieldName string, value any, operator string) (int, error) {
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return 0, err
+	}
+	defer db.Close()
+
+	// Sanitize the operator to avoid SQL injection
+	allowedOperators := []string{"=", ">", "<", ">=", "<=", "LIKE"}
+	if !utils.Contains(allowedOperators, operator) {
+		return 0, errors.New("unsupported operator")
+	}
+
+	// Construct query for count
+	query := "SELECT COUNT(*) FROM " + o.tableName + " WHERE " + fieldName + " " + operator + " $1"
+
+	var count int
+	err = db.QueryRow(query, value).Scan(&count)
+	if err != nil {
+		log.Println("Failed to get count by field comparison:", err)
+		return 0, err
+	}
+
+	return count, nil
 }
 
 // Insert inserts a new row into the table.
