@@ -74,7 +74,7 @@ func CreateOrder(order CreatePaymentOrder) string {
 		KPAPI:            "",
 		Registration:     order.Registration,
 		RedirectURL:      order.RedirectURL,
-		WebhookURL:       fmt.Sprintf("%s&webhook_key=%s&koid=%s", order.WebhookURL, config.DefaultConfig().WebhookSecret, oid),
+		WebhookURL:       fmt.Sprintf("%s&webhook_key=%s&koid=%s", order.WebhookURL, utils.URLEncode(config.DefaultConfig().WebhookSecret), oid),
 		Timestamp:        time.Now().UTC().Format(time.RFC3339),
 	}
 	PushOrderToRedis(orderData)

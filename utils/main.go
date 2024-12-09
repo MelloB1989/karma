@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -182,4 +183,8 @@ func Contains(slice []string, item string) bool {
 
 func GetNow() string {
 	return time.Now().String()
+}
+
+func URLEncode(input string) string {
+	return url.QueryEscape(input)
 }
