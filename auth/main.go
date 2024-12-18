@@ -6,6 +6,7 @@ import (
 
 	"github.com/MelloB1989/karma/apis/twilio"
 	"github.com/MelloB1989/karma/config"
+	"github.com/MelloB1989/karma/internal/google"
 	"github.com/MelloB1989/karma/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt"
@@ -225,4 +226,54 @@ func VerifyPhoneOTPHandler(getUserByPhone func(phone string) (AuthUserPhone, err
 			})
 		}
 	}
+}
+
+type GoogleConfig struct {
+	CookieExpiration time.Duration
+	CookieDomain     string
+	CookieHTTPSOnly  bool
+	OAuthStateString string
+}
+
+type GoogleAuth struct {
+	config GoogleConfig
+}
+
+func NewGoogleAuth(config GoogleConfig) *GoogleAuth {
+	return &GoogleAuth{
+		config: config,
+	}
+}
+
+func InitializeGoogleAuth(config GoogleConfig) *GoogleAuth {
+	google.InitializeStore(config.CookieExpiration, config.CookieDomain, config.CookieHTTPSOnly, config.OAuthStateString)
+	return NewGoogleAuth(config)
+}
+
+func (ga *GoogleAuth) GetGoogleOauthURL() string {
+	return google.GetGoogleOauthURL()
+}
+
+func (ga *GoogleAuth) GoogleLoginHandler() func(c *fiber.Ctx) error {
+	return google.HandleGoogleLogin
+}
+
+func (ga *GoogleAuth) GoogleLoginBuilder(authHandler func(c *fiber.Ctx) error) func(c *fiber.Ctx) error {
+	return google.AuthBuilder(authHandler)
+}
+
+func (ga *GoogleAuth) GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx) error) func(c *fiber.Ctx) error {
+	return google.GoogleCallbackBuilder(callbackHandler)
+}
+
+func (ga *GoogleAuth) GoogleHandleCallback() func(c *fiber.Ctx) error {
+	return google.HandleGoogleCallback
+}
+
+func (ga *GoogleAuth) RequireGoogleAuth() func(c *fiber.Ctx) error {
+	return google.RequireGoogleAuth
+}
+
+func (ga *GoogleAuth) IsGoogleAuthenticated(c *fiber.Ctx) bool {
+	return google.IsGoogleAuthenticated(c)
 }
