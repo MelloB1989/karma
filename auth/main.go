@@ -14,12 +14,20 @@ import (
 	"github.com/golang-jwt/jwt"
 )
 
+type User struct {
+	Id       string `json:"id"`
+	Email    string `json:"email"`
+	Phone    string `json:"phone"`
+	Password string `json:"password"`
+}
+
 type LoginWithEmailAndPasswordRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
 type JWTClaimsProvider interface {
+	GetJWTClaims() map[string]interface{}
 	AdditionalClaims() map[string]interface{}
 }
 
@@ -41,6 +49,53 @@ type ResponseHTTP struct {
 	Success bool        `json:"success"`
 	Data    interface{} `json:"data"`
 	Message string      `json:"message"`
+}
+
+func (u *User) GetEmail() string {
+	return u.Email
+}
+
+func (u *User) GetPhone() string {
+	return u.Phone
+}
+
+func (u *User) GetPassword() string {
+	return ""
+}
+
+func (u *User) GetID() string {
+	return u.Id
+}
+
+func (u *User) GetJWTClaims() map[string]interface{} {
+	return map[string]interface{}{
+		"id":    u.Id,
+		"phone": u.Phone,
+	}
+}
+
+func (u *User) AdditionalClaims() map[string]interface{} {
+	return map[string]interface{}{
+		"role": "user",
+	}
+}
+
+func NewAuthUserPhone(phone, password, id string) AuthUserPhone {
+	return &User{
+		Phone:    phone,
+		Password: password,
+		Id:       id,
+		Email:    "",
+	}
+}
+
+func NewAuthUserEmail(email, password, id string) AuthUserPhone {
+	return &User{
+		Phone:    "",
+		Password: password,
+		Id:       id,
+		Email:    email,
+	}
 }
 
 func LoginWithEmailAndPasswordHandler(getUserByEmail func(email string) (AuthUserEmail, error)) func(c *fiber.Ctx) error {
