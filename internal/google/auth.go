@@ -12,6 +12,7 @@ import (
 	"github.com/MelloB1989/karma/models"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/session"
+	"github.com/gofiber/storage/redis"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -40,11 +41,15 @@ func init() {
 }
 
 func InitializeStore(cookieExp time.Duration, cookieDomain string, cookieSecure bool, oauthState string) {
+	redisStore := redis.New(redis.Config{
+		URL: config.DefaultConfig().RedisURL,
+	})
 	Store = session.New(session.Config{
 		KeyLookup:    "cookie:karma_google_session",
 		Expiration:   cookieExp,
 		CookiePath:   "/",
 		CookieSecure: cookieSecure,
+		Storage:      redisStore,
 		CookieName:   "karma_google_session",
 		CookieDomain: cookieDomain,
 	})
@@ -52,6 +57,7 @@ func InitializeStore(cookieExp time.Duration, cookieDomain string, cookieSecure 
 		KeyLookup:    "cookie:karma_google_token",
 		Expiration:   cookieExp,
 		CookiePath:   "/",
+		Storage:      redisStore,
 		CookieSecure: cookieSecure,
 		CookieName:   "karma_google_token",
 		CookieDomain: cookieDomain,

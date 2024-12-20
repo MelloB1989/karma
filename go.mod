@@ -10,6 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.20.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.69.0
 	github.com/gofiber/fiber/v2 v2.52.5
+	github.com/gofiber/storage/redis v1.3.4
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
