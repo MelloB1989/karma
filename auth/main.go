@@ -280,6 +280,10 @@ func (ga *GoogleAuth) GoogleHandleCallback() func(c *fiber.Ctx) error {
 	return google.HandleGoogleCallback
 }
 
+func (ga *GoogleAuth) GetSessionData() func(c *fiber.Ctx) error {
+	return google.GetSessionData
+}
+
 func (ga *GoogleAuth) RequireGoogleAuth() func(c *fiber.Ctx) error {
 	return google.RequireGoogleAuth
 }

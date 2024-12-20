@@ -319,3 +319,37 @@ func RequireGoogleAuth(c *fiber.Ctx) error {
 
 	return c.Next()
 }
+
+func GetSessionData(c *fiber.Ctx) error {
+	sess, err := Store.Get(c)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+			Success: false,
+			Message: "Session error",
+			Data:    nil,
+		})
+	}
+
+	user := sess.Get("user")
+	if user == nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(ResponseHTTP{
+			Success: false,
+			Message: "Unauthorized",
+			Data:    nil,
+		})
+	}
+	token := sess.Get("token")
+	// if token == nil {
+	// 	return c.Status(fiber.StatusUnauthorized).JSON(ResponseHTTP{
+	// 		Success: false,
+	// 		Message: "Unauthorized",
+	// 		Data:    nil,
+	// 	})
+	// }
+
+	return c.Status(fiber.StatusOK).JSON(ResponseHTTP{
+		Success: true,
+		Message: "Session data",
+		Data:    map[string]interface{}{"user": user, "token": token},
+	})
+}

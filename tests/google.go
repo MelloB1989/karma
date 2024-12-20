@@ -32,11 +32,12 @@ func GoogleAuth() {
 	// Callback route after Google OAuth
 	app.Get("/auth/callbacks/google", googleAuth.GoogleHandleCallback())
 
-	app.Get("/dashboard", google.RequireGoogleAuth, func(c *fiber.Ctx) error {
-		sess, _ := google.Store.Get(c) // Use auth.Store
-		user := sess.Get("user")
-		return c.JSON(user)
-	})
+	// app.Get("/dashboard", google.RequireGoogleAuth, func(c *fiber.Ctx) error {
+	// 	sess, _ := google.Store.Get(c) // Use auth.Store
+	// 	user := sess.Get("user")
+	// 	return c.JSON(user)
+	// })
+	app.Get("/dashboard", google.RequireGoogleAuth, googleAuth.GetSessionData())
 
 	app.Listen(":3000")
 }
