@@ -338,7 +338,15 @@ func GetSessionData(c *fiber.Ctx) error {
 			Data:    nil,
 		})
 	}
-	token := sess.Get("token")
+	tokenSess, err := TokenStore.Get(c)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+			Success: false,
+			Message: "Session error",
+			Data:    nil,
+		})
+	}
+	token := tokenSess.Get("token")
 	// if token == nil {
 	// 	return c.Status(fiber.StatusUnauthorized).JSON(ResponseHTTP{
 	// 		Success: false,
