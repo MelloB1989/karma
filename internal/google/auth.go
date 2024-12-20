@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MelloB1989/karma/config"
+	"github.com/MelloB1989/karma/models"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/session"
 	"golang.org/x/oauth2"
@@ -31,18 +32,10 @@ var (
 	Store            *session.Store
 )
 
-type UserInfo struct {
-	Email         string `json:"email"`
-	Name          string `json:"name"`
-	Picture       string `json:"picture"`
-	VerifiedEmail bool   `json:"verified_email"`
-	ID            string `json:"id"`
-}
-
 func init() {
 	// Register types for gob encoding
 	gob.Register(map[string]interface{}{})
-	gob.Register(&UserInfo{})
+	gob.Register(&models.GoogleCallbackData{})
 }
 
 func InitializeStore(cookieExp time.Duration, cookieDomain string, cookieSecure bool, oauthState string) {
@@ -133,7 +126,7 @@ func AuthBuilder(authHandler func(c *fiber.Ctx) error) func(c *fiber.Ctx) error 
 	}
 }
 
-func GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *UserInfo) error) func(c *fiber.Ctx) error {
+func GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *models.GoogleCallbackData) error) func(c *fiber.Ctx) error {
 	return func(c *fiber.Ctx) error {
 		// Verify state
 		state := c.Query("state")
@@ -232,7 +225,7 @@ func HandleGoogleCallback(c *fiber.Ctx) error {
 }
 
 // Helper function to get user info from Google
-func getUserInfo(accessToken string) (*UserInfo, error) {
+func getUserInfo(accessToken string) (*models.GoogleCallbackData, error) {
 	resp, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + accessToken)
 	if err != nil {
 		return nil, err
@@ -244,7 +237,7 @@ func getUserInfo(accessToken string) (*UserInfo, error) {
 		return nil, err
 	}
 
-	var userInfo UserInfo
+	var userInfo models.GoogleCallbackData
 	if err = json.Unmarshal(body, &userInfo); err != nil {
 		return nil, err
 	}

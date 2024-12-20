@@ -7,6 +7,7 @@ import (
 	"github.com/MelloB1989/karma/apis/twilio"
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/internal/google"
+	"github.com/MelloB1989/karma/models"
 	"github.com/MelloB1989/karma/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt"
@@ -239,6 +240,14 @@ type GoogleAuth struct {
 	config GoogleConfig
 }
 
+type GoogleCallbackData struct {
+	Email         string `json:"email"`
+	Name          string `json:"name"`
+	Picture       string `json:"picture"`
+	VerifiedEmail bool   `json:"verified_email"`
+	ID            string `json:"id"`
+}
+
 func NewGoogleAuth(config GoogleConfig) *GoogleAuth {
 	return &GoogleAuth{
 		config: config,
@@ -262,7 +271,7 @@ func (ga *GoogleAuth) GoogleLoginBuilder(authHandler func(c *fiber.Ctx) error) f
 	return google.AuthBuilder(authHandler)
 }
 
-func (ga *GoogleAuth) GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *google.UserInfo) error) func(c *fiber.Ctx) error {
+func (ga *GoogleAuth) GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *models.GoogleCallbackData) error) func(c *fiber.Ctx) error {
 	return google.GoogleCallbackBuilder(callbackHandler)
 }
 
