@@ -10,6 +10,7 @@ import (
 	"github.com/MelloB1989/karma/models"
 	"github.com/MelloB1989/karma/utils"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/session"
 	"github.com/golang-jwt/jwt"
 )
 
@@ -271,7 +272,7 @@ func (ga *GoogleAuth) GoogleLoginBuilder(authHandler func(c *fiber.Ctx) error) f
 	return google.AuthBuilder(authHandler)
 }
 
-func (ga *GoogleAuth) GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *models.GoogleCallbackData) error) func(c *fiber.Ctx) error {
+func (ga *GoogleAuth) GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *models.GoogleCallbackData, tokenSess *session.Session) error) func(c *fiber.Ctx) error {
 	return google.GoogleCallbackBuilder(callbackHandler)
 }
 
