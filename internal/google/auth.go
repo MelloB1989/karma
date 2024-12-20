@@ -191,11 +191,11 @@ func GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *models.Googl
 		}
 
 		tokenSess, err := TokenStore.Get(c)
-		if err := tokenSess.Save(); err != nil {
-			fmt.Printf("Save error: %v\n", err)
+		if err != nil {
+			fmt.Printf("Get error: %v\n", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
 				Success: false,
-				Message: "Failed to save session",
+				Message: "Failed to get session",
 				Data:    nil,
 			})
 		}
