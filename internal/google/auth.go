@@ -309,12 +309,12 @@ func IsGoogleAuthenticated(c *fiber.Ctx) bool {
 func RequireGoogleAuth(c *fiber.Ctx) error {
 	sess, err := Store.Get(c)
 	if err != nil {
-		return c.Redirect("/auth/google")
+		return c.Status(fiber.StatusUnauthorized).SendString("Session error")
 	}
 
 	user := sess.Get("user")
 	if user == nil {
-		return c.Redirect("/auth/google")
+		return c.Status(fiber.StatusUnauthorized).SendString("Session error")
 	}
 
 	return c.Next()
