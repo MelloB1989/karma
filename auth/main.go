@@ -262,7 +262,7 @@ func (ga *GoogleAuth) GoogleLoginBuilder(authHandler func(c *fiber.Ctx) error) f
 	return google.AuthBuilder(authHandler)
 }
 
-func (ga *GoogleAuth) GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx) error) func(c *fiber.Ctx) error {
+func (ga *GoogleAuth) GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *google.UserInfo) error) func(c *fiber.Ctx) error {
 	return google.GoogleCallbackBuilder(callbackHandler)
 }
 
