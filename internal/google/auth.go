@@ -133,7 +133,7 @@ func AuthBuilder(authHandler func(c *fiber.Ctx) error) func(c *fiber.Ctx) error 
 	}
 }
 
-func GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx) error) func(c *fiber.Ctx) error {
+func GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *UserInfo) error) func(c *fiber.Ctx) error {
 	return func(c *fiber.Ctx) error {
 		// Verify state
 		state := c.Query("state")
@@ -171,7 +171,7 @@ func GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx) error) func(c *fib
 			return c.Status(fiber.StatusInternalServerError).SendString("Failed to save session")
 		}
 
-		return callbackHandler(c)
+		return callbackHandler(c, userInfo)
 	}
 }
 
