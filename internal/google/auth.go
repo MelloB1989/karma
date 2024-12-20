@@ -30,6 +30,7 @@ var (
 	}
 	oauthStateString = "DfknsCaCoffeeCodesdsanlnjn"
 	Store            *session.Store
+	TokenStore       *session.Store
 )
 
 func init() {
@@ -45,6 +46,14 @@ func InitializeStore(cookieExp time.Duration, cookieDomain string, cookieSecure 
 		CookiePath:   "/",
 		CookieSecure: cookieSecure,
 		CookieName:   "karma_google_session",
+		CookieDomain: cookieDomain,
+	})
+	TokenStore = session.New(session.Config{
+		KeyLookup:    "cookie:karma_google_token",
+		Expiration:   cookieExp,
+		CookiePath:   "/",
+		CookieSecure: cookieSecure,
+		CookieName:   "karma_google_token",
 		CookieDomain: cookieDomain,
 	})
 	oauthStateString = oauthState
@@ -111,9 +120,26 @@ func AuthBuilder(authHandler func(c *fiber.Ctx) error) func(c *fiber.Ctx) error 
 				Data:    nil,
 			})
 		}
+		tokenSess, err := TokenStore.Get(c)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Session error",
+				Data:    nil,
+			})
+		}
 
 		sess.Set("user", userInfo)
+		// tokenSess.Set("token", token)
 		if err := sess.Save(); err != nil {
+			fmt.Printf("Save error: %v\n", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Failed to save session",
+				Data:    nil,
+			})
+		}
+		if err := tokenSess.Save(); err != nil {
 			fmt.Printf("Save error: %v\n", err)
 			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
 				Success: false,
@@ -126,7 +152,7 @@ func AuthBuilder(authHandler func(c *fiber.Ctx) error) func(c *fiber.Ctx) error 
 	}
 }
 
-func GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *models.GoogleCallbackData) error) func(c *fiber.Ctx) error {
+func GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *models.GoogleCallbackData, tokenSess *session.Session) error) func(c *fiber.Ctx) error {
 	return func(c *fiber.Ctx) error {
 		// Verify state
 		state := c.Query("state")
@@ -164,7 +190,17 @@ func GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *models.Googl
 			return c.Status(fiber.StatusInternalServerError).SendString("Failed to save session")
 		}
 
-		return callbackHandler(c, userInfo)
+		tokenSess, err := TokenStore.Get(c)
+		if err := tokenSess.Save(); err != nil {
+			fmt.Printf("Save error: %v\n", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Failed to save session",
+				Data:    nil,
+			})
+		}
+
+		return callbackHandler(c, userInfo, tokenSess)
 	}
 }
 
@@ -206,6 +242,17 @@ func HandleGoogleCallback(c *fiber.Ctx) error {
 			Data:    nil,
 		})
 	}
+
+	tokenSess, err := TokenStore.Get(c)
+	if err := tokenSess.Save(); err != nil {
+		fmt.Printf("Save error: %v\n", err)
+		return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+			Success: false,
+			Message: "Failed to save session",
+			Data:    nil,
+		})
+	}
+	tokenSess.Set("token", token)
 
 	sess.Set("user", userInfo)
 	if err := sess.Save(); err != nil {
