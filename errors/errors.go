@@ -12,6 +12,7 @@ type ErrorMessage struct {
 	Description string `json:"description"`
 	ErrorMsg    string `json:"error_msg"`
 	UserMsg     string `json:"user_msg"`
+	ErrorLevel  string `json:"error_level"`
 }
 
 type KarmaError struct {
@@ -35,12 +36,13 @@ func NewKarmaError() *KarmaError {
 	return &KarmaError{KE: errorDef}
 }
 
-func (ke *KarmaError) AddError(errorCode int, description, errorMsg, userMsg string) {
+func (ke *KarmaError) AddError(errorCode int, description, errorMsg, userMsg string, err_level string) {
 	ke.KE = append(ke.KE, ErrorMessage{
 		ErrorCode:   errorCode,
 		Description: description,
 		ErrorMsg:    errorMsg,
 		UserMsg:     userMsg,
+		ErrorLevel:  err_level,
 	})
 }
 
