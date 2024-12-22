@@ -23,6 +23,7 @@ type Config struct {
 	DatabasePassword         string
 	RedisURL                 string
 	RedisToken               string
+	ErrorsDefinationFile     string
 	TwilioSID                string
 	TwilioToken              string
 	TwilioService            string
@@ -64,22 +65,23 @@ func DefaultConfig() *Config {
 	sugar.Info("loaded .env file")
 
 	return &Config{
-		Port:             os.Getenv("PORT"),
-		JWTSecret:        os.Getenv("JWT_SECRET"),
-		AdminKey:         os.Getenv("ADMIN_KEY"),
-		AdministratorKey: os.Getenv("ADMINISTRATOR_KEY"),
-		BACKEND_URL:      os.Getenv("BACKEND_URL"),
-		DatabaseURL:      os.Getenv("DATABASE_URL"),
-		DatabaseName:     os.Getenv("DATABASE_NAME"),
-		DatabaseHost:     os.Getenv("DATABASE_HOST"),
-		DatabasePort:     os.Getenv("DATABASE_PORT"),
-		DatabaseUser:     os.Getenv("DATABASE_USER"),
-		DatabasePassword: os.Getenv("DATABASE_PASSWORD"),
-		RedisURL:         os.Getenv("REDIS_URL"),
-		RedisToken:       os.Getenv("REDIS_TOKEN"),
-		TwilioSID:        os.Getenv("TWILIO_SID"),
-		TwilioToken:      os.Getenv("TWILIO_TOKEN"),
-		TwilioService:    os.Getenv("TWILIO_SERVICE"),
+		Port:                 os.Getenv("PORT"),
+		JWTSecret:            os.Getenv("JWT_SECRET"),
+		AdminKey:             os.Getenv("ADMIN_KEY"),
+		AdministratorKey:     os.Getenv("ADMINISTRATOR_KEY"),
+		BACKEND_URL:          os.Getenv("BACKEND_URL"),
+		DatabaseURL:          os.Getenv("DATABASE_URL"),
+		DatabaseName:         os.Getenv("DATABASE_NAME"),
+		DatabaseHost:         os.Getenv("DATABASE_HOST"),
+		DatabasePort:         os.Getenv("DATABASE_PORT"),
+		DatabaseUser:         os.Getenv("DATABASE_USER"),
+		DatabasePassword:     os.Getenv("DATABASE_PASSWORD"),
+		RedisURL:             os.Getenv("REDIS_URL"),
+		RedisToken:           os.Getenv("REDIS_TOKEN"),
+		ErrorsDefinationFile: os.Getenv("ERRORS_DEFINATION_FILE"),
+		TwilioSID:            os.Getenv("TWILIO_SID"),
+		TwilioToken:          os.Getenv("TWILIO_TOKEN"),
+		TwilioService:        os.Getenv("TWILIO_SERVICE"),
 		TestPhoneNumbers: []string{"+919812940706",
 			"+917398394041",
 			"+919662105710",

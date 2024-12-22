@@ -1,0 +1,8 @@
+[
+  {
+    "error_code": 1,
+    "error_msg": "Error 1",
+    "description": "This is error 1",
+    "user_msg": "This is error 1"
+  }
+]
