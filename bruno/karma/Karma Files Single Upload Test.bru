@@ -1,0 +1,15 @@
+meta {
+  name: Karma Files Single Upload Test
+  type: http
+  seq: 5
+}
+
+post {
+  url: http://localhost:3000/
+  body: multipartForm
+  auth: none
+}
+
+body:multipart-form {
+  document: @file(/Users/mellob/Downloads/CC/assets/img/author-2.jpg)
+}

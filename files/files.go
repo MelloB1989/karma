@@ -4,7 +4,6 @@ import (
 	"mime/multipart"
 
 	f "github.com/MelloB1989/karma/internal/files"
-	"github.com/gofiber/fiber/v2"
 )
 
 type KarmaFiles struct {
@@ -19,7 +18,7 @@ func NewKarmaFile(pathPrefix, bucketOverride string) *KarmaFiles {
 	}
 }
 
-func (kf *KarmaFiles) HandleSingleFileUpload(file fiber.FormFile) (string, error) {
+func (kf *KarmaFiles) HandleSingleFileUpload(file *multipart.FileHeader) (string, error) {
 	return f.HandleSingleFileUpload(file, kf.PathPrefix)
 }
 

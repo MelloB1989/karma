@@ -5,18 +5,11 @@ import (
 	"os"
 
 	"github.com/MelloB1989/karma/config"
+	"github.com/MelloB1989/karma/models"
 )
 
-type ErrorMessage struct {
-	ErrorCode   int    `json:"error_code"`
-	Description string `json:"description"`
-	ErrorMsg    string `json:"error_msg"`
-	UserMsg     string `json:"user_msg"`
-	ErrorLevel  string `json:"error_level"`
-}
-
 type KarmaError struct {
-	KE []ErrorMessage
+	KE []models.ErrorMessage
 }
 
 func NewKarmaError() *KarmaError {
@@ -28,7 +21,7 @@ func NewKarmaError() *KarmaError {
 	defer errors.Close()
 
 	decoder := json.NewDecoder(errors)
-	var errorDef []ErrorMessage
+	var errorDef []models.ErrorMessage
 	err = decoder.Decode(&errorDef)
 	if err != nil {
 		panic(err)
@@ -37,7 +30,7 @@ func NewKarmaError() *KarmaError {
 }
 
 func (ke *KarmaError) AddError(errorCode int, description, errorMsg, userMsg string, err_level string) {
-	ke.KE = append(ke.KE, ErrorMessage{
+	ke.KE = append(ke.KE, models.ErrorMessage{
 		ErrorCode:   errorCode,
 		Description: description,
 		ErrorMsg:    errorMsg,
@@ -46,13 +39,13 @@ func (ke *KarmaError) AddError(errorCode int, description, errorMsg, userMsg str
 	})
 }
 
-func (ke *KarmaError) GetError(errorCode int) ErrorMessage {
+func (ke *KarmaError) GetError(errorCode int) models.ErrorMessage {
 	for _, error := range ke.KE {
 		if error.ErrorCode == errorCode {
 			return error
 		}
 	}
-	return ErrorMessage{}
+	return models.ErrorMessage{}
 }
 
 func (ke *KarmaError) WriteErrorsToFile() error {

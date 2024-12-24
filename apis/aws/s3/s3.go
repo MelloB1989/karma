@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"os"
 
 	"github.com/MelloB1989/karma/utils"
@@ -53,7 +54,7 @@ func UploadFile(objectKey string, fileName string) error {
 	return nil
 }
 
-func UploadRawFile(objectKey string, fileReader io.Reader) error {
+func UploadRawFile(objectKey string, file multipart.File) error {
 	bucketName := c.DefaultConfig().AwsBucketName
 	sdkConfig, err := config.LoadDefaultConfig(context.TODO())
 	s3Config := aws.Config{
@@ -70,7 +71,7 @@ func UploadRawFile(objectKey string, fileReader io.Reader) error {
 	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(bucketName),
 		Key:    aws.String(objectKey),
-		Body:   fileReader,
+		Body:   file,
 		ACL:    "public-read",
 	})
 	if err != nil {
