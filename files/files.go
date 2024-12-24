@@ -30,11 +30,15 @@ func NewKarmaFile(pathPrefix string, uploadMode UploadModes) *KarmaFiles {
 func (kf *KarmaFiles) HandleSingleFileUpload(file *multipart.FileHeader) (string, error) {
 	if kf.UploadMode == S3 {
 		return f.HandleSingleFileUploadToS3(file, kf.PathPrefix)
-	} else if kf.UploadMode == LOCAL {
-
+	} else {
+		return f.HandleSingleFileUploadToLocal(file, kf.LocalUploadDir)
 	}
 }
 
 func (kf *KarmaFiles) HandleMultipleFileUpload(files []*multipart.FileHeader) ([]string, error) {
-	return f.HandleMultipleFileUploadToS3(files, kf.PathPrefix)
+	if kf.UploadMode == S3 {
+		return f.HandleMultipleFileUploadToS3(files, kf.PathPrefix)
+	} else {
+		return f.HandleMultipleFileUploadToLocal(files, kf.LocalUploadDir)
+	}
 }
