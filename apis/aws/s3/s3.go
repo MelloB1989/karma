@@ -53,6 +53,33 @@ func UploadFile(objectKey string, fileName string) error {
 	return nil
 }
 
+func UploadRawFile(objectKey string, fileReader io.Reader) error {
+	bucketName := c.DefaultConfig().AwsBucketName
+	sdkConfig, err := config.LoadDefaultConfig(context.TODO())
+	s3Config := aws.Config{
+		Region:      *aws.String(c.DefaultConfig().S3BucketRegion),
+		Credentials: sdkConfig.Credentials,
+	}
+	if err != nil {
+		fmt.Println("Couldn't load default configuration. Have you set up your AWS account?")
+		fmt.Println(err)
+	}
+
+	s3Client := s3.NewFromConfig(s3Config)
+
+	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(objectKey),
+		Body:   fileReader,
+		ACL:    "public-read",
+	})
+	if err != nil {
+		log.Printf("Couldn't upload file %v to %v:%v. Here's why: %v\n", "0", bucketName, objectKey, err)
+		return err
+	}
+	return nil
+}
+
 func GetFileByPath(objectKey string) (*os.File, error) {
 	bucketName := c.DefaultConfig().AwsBucketName
 	destinationPath := "./tmp/" + utils.GenerateID()
