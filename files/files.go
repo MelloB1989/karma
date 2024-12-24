@@ -6,22 +6,35 @@ import (
 	f "github.com/MelloB1989/karma/internal/files"
 )
 
+type UploadModes string
+
+const (
+	S3            UploadModes = "S3"
+	LOCAL         UploadModes = "LOCAL"
+	DIGITAL_OCEAN UploadModes = "DIGITAL_OCEAN"
+)
+
 type KarmaFiles struct {
 	PathPrefix     string
-	BucketOverride string
+	UploadMode     UploadModes
+	LocalUploadDir string
 }
 
-func NewKarmaFile(pathPrefix, bucketOverride string) *KarmaFiles {
+func NewKarmaFile(pathPrefix string, uploadMode UploadModes) *KarmaFiles {
 	return &KarmaFiles{
-		PathPrefix:     pathPrefix,
-		BucketOverride: bucketOverride,
+		PathPrefix: pathPrefix,
+		UploadMode: uploadMode,
 	}
 }
 
 func (kf *KarmaFiles) HandleSingleFileUpload(file *multipart.FileHeader) (string, error) {
-	return f.HandleSingleFileUpload(file, kf.PathPrefix)
+	if kf.UploadMode == S3 {
+		return f.HandleSingleFileUploadToS3(file, kf.PathPrefix)
+	} else if kf.UploadMode == LOCAL {
+
+	}
 }
 
 func (kf *KarmaFiles) HandleMultipleFileUpload(files []*multipart.FileHeader) ([]string, error) {
-	return f.HandleMultipleFileUpload(files, kf.PathPrefix)
+	return f.HandleMultipleFileUploadToS3(files, kf.PathPrefix)
 }
