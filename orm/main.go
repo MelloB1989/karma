@@ -479,7 +479,6 @@ func (o *ORM) Insert(entity any) error {
 		return err
 	}
 	defer db.Close()
-	fmt.Println(o.tableName, entity)
 	return database.InsertStruct(db, o.tableName, entity)
 }
 
