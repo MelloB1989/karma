@@ -175,42 +175,86 @@ func camelToSnake(s string) string {
 
 // InsertStruct inserts a struct's fields into the specified table.
 func InsertStruct(db *sqlx.DB, tableName string, data interface{}) error {
-	// Prepare columns and values for the SQL query
+	// Input validation
+	if data == nil {
+		return fmt.Errorf("data cannot be nil")
+	}
+
+	val := reflect.ValueOf(data)
+	if val.Kind() != reflect.Ptr {
+		return fmt.Errorf("data must be a pointer to a struct, but got %s", val.Kind())
+	}
+
+	// Ensure that the pointer is not nil
+	if val.IsNil() {
+		return fmt.Errorf("data pointer is nil")
+	}
+
+	// Dereference the pointer
+	elem := val.Elem()
+	if elem.Kind() != reflect.Struct {
+		return fmt.Errorf("data must point to a struct, but points to %s", elem.Kind())
+	}
+
+	typ := elem.Type()
+
 	var columns []string
 	var values []interface{}
 
-	val := reflect.ValueOf(data).Elem() // Get the value pointed to by data
-	typ := val.Type()
-
-	for i := 0; i < val.NumField(); i++ {
+	for i := 0; i < elem.NumField(); i++ {
 		field := typ.Field(i)
-		column := field.Tag.Get("json") // Get column name from `json` tag
+
+		// Retrieve tags
+		jsonTag := field.Tag.Get("json")
 		dbTag := field.Tag.Get("db")
 
-		// Skip fields not mapped to a database column (e.g., with `db:"-"` tag)
-		if dbTag == "-" || column == "" {
+		// Determine the column name
+		var column string
+		if dbTag != "" && dbTag != "-" {
+			column = dbTag
+		} else if jsonTag != "" && jsonTag != "-" {
+			column = jsonTag
+		} else {
+			// Skip fields without db/json tags or with db:"-"
 			continue
 		}
 
-		fieldValue := val.Field(i)
+		fieldValue := elem.Field(i)
 
-		// Handle slice or struct fields with JSON serialization
-		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || dbTag == "json" {
-			jsonValue, err := json.Marshal(fieldValue.Interface())
-			if err != nil {
-				log.Printf("Failed to marshal JSON field '%s': %v\n", column, err)
-				return fmt.Errorf("failed to marshal JSON field '%s': %w", column, err)
+		// Handle pointer fields: get the actual value or nil
+		if fieldValue.Kind() == reflect.Ptr {
+			if fieldValue.IsNil() {
+				values = append(values, nil)
+				columns = append(columns, column)
+				continue
 			}
-			values = append(values, string(jsonValue)) // Add serialized JSON as string
+			// Dereference pointer
+			fieldValue = fieldValue.Elem()
+		}
+
+		// Handle special types: Slice, Map, Struct (if dbTag is "json")
+		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || dbTag == "json" {
+			// Marshal the field to JSON
+			jsonBytes, err := json.Marshal(fieldValue.Interface())
+			if err != nil {
+				log.Printf("Failed to marshal JSON for field '%s': %v\n", field.Name, err)
+				return fmt.Errorf("failed to marshal JSON for field '%s': %w", field.Name, err)
+			}
+			values = append(values, string(jsonBytes))
 		} else {
-			// Use the actual value for other types
+			// Handle other types directly
 			values = append(values, fieldValue.Interface())
 		}
 
 		columns = append(columns, column)
 	}
 
-	// Construct the SQL query with dynamic placeholders
+	// Ensure there are columns to insert
+	if len(columns) == 0 {
+		return fmt.Errorf("no columns to insert for table '%s'", tableName)
+	}
+
+	// Construct the SQL query with placeholders
 	query := fmt.Sprintf(
 		`INSERT INTO %s (%s) VALUES (%s)`,
 		tableName,
