@@ -30,6 +30,7 @@ type LoginWithEmailAndPasswordRequest struct {
 type JWTClaimsProvider interface {
 	GetJWTClaims() map[string]interface{}
 	AdditionalClaims() map[string]interface{}
+	SetAdditionalClaims(claims map[string]interface{})
 }
 
 type AuthUserEmail interface {
