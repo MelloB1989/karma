@@ -319,6 +319,67 @@ func (o *ORM) GetByFieldLessThan(fieldName string, value any) (any, error) {
 	return resultsPtr.Elem().Interface(), nil
 }
 
+func (o *ORM) GetByFieldsEquals(filters map[string]interface{}) (any, error) {
+	fmt.Println(reflect.TypeOf(o.structType))
+
+	// Check if any filters are provided
+	if len(filters) == 0 {
+		return nil, fmt.Errorf("no filters provided")
+	}
+
+	// Prepare slices to hold WHERE clauses and their corresponding values
+	var whereClauses []string
+	var args []interface{}
+	placeholder := 1 // PostgreSQL placeholders start at $1
+
+	// Iterate over the filters to build the WHERE clause
+	for fieldName, value := range filters {
+		columnName, ok := o.fieldMap[fieldName]
+		if !ok {
+			return nil, fmt.Errorf("field %s not found in struct", fieldName)
+		}
+		// Append the condition with the appropriate placeholder
+		whereClauses = append(whereClauses, fmt.Sprintf("%s = $%d", columnName, placeholder))
+		args = append(args, value)
+		placeholder++
+	}
+
+	// Join all conditions with AND
+	whereStatement := strings.Join(whereClauses, " AND ")
+
+	// Construct the final query
+	query := fmt.Sprintf("SELECT * FROM %s WHERE %s", o.tableName, whereStatement)
+
+	// Connect to the database
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return nil, err
+	}
+	defer db.Close()
+
+	// Execute the query with the collected arguments
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		log.Println("Failed to get rows by field comparison:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Dynamically create a slice to hold results
+	sliceType := reflect.SliceOf(reflect.PointerTo(o.structType))
+	resultsPtr := reflect.New(sliceType) // *([]*structType)
+
+	// Parse the rows into the results slice
+	if err := database.ParseRows(rows, resultsPtr.Interface()); err != nil {
+		log.Println("Failed to parse rows:", err)
+		return nil, err
+	}
+
+	// Return the slice directly
+	return resultsPtr.Elem().Interface(), nil
+}
+
 func (o *ORM) GetByFieldEquals(fieldName string, value any) (any, error) {
 	fmt.Println(reflect.TypeOf(o.structType))
 	columnName, ok := o.fieldMap[fieldName]
@@ -509,4 +570,82 @@ func (o *ORM) getPrimaryKeyField() string {
 		}
 	}
 	return ""
+}
+
+func (o *ORM) QueryRaw(sqlQuery string, args ...interface{}) (interface{}, error) {
+	// Establish database connection
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return nil, err
+	}
+	defer db.Close()
+
+	// Execute the query
+	rows, err := db.Query(sqlQuery, args...)
+	if err != nil {
+		log.Println("Query execution error:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Retrieve column names from the result
+	columns, err := rows.Columns()
+	if err != nil {
+		log.Println("Failed to retrieve columns:", err)
+		return nil, err
+	}
+
+	// Reverse fieldMap to map columns to struct fields
+	columnToField := make(map[string]string) // column name -> field name
+	for field, column := range o.fieldMap {
+		columnToField[column] = field
+	}
+
+	// Prepare a slice to hold the results
+	sliceType := reflect.SliceOf(reflect.PointerTo(o.structType)) // []*StructType
+	results := reflect.MakeSlice(sliceType, 0, 0)
+
+	// Iterate over the rows
+	for rows.Next() {
+		// Create a new instance of the struct
+		structPtr := reflect.New(o.structType) // *StructType
+		structVal := structPtr.Elem()          // StructType
+
+		// Prepare a slice for Scan destination pointers
+		scanDest := make([]interface{}, len(columns))
+		for i, col := range columns {
+			if fieldName, ok := columnToField[col]; ok {
+				field := structVal.FieldByName(fieldName)
+				if !field.IsValid() {
+					// Field not found; use a dummy variable
+					var dummy interface{}
+					scanDest[i] = &dummy
+				} else {
+					scanDest[i] = field.Addr().Interface()
+				}
+			} else {
+				// Column does not map to any struct field; use a dummy variable
+				var dummy interface{}
+				scanDest[i] = &dummy
+			}
+		}
+
+		// Scan the row into the struct fields
+		if err := rows.Scan(scanDest...); err != nil {
+			log.Println("Failed to scan row:", err)
+			return nil, err
+		}
+
+		// Append the struct pointer to the results slice
+		results = reflect.Append(results, structPtr)
+	}
+
+	// Check for errors from iterating over rows
+	if err := rows.Err(); err != nil {
+		log.Println("Rows iteration error:", err)
+		return nil, err
+	}
+
+	return results.Interface(), nil
 }
