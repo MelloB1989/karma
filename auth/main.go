@@ -100,44 +100,104 @@ func NewAuthUserEmail(email, password, id string) AuthUserPhone {
 
 func LoginWithEmailAndPasswordHandler(getUserByEmail func(email string) (AuthUserEmail, error)) func(c *fiber.Ctx) error {
 	return func(c *fiber.Ctx) error {
+		// Parse and validate request body
 		req := new(LoginWithEmailAndPasswordRequest)
 		if err := c.BodyParser(req); err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"message": "Invalid request",
+			log.Printf("Body parsing error: %v", err)
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Invalid request payload.",
 			})
 		}
 
+		// Basic validation for email and password presence
+		if req.Email == "" || req.Password == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Email and password are required.",
+			})
+		}
+
+		// Retrieve user by email
 		user, err := getUserByEmail(req.Email)
-		if err != nil || user == nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"message": "Email does not exist",
+		if err != nil {
+			log.Printf("Error retrieving user by email (%s): %v", req.Email, err)
+			// To prevent user enumeration, return a generic message
+			return c.Status(fiber.StatusUnauthorized).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Invalid email or password.",
 			})
 		}
 
-		if utils.CheckPasswordHash(req.Password, user.GetPassword()) {
-			token := jwt.New(jwt.SigningMethodHS256)
-			claims := token.Claims.(jwt.MapClaims)
-			claims["email"] = user.GetEmail()
-			claims["uid"] = user.GetID()
-			claims["exp"] = time.Now().Add(time.Hour * 24 * 30).Unix()
-			if claimsProvider, ok := user.(JWTClaimsProvider); ok {
-				for key, value := range claimsProvider.AdditionalClaims() {
-					claims[key] = value
-				}
-			}
-			t, err := token.SignedString([]byte(config.DefaultConfig().JWTSecret))
-			if err != nil {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"message": "Error signing token",
-				})
-			}
-			return c.Status(fiber.StatusOK).JSON(fiber.Map{
-				"token": t,
+		// If user is nil (not found), return generic message
+		if user == nil {
+			log.Printf("User not found for email: %s", req.Email)
+			return c.Status(fiber.StatusUnauthorized).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Invalid email or password.",
 			})
 		}
 
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"message": "Invalid credentials",
+		// Check if the provided password matches the stored hash
+		if !utils.CheckPasswordHash(req.Password, user.GetPassword()) {
+			log.Printf("Invalid password attempt for email: %s", req.Email)
+			return c.Status(fiber.StatusUnauthorized).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Invalid email or password.",
+			})
+		}
+
+		// Load configuration and ensure it's valid
+		cfg := config.DefaultConfig()
+		if cfg == nil {
+			log.Println("Configuration retrieval failed: config is nil.")
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Internal server error.",
+			})
+		}
+
+		// Create JWT token with claims
+		claims := jwt.MapClaims{
+			"email": user.GetEmail(),
+			"uid":   user.GetID(),
+			"exp":   time.Now().Add(30 * 24 * time.Hour).Unix(), // 30 days
+		}
+
+		// Add additional claims if the user implements JWTClaimsProvider
+		if claimsProvider, ok := user.(JWTClaimsProvider); ok {
+			for key, value := range claimsProvider.AdditionalClaims() {
+				claims[key] = value
+			}
+		}
+
+		// Create the token
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+		// Sign the token with the secret
+		jwtSecret := []byte(cfg.JWTSecret)
+		if len(jwtSecret) == 0 {
+			log.Println("JWT secret is not set in the configuration.")
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Internal server error.",
+			})
+		}
+
+		signedToken, err := token.SignedString(jwtSecret)
+		if err != nil {
+			log.Printf("Error signing JWT token for email (%s): %v", req.Email, err)
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Failed to generate authentication token.",
+			})
+		}
+
+		// Respond with the signed token
+		return c.Status(fiber.StatusOK).JSON(ResponseHTTP{
+			Success: true,
+			Message: "Login successful.",
+			Data:    map[string]string{"token": signedToken},
 		})
 	}
 }
@@ -148,53 +208,85 @@ type LoginWithPhoneOTPRequest struct {
 
 func LoginWithPhoneOTPHandler(getUserByPhone func(phone string) (AuthUserPhone, error)) func(c *fiber.Ctx) error {
 	return func(c *fiber.Ctx) error {
+		// Parse the request body into LoginWithPhoneOTPRequest
 		req := new(LoginWithPhoneOTPRequest)
 		if err := c.BodyParser(req); err != nil {
-			return c.Status(400).JSON(ResponseHTTP{
+			log.Printf("Body parsing error: %v", err)
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
 				Success: false,
 				Message: "Failed to parse request body.",
 				Data:    nil,
 			})
 		}
+
+		// Validate the phone number format
 		if !utils.VerifyPhoneNumber(req.Phone) {
-			return c.JSON(ResponseHTTP{
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
 				Success: false,
-				Message: "Invalid Phone number format",
+				Message: "Invalid phone number format.",
 				Data:    nil,
 			})
 		}
-		user, err := getUserByPhone(req.Phone)
-		if err != nil || user.GetPhone() == "" {
-			if utils.Contains(config.DefaultConfig().TestPhoneNumbers, req.Phone) {
-				return c.JSON(ResponseHTTP{
-					Success: true,
-					Message: "OTP sent to phone number.",
-					Data:    map[string]bool{"account_exists": false, "test_phone": true},
-				})
-			}
-			twilio.SendOTP(req.Phone)
-			// User does not exist, send back OTP
-			return c.JSON(ResponseHTTP{
-				Success: true,
-				Message: "OTP sent to phone number.",
-				Data:    map[string]bool{"account_exists": false},
-			})
-		} else {
-			if utils.Contains(config.DefaultConfig().TestPhoneNumbers, req.Phone) {
-				return c.JSON(ResponseHTTP{
-					Success: true,
-					Message: "OTP sent to phone number.",
-					Data:    map[string]bool{"account_exists": false, "test_phone": true},
-				})
-			}
-			twilio.SendOTP(req.Phone)
-			// User exists, send back OTP
-			return c.JSON(ResponseHTTP{
-				Success: true,
-				Message: "OTP sent to phone number.",
-				Data:    map[string]bool{"account_exists": true},
+
+		// Load the configuration once
+		cfg := config.DefaultConfig()
+		if cfg == nil {
+			log.Println("Configuration is nil.")
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Configuration error.",
+				Data:    nil,
 			})
 		}
+
+		// Check if the phone number is a test number
+		isTestNumber := utils.Contains(cfg.TestPhoneNumbers, req.Phone)
+
+		// Attempt to retrieve the user by phone number
+		user, err := getUserByPhone(req.Phone)
+		if err != nil {
+			log.Printf("Error retrieving user by phone (%s): %v", req.Phone, err)
+		}
+
+		// Determine if the account exists
+		accountExists := false
+		if err == nil && user != nil && user.GetPhone() != "" {
+			accountExists = true
+		}
+
+		// If test number, override account existence
+		if isTestNumber {
+			accountExists = false // Assuming test numbers are treated as non-existing accounts
+		}
+
+		// Send OTP only if it's not a test number
+		if !isTestNumber {
+			otpSent := twilio.SendOTP(req.Phone)
+			if !otpSent {
+				log.Printf("Failed to send OTP to phone (%s)", req.Phone)
+				return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+					Success: false,
+					Message: "Failed to send OTP.",
+					Data:    nil,
+				})
+			}
+		}
+
+		// Prepare the response data
+		responseData := map[string]bool{
+			"account_exists": accountExists,
+		}
+
+		// Include test_phone flag if it's a test number
+		if isTestNumber {
+			responseData["test_phone"] = true
+		}
+
+		return c.Status(fiber.StatusOK).JSON(ResponseHTTP{
+			Success: true,
+			Message: "OTP sent to phone number.",
+			Data:    responseData,
+		})
 	}
 }
 
@@ -205,83 +297,98 @@ type VerifyPhoneOTPRequest struct {
 
 func VerifyPhoneOTPHandler(getUserByPhone func(phone string) (AuthUserPhone, error)) func(c *fiber.Ctx) error {
 	return func(c *fiber.Ctx) error {
+		// Parse the request body into VerifyPhoneOTPRequest
 		req := new(VerifyPhoneOTPRequest)
 		if err := c.BodyParser(req); err != nil {
-			return c.Status(400).JSON(ResponseHTTP{
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
 				Success: false,
 				Message: "Failed to parse request body.",
 				Data:    nil,
 			})
 		}
+
+		// Validate the phone number format
 		if !utils.VerifyPhoneNumber(req.Phone) {
-			return c.JSON(ResponseHTTP{
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
 				Success: false,
-				Message: "Invalid Phone number format",
+				Message: "Invalid phone number format.",
 				Data:    nil,
 			})
 		}
 
+		// Load the configuration
 		config := config.DefaultConfig()
 		if config == nil {
-			// Handle case where config is nil
-			return c.Status(500).JSON(ResponseHTTP{
+			log.Println("Configuration is nil.")
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
 				Success: false,
 				Message: "Configuration error.",
 				Data:    nil,
 			})
 		}
 
-		if twilio.VerifyOTP(req.OTP, req.Phone) || utils.Contains(config.TestPhoneNumbers, req.Phone) {
-			exist := true
-			user, err := getUserByPhone(req.Phone)
-			if err != nil || user == nil {
-				exist = false
-				// Log or handle user retrieval error
-			}
+		// Verify OTP or check if the phone number is a test number
+		validOTP := twilio.VerifyOTP(req.OTP, req.Phone)
+		isTestNumber := utils.Contains(config.TestPhoneNumbers, req.Phone)
 
-			claims := jwt.MapClaims{
-				"phone": req.Phone,
-				"exp":   time.Now().Add(time.Hour * 24 * 30).Unix(),
-			}
-
-			if user != nil {
-				claims["uid"] = user.GetID()
-				claims["phone"] = user.GetPhone()
-				claims["exp"] = time.Now().Add(time.Hour * 24 * 30).Unix()
-				if claimsProvider, ok := user.(JWTClaimsProvider); ok {
-					for key, value := range claimsProvider.AdditionalClaims() {
-						claims[key] = value
-					}
-				}
-			}
-
-			token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-			jwtSecret := []byte(config.JWTSecret)
-			tokenString, err := token.SignedString(jwtSecret)
-			if err != nil {
-				log.Println("Failed to create token:", err)
-				return c.JSON(ResponseHTTP{
-					Success: false,
-					Message: "Failed to create token.",
-					Data:    nil,
-				})
-			}
-
-			return c.JSON(ResponseHTTP{
-				Success: true,
-				Message: "OTP verified.",
-				Data: map[string]interface{}{
-					"account_exists": exist,
-					"token":          tokenString,
-				},
-			})
-		} else {
-			return c.JSON(ResponseHTTP{
+		if !validOTP && !isTestNumber {
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
 				Success: false,
 				Message: "Invalid OTP.",
 				Data:    nil,
 			})
 		}
+
+		// Initialize account existence as false
+		accountExists := false
+
+		// Attempt to retrieve the user by phone number
+		user, err := getUserByPhone(req.Phone)
+		if err != nil || user == nil {
+			accountExists = false
+		} else {
+			// User exists
+			accountExists = true
+		}
+
+		// Initialize JWT claims
+		claims := jwt.MapClaims{
+			"phone": req.Phone,
+			"exp":   time.Now().Add(30 * 24 * time.Hour).Unix(), // 30 days expiration
+		}
+
+		// If user exists, add additional claims
+		if accountExists && user != nil {
+			claims["uid"] = user.GetID()
+			claims["phone"] = user.GetPhone() // This might be redundant if already set above
+			if claimsProvider, ok := user.(JWTClaimsProvider); ok {
+				for key, value := range claimsProvider.AdditionalClaims() {
+					claims[key] = value
+				}
+			}
+		}
+
+		// Create and sign the JWT token
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		tokenString, err := token.SignedString([]byte(config.JWTSecret))
+		if err != nil {
+			log.Printf("Failed to create token for phone (%s): %v", req.Phone, err)
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Failed to create token.",
+				Data:    nil,
+			})
+		}
+
+		// Respond with the token and account existence status
+		return c.JSON(ResponseHTTP{
+			Success: true,
+			Message: "OTP verified.",
+			Data: map[string]interface{}{
+				"account_exists": accountExists,
+				"token":          tokenString,
+			},
+		})
 	}
 }
 
