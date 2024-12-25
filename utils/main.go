@@ -12,9 +12,27 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MelloB1989/karma/config"
+	"github.com/golang-jwt/jwt"
 	gonanoid "github.com/matoous/go-nanoid/v2"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
+
+func GenerateJWT(claims jwt.Claims) (string, error) {
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+	sugar := logger.Sugar()
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	jwtSecret := []byte(config.DefaultConfig().JWTSecret)
+	tokenString, err := token.SignedString(jwtSecret)
+	if err != nil {
+		sugar.Error("Failed to create token:", err)
+		return "", err
+	}
+	sugar.Info("JWT created")
+	return tokenString, nil
+}
 
 func GenerateOTP() string {
 	otp := rand.Intn(900000) + 100000
