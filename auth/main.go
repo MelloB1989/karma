@@ -244,7 +244,7 @@ func LoginWithPhoneOTPHandler(getUserByPhone func(phone string) (AuthUserPhone, 
 
 		// Attempt to retrieve the user by phone number
 		user, err := getUserByPhone(req.Phone)
-		if err != nil {
+		if err != nil || user == nil {
 			log.Printf("Error retrieving user by phone (%s): %v", req.Phone, err)
 		}
 
@@ -252,11 +252,6 @@ func LoginWithPhoneOTPHandler(getUserByPhone func(phone string) (AuthUserPhone, 
 		accountExists := false
 		if err == nil && user != nil && user.GetPhone() != "" {
 			accountExists = true
-		}
-
-		// If test number, override account existence
-		if isTestNumber {
-			accountExists = false // Assuming test numbers are treated as non-existing accounts
 		}
 
 		// Send OTP only if it's not a test number
