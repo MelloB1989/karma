@@ -15,10 +15,11 @@ import (
 )
 
 type User struct {
-	Id       string `json:"id"`
-	Email    string `json:"email"`
-	Phone    string `json:"phone"`
-	Password string `json:"password"`
+	Id          string                 `json:"id"`
+	Email       string                 `json:"email"`
+	Phone       string                 `json:"phone"`
+	Password    string                 `json:"password"`
+	AddedClaims map[string]interface{} `json:"additional_claims"`
 }
 
 type LoginWithEmailAndPasswordRequest struct {
@@ -78,6 +79,10 @@ func (u *User) AdditionalClaims() map[string]interface{} {
 	return map[string]interface{}{
 		"role": "user",
 	}
+}
+
+func (u *User) SetAdditionalClaims(claims map[string]interface{}) {
+	u.AddedClaims = claims
 }
 
 func NewAuthUserPhone(phone, password, id string) AuthUserPhone {
