@@ -28,7 +28,6 @@ type LoginWithEmailAndPasswordRequest struct {
 }
 
 type JWTClaimsProvider interface {
-	GetJWTClaims() map[string]interface{}
 	AdditionalClaims() map[string]interface{}
 	SetAdditionalClaims(claims map[string]interface{})
 }
@@ -77,9 +76,7 @@ func (u *User) GetJWTClaims() map[string]interface{} {
 }
 
 func (u *User) AdditionalClaims() map[string]interface{} {
-	return map[string]interface{}{
-		"role": "user",
-	}
+	return u.AddedClaims
 }
 
 func (u *User) SetAdditionalClaims(claims map[string]interface{}) {
