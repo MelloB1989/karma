@@ -15,3 +15,18 @@ type ErrorMessage struct {
 	UserMsg     string `json:"user_msg"`
 	ErrorLevel  string `json:"error_level"`
 }
+
+type EmailBody struct {
+	Text string `json:"text"`
+	HTML string `json:"html"`
+}
+
+type Email struct {
+	Subject string    `json:"subject"`
+	Body    EmailBody `json:"body"`
+}
+
+type SingleEmailRequest struct {
+	Email
+	To string `json:"to"`
+}

@@ -182,23 +182,37 @@ func CustomConfig(cfg interface{}) error {
 package main
 
 import (
+
 	"fmt"
 	"github.com/MelloB1989/karma/config"
+
 )
 
-type MyCustomConfig struct {
-	AppName     string `env:"APP_NAME"`
-	CustomField string `env:"CUSTOM_FIELD"`
-	DatabaseURL string `env:"DATABASE_URL"`
-}
-
-func main() {
-	customConfig := &MyCustomConfig{}
-	err := config.CustomConfig(customConfig)
-	if err != nil {
-		panic(err)
+	type MyCustomConfig struct {
+		AppName     string `env:"APP_NAME"`
+		CustomField string `env:"CUSTOM_FIELD"`
+		DatabaseURL string `env:"DATABASE_URL"`
 	}
 
-	fmt.Println("Custom Config:", customConfig)
-}
+	func main() {
+		customConfig := &MyCustomConfig{}
+		err := config.CustomConfig(customConfig)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("Custom Config:", customConfig)
+	}
 */
+func GetEnv(key string) (string, error) {
+	err := godotenv.Load()
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+	sugar := logger.Sugar()
+	if err != nil {
+		sugar.Error("unable to load a ENV variable")
+		return "", err
+	}
+	sugar.Info("loaded .env file")
+	return os.Getenv(key), nil
+}
