@@ -30,3 +30,28 @@ type SingleEmailRequest struct {
 	Email
 	To string `json:"to"`
 }
+
+type AIRoles string
+
+const (
+	User      AIRoles = "user"
+	Assistant AIRoles = "assistant"
+	System    AIRoles = "system"
+	Tool      AIRoles = "tool"
+	Function  AIRoles = "function"
+)
+
+type AIMessage struct {
+	Message string  `json:"message"`
+	Role    AIRoles `json:"role"`
+}
+
+type AIChatHistory struct {
+	Messages []AIMessage `json:"messages"`
+}
+
+type AIChatResponse struct {
+	AIResponse string `json:"ai_response"`
+	Tokens     int    `json:"tokens"`
+	TimeTaken  int    `json:"time_taken"`
+}

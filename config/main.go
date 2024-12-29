@@ -52,6 +52,7 @@ type Config struct {
 	GOOGLE_AUTH_CALLBACK_URL string
 	GOOGLE_CLIENT_ID         string
 	GOOGLE_CLIENT_SECRET     string
+	OPENAI_KEY               string
 }
 
 func DefaultConfig() *Config {
@@ -126,6 +127,7 @@ func DefaultConfig() *Config {
 		GOOGLE_AUTH_CALLBACK_URL: os.Getenv("GOOGLE_AUTH_CALLBACK_URL"),
 		GOOGLE_CLIENT_ID:         os.Getenv("GOOGLE_CLIENT_ID"),
 		GOOGLE_CLIENT_SECRET:     os.Getenv("GOOGLE_CLIENT_SECRET"),
+		OPENAI_KEY:               os.Getenv("OPENAI_KEY"),
 	}
 }
 
