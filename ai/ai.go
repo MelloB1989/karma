@@ -6,6 +6,7 @@ import (
 
 	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
+	oai "github.com/openai/openai-go"
 )
 
 type Models string
@@ -131,6 +132,8 @@ type KarmaAI struct {
 	SystemMessage  string
 	Context        string
 	UserPrePrompt  string
+	Temperature    float64
+	MaxTokens      int64
 	StreamResponse bool
 }
 
@@ -155,6 +158,20 @@ func WithContext(context string) Option {
 func WithUserPrePrompt(prePrompt string) Option {
 	return func(k *KarmaAI) {
 		k.UserPrePrompt = prePrompt
+	}
+}
+
+// WithTemperature sets the temperature
+func WithTemperature(temperature float64) Option {
+	return func(k *KarmaAI) {
+		k.Temperature = temperature
+	}
+}
+
+// WithMaxTokens sets the max tokens
+func WithMaxTokens(maxTokens int64) Option {
+	return func(k *KarmaAI) {
+		k.MaxTokens = maxTokens
 	}
 }
 
@@ -187,7 +204,50 @@ func NewKarmaAI(model interface{}, opts ...Option) *KarmaAI {
 func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
 	//Check if model is OpenAI
 	if kai.Model.IsOpenAIModel() {
-		chat, err := openai.CreateChat(messages, string(kai.Model))
+		o := openai.NewOpenAI(string(kai.Model), kai.Temperature, kai.MaxTokens)
+		chat, err := o.CreateChat(messages)
+		if err != nil {
+			return nil, err
+		}
+		return &models.AIChatResponse{
+			AIResponse: chat.Choices[0].Message.Content,
+			Tokens:     int(chat.Usage.TotalTokens),
+			TimeTaken:  int(chat.Created),
+		}, nil
+	} else {
+		return nil, errors.New("This model is not supported yet.")
+	}
+}
+
+func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatResponse, error) {
+	//Check if model is OpenAI
+	if kai.Model.IsOpenAIModel() {
+		o := openai.NewOpenAI(string(kai.Model), kai.Temperature, kai.MaxTokens)
+		chat, err := o.CreateChat(models.AIChatHistory{
+			Messages: []models.AIMessage{
+				{
+					Message: kai.UserPrePrompt + " " + prompt,
+					Role:    models.User,
+				},
+			}})
+		if err != nil {
+			return nil, err
+		}
+		return &models.AIChatResponse{
+			AIResponse: chat.Choices[0].Message.Content,
+			Tokens:     int(chat.Usage.TotalTokens),
+			TimeTaken:  int(chat.Created),
+		}, nil
+	} else {
+		return nil, errors.New("This model is not supported yet.")
+	}
+}
+
+func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, chunkHandler func(chuck oai.ChatCompletionChunk)) (*models.AIChatResponse, error) {
+	//Check if model is OpenAI
+	if kai.Model.IsOpenAIModel() {
+		o := openai.NewOpenAI(string(kai.Model), kai.Temperature, kai.MaxTokens)
+		chat, err := o.CreateChatStream(messages, chunkHandler)
 		if err != nil {
 			return nil, err
 		}
