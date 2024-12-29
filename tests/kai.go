@@ -31,8 +31,8 @@ func testChatCompletion() {
 }
 
 func testGenerateFromSinglePrompt() {
-	kai := ai.NewKarmaAI(ai.ChatModelChatgpt4oLatest, ai.WithUserPrePrompt("I am Kartik Deshmukh. "))
-	response, err := kai.GenerateFromSinglePrompt("Hello")
+	kai := ai.NewKarmaAI(ai.ChatModelChatgpt4oLatest, ai.WithUserPrePrompt("This is Kartik Deshmukh. "), ai.WithTemperature(0.5), ai.WithMaxTokens(512), ai.WithTopP(0.9))
+	response, err := kai.GenerateFromSinglePrompt("Hello!")
 	if err != nil {
 		panic(err)
 	}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/MelloB1989/karma/apis/aws/bedrock"
 	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
 	oai "github.com/openai/openai-go"
@@ -63,6 +64,8 @@ const (
 	Llama2_7B_Chat  Models = "llama-2-7b-chat"
 	Llama2_13B_Chat Models = "llama-2-13b-chat"
 	Llama2_70B_Chat Models = "llama-2-70b-chat"
+	Llama3_8B       Models = "meta.llama3-8b-instruct-v1:0"
+	Llama3_70B      Models = "meta.llama3-70b-instruct-v1:0"
 
 	// Mistral AI Models
 	Mistral7B            Models = "mistral-7b"
@@ -115,6 +118,11 @@ func (m Models) IsAnthropicModel() bool {
 	return strings.HasPrefix(string(m), "claude-")
 }
 
+// IsMetaModel checks if the model is from Meta
+func (m Models) IsMetaModel() bool {
+	return strings.HasPrefix(string(m), "llama-") || strings.HasPrefix(string(m), "meta.")
+}
+
 // GetModelProvider returns the provider of the model
 func (m Models) GetModelProvider() ModelProviders {
 	switch {
@@ -122,6 +130,8 @@ func (m Models) GetModelProvider() ModelProviders {
 		return OpenAI
 	case m.IsAnthropicModel():
 		return Anthropic
+	case m.IsMetaModel():
+		return Meta
 	default:
 		return Undefined
 	}
@@ -133,6 +143,7 @@ type KarmaAI struct {
 	Context        string
 	UserPrePrompt  string
 	Temperature    float64
+	TopP           float64
 	MaxTokens      int64
 	StreamResponse bool
 }
@@ -172,6 +183,13 @@ func WithTemperature(temperature float64) Option {
 func WithMaxTokens(maxTokens int64) Option {
 	return func(k *KarmaAI) {
 		k.MaxTokens = maxTokens
+	}
+}
+
+// WithTopP sets the top p
+func WithTopP(topP float64) Option {
+	return func(k *KarmaAI) {
+		k.TopP = topP
 	}
 }
 
@@ -237,6 +255,13 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 			AIResponse: chat.Choices[0].Message.Content,
 			Tokens:     int(chat.Usage.TotalTokens),
 			TimeTaken:  int(chat.Created),
+		}, nil
+	} else if kai.Model.IsMetaModel() {
+		response := bedrock.PromptModel(kai.UserPrePrompt+" "+prompt, float32(kai.Temperature), float32(kai.TopP), int(kai.MaxTokens), string(kai.Model))
+		return &models.AIChatResponse{
+			AIResponse: response,
+			Tokens:     0,
+			TimeTaken:  0,
 		}, nil
 	} else {
 		return nil, errors.New("This model is not supported yet.")

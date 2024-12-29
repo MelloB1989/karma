@@ -52,7 +52,7 @@ func send(msg string) (string, error) {
 		fmt.Println("[sending message]", msg)
 	}
 
-	stream, err := PromptModelStream(msg, 0.1, 0.9, 50)
+	stream, err := PromptModelStream(msg, 0.1, 0.9, 50, "meta.llama3-8b-instruct-v1:0")
 	if err != nil {
 		return "", err
 	}

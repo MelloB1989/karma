@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 
+	c "github.com/MelloB1989/karma/config"
 	"github.com/aws/aws-sdk-go-v2/config"
 	b "github.com/aws/aws-sdk-go-v2/service/bedrock"
 )
@@ -21,7 +22,13 @@ func OurModels() *Models {
 }
 
 func GetModels() []string {
+	overrideRegion, _ := c.GetEnv("AWS_BEDROCK_REGION")
 	sdkConfig, err := config.LoadDefaultConfig(context.TODO())
+	if overrideRegion != "" {
+		sdkConfig, err = config.LoadDefaultConfig(context.TODO(),
+			config.WithRegion(overrideRegion),
+		)
+	}
 	if err != nil {
 		log.Println("Couldn't load default configuration. Have you set up your AWS account?")
 		log.Println(err)

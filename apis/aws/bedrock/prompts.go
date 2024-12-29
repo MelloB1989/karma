@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 
+	c "github.com/MelloB1989/karma/config"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
@@ -21,7 +22,13 @@ type Generation struct {
 }
 
 func createClient() *bedrockruntime.Client {
+	overrideRegion, _ := c.GetEnv("AWS_BEDROCK_REGION")
 	sdkConfig, err := config.LoadDefaultConfig(context.TODO())
+	if overrideRegion != "" {
+		sdkConfig, err = config.LoadDefaultConfig(context.TODO(),
+			config.WithRegion(overrideRegion),
+		)
+	}
 	if err != nil {
 		log.Println("Couldn't load default configuration. Have you set up your AWS account?")
 		log.Println(err)
@@ -30,12 +37,12 @@ func createClient() *bedrockruntime.Client {
 	return bedrockClient
 }
 
-func PromptModel(prompt string, temp float32, top_p float32, max_len int) string {
+func PromptModel(prompt string, temp float32, top_p float32, max_len int, model string) string {
 	bedrockClient := createClient()
 	// Set the input values without using pointers directly
 	input := &bedrockruntime.InvokeModelInput{
 		Accept:      aws.String("application/json"),
-		ModelId:     aws.String(OurModels().LLAMA3_8B),
+		ModelId:     aws.String(model),
 		ContentType: aws.String("application/json"),
 	}
 
@@ -68,11 +75,11 @@ func PromptModel(prompt string, temp float32, top_p float32, max_len int) string
 	return generated.Generation
 }
 
-func PromptModelStream(prompt string, temp float32, top_p float32, max_len int) (*bedrockruntime.InvokeModelWithResponseStreamOutput, error) {
+func PromptModelStream(prompt string, temp float32, top_p float32, max_len int, model string) (*bedrockruntime.InvokeModelWithResponseStreamOutput, error) {
 	bedrockClient := createClient()
 	input := &bedrockruntime.InvokeModelWithResponseStreamInput{
 		Accept:      aws.String("application/json"),
-		ModelId:     aws.String(OurModels().LLAMA3_8B),
+		ModelId:     aws.String(model),
 		ContentType: aws.String("application/json"),
 	}
 
