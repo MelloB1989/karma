@@ -159,9 +159,9 @@ func WithUserPrePrompt(prePrompt string) Option {
 }
 
 // WithStreamResponse sets the stream response flag
-func WithStreamResponse(stream bool) Option {
+func WithStreamResponse() Option {
 	return func(k *KarmaAI) {
-		k.StreamResponse = stream
+		k.StreamResponse = true
 	}
 }
 
