@@ -4,14 +4,15 @@ import (
 	"fmt"
 
 	"github.com/MelloB1989/karma/ai"
-	"github.com/MelloB1989/karma/apis/aws/bedrock"
 	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/models"
 	"github.com/openai/openai-go"
 )
 
 func TestKai() {
-	fmt.Println(bedrock.GetModels())
+	// fmt.Println(ai.ChatModelChatgpt4oLatest.IsBedrockModel())
+	// fmt.Println(ai.Llama3_8B.IsBedrockModel())
+	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
 	// testChatCompletion()
 	// testGenerateFromSinglePrompt()

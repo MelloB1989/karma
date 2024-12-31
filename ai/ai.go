@@ -7,6 +7,7 @@ import (
 	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
+	"github.com/MelloB1989/karma/utils"
 	oai "github.com/openai/openai-go"
 )
 
@@ -183,14 +184,50 @@ func (m Models) IsOpenAIModel() bool {
 		strings.HasPrefix(string(m), "chatgpt-")
 }
 
-// IsAnthropicModel checks if the model is from Anthropic
-func (m Models) IsAnthropicModel() bool {
-	return strings.HasPrefix(string(m), "claude-")
-}
-
 // IsMetaModel checks if the model is from Meta
 func (m Models) IsMetaModel() bool {
 	return strings.HasPrefix(string(m), "llama-") || strings.HasPrefix(string(m), "meta.")
+}
+
+func (m Models) IsAnthropicModel() bool {
+	return strings.HasPrefix(string(m), "anthropic.claude") || strings.HasPrefix(string(m), "claude-")
+}
+
+func (m Models) IsAmazonModel() bool {
+	return strings.HasPrefix(string(m), "amazon.")
+}
+
+func (m Models) IsCohereModel() bool {
+	return strings.HasPrefix(string(m), "cohere.")
+}
+
+func (m Models) IsMistralModel() bool {
+	return strings.HasPrefix(string(m), "mistral.")
+}
+
+func (m Models) IsStabilityModel() bool {
+	return strings.HasPrefix(string(m), "stability.")
+}
+
+func (m Models) IsAI21Model() bool {
+	return strings.HasPrefix(string(m), "ai21.")
+}
+
+func (m Models) IsGoogleModel() bool {
+	return strings.HasPrefix(string(m), "palm-") || strings.HasPrefix(string(m), "gemini-")
+}
+
+func (m Models) IsBedrockModel() bool {
+	bedrockPrefixes := []string{
+		"meta.", "mistral.", "amazon.", "stability.", "ai21.", "anthropic.", "cohere.",
+	}
+
+	for _, prefix := range bedrockPrefixes {
+		if strings.HasPrefix(string(m), prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetModelProvider returns the provider of the model
@@ -302,6 +339,16 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 			Tokens:     int(chat.Usage.TotalTokens),
 			TimeTaken:  int(chat.Created),
 		}, nil
+	} else if kai.Model.IsBedrockModel() {
+		response, err := bedrock_runtime.InvokeBedrockConverseAPI(string(kai.Model), bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), kai.Temperature, kai.TopP, messages, kai.SystemMessage))
+		if err != nil {
+			return nil, err
+		}
+		return &models.AIChatResponse{
+			AIResponse: string(response),
+			Tokens:     utils.CountTokens(string(response)), // Not accurate
+			TimeTaken:  0,
+		}, nil
 	} else {
 		return nil, errors.New("This model is not supported yet.")
 	}
@@ -326,7 +373,7 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 			Tokens:     int(chat.Usage.TotalTokens),
 			TimeTaken:  int(chat.Created),
 		}, nil
-	} else if kai.Model.IsMetaModel() {
+	} else if kai.Model.IsBedrockModel() {
 		response, err := bedrock_runtime.InvokeBedrockConverseAPI(string(kai.Model), bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), kai.Temperature, kai.TopP, models.AIChatHistory{
 			Messages: []models.AIMessage{
 				{
@@ -339,7 +386,7 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 		}
 		return &models.AIChatResponse{
 			AIResponse: string(response),
-			Tokens:     0,
+			Tokens:     utils.CountTokens(string(response)), // Not accurate
 			TimeTaken:  0,
 		}, nil
 	} else {

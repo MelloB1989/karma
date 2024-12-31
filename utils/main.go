@@ -206,3 +206,9 @@ func GetNow() string {
 func URLEncode(input string) string {
 	return url.QueryEscape(input)
 }
+
+func CountTokens(text string) int {
+	re := regexp.MustCompile(`[^\s]+`)
+	tokens := re.FindAllString(text, -1)
+	return len(tokens)
+}
