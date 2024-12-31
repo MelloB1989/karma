@@ -4,7 +4,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/MelloB1989/karma/apis/aws/bedrock"
+	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
 	oai "github.com/openai/openai-go"
@@ -53,25 +53,73 @@ const (
 	ChatModelGPT3_5Turbo16k0613              Models = "gpt-3.5-turbo-16k-0613"
 
 	// Anthropic Models
-	Claude2       Models = "claude-2"
-	Claude1       Models = "claude-1"
-	ClaudeInstant Models = "claude-instant-1"
+	ClaudeInstantV1_2_100K       Models = "anthropic.claude-instant-v1:2:100k"
+	ClaudeInstantV1              Models = "anthropic.claude-instant-v1"
+	ClaudeV2_0_18K               Models = "anthropic.claude-v2:0:18k"
+	ClaudeV2_0_100K              Models = "anthropic.claude-v2:0:100k"
+	ClaudeV2_1_18K               Models = "anthropic.claude-v2:1:18k"
+	ClaudeV2_1_200K              Models = "anthropic.claude-v2:1:200k"
+	ClaudeV2_1                   Models = "anthropic.claude-v2:1"
+	ClaudeV2                     Models = "anthropic.claude-v2"
+	Claude3Sonnet20240229V1_28K  Models = "anthropic.claude-3-sonnet-20240229-v1:0:28k"
+	Claude3Sonnet20240229V1_200K Models = "anthropic.claude-3-sonnet-20240229-v1:0:200k"
+	Claude3Sonnet20240229V1      Models = "anthropic.claude-3-sonnet-20240229-v1:0"
+	Claude3Haiku20240307V1_48K   Models = "anthropic.claude-3-haiku-20240307-v1:0:48k"
+	Claude3Haiku20240307V1_200K  Models = "anthropic.claude-3-haiku-20240307-v1:0:200k"
+	Claude3Haiku20240307V1       Models = "anthropic.claude-3-haiku-20240307-v1:0"
+	Claude3Opus20240229V1_12K    Models = "anthropic.claude-3-opus-20240229-v1:0:12k"
+	Claude3Opus20240229V1_28K    Models = "anthropic.claude-3-opus-20240229-v1:0:28k"
+	Claude3Opus20240229V1_200K   Models = "anthropic.claude-3-opus-20240229-v1:0:200k"
+	Claude3Opus20240229V1        Models = "anthropic.claude-3-opus-20240229-v1:0"
+	Claude3_5Sonnet20240620V1    Models = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+	Claude3_5Sonnet20241022V2    Models = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+	Claude3_5Haiku20241022V1     Models = "anthropic.claude-3-5-haiku-20241022-v1:0"
 
 	// Meta's LLaMA Models
-	Llama2_7B       Models = "llama-2-7b"
-	Llama2_13B      Models = "llama-2-13b"
-	Llama2_70B      Models = "llama-2-70b"
-	Llama2_7B_Chat  Models = "llama-2-7b-chat"
-	Llama2_13B_Chat Models = "llama-2-13b-chat"
-	Llama2_70B_Chat Models = "llama-2-70b-chat"
-	Llama3_8B       Models = "meta.llama3-8b-instruct-v1:0"
-	Llama3_70B      Models = "meta.llama3-70b-instruct-v1:0"
+	Llama3_8B    Models = "meta.llama3-8b-instruct-v1:0"
+	Llama3_70B   Models = "meta.llama3-70b-instruct-v1:0"
+	Llama3_1_8B  Models = "meta.llama3-1-8b-instruct-v1:0"
+	Llama3_1_70B Models = "meta.llama3-1-70b-instruct-v1:0"
+	Llama3_2_11B Models = "meta.llama3-2-11b-instruct-v1:0"
+	Llama3_2_90B Models = "meta.llama3-2-90b-instruct-v1:0"
+	Llama3_2_1B  Models = "meta.llama3-2-1b-instruct-v1:0"
+	Llama3_2_3B  Models = "meta.llama3-2-3b-instruct-v1:0"
+	Llama3_3_70B Models = "meta.llama3-3-70b-instruct-v1:0"
 
 	// Mistral AI Models
-	Mistral7B            Models = "mistral-7b"
-	Mixtral8x7B          Models = "mixtral-8x7b"
-	Mistral7B_Instruct   Models = "mistral-7b-instruct"
-	Mixtral8x7B_Instruct Models = "mixtral-8x7b-instruct"
+	Mistral7BInstructV0   Models = "mistral.mistral-7b-instruct-v0:2"
+	Mixtral8x7BInstructV0 Models = "mistral.mixtral-8x7b-instruct-v0:1"
+	MistralLarge2402V1    Models = "mistral.mistral-large-2402-v1:0"
+	MistralSmall2402V1    Models = "mistral.mistral-small-2402-v1:0"
+
+	// Titan Models
+	TitanTG1Large         Models = "amazon.titan-tg1-large"
+	TitanImageGeneratorV1 Models = "amazon.titan-image-generator-v1:0"
+	TitanImageGeneratorV2 Models = "amazon.titan-image-generator-v2:0"
+	TitanTextPremierV1    Models = "amazon.titan-text-premier-v1:0"
+	TitanEmbedG1Text02    Models = "amazon.titan-embed-g1-text-02"
+	TitanTextLiteV1_4K    Models = "amazon.titan-text-lite-v1:0:4k"
+	TitanTextLiteV1       Models = "amazon.titan-text-lite-v1"
+	TitanTextExpressV1_8K Models = "amazon.titan-text-express-v1:0:8k"
+	TitanTextExpressV1    Models = "amazon.titan-text-express-v1"
+	TitanEmbedTextV1_8K   Models = "amazon.titan-embed-text-v1:2:8k"
+	TitanEmbedTextV1      Models = "amazon.titan-embed-text-v1"
+	TitanEmbedTextV2_8K   Models = "amazon.titan-embed-text-v2:0:8k"
+	TitanEmbedTextV2      Models = "amazon.titan-embed-text-v2:0"
+	TitanEmbedImageV1     Models = "amazon.titan-embed-image-v1:0"
+
+	// Nova Models
+	NovaProV1_300K   Models = "amazon.nova-pro-v1:0:300k"
+	NovaProV1        Models = "amazon.nova-pro-v1:0"
+	NovaLiteV1_300K  Models = "amazon.nova-lite-v1:0:300k"
+	NovaLiteV1       Models = "amazon.nova-lite-v1:0"
+	NovaCanvasV1     Models = "amazon.nova-canvas-v1:0"
+	NovaReelV1       Models = "amazon.nova-reel-v1:0"
+	NovaMicroV1_128K Models = "amazon.nova-micro-v1:0:128k"
+	NovaMicroV1      Models = "amazon.nova-micro-v1:0"
+
+	// Stable Diffusion Model
+	StableDiffusionXLV1 Models = "stability.stable-diffusion-xl-v1:0"
 
 	// Google Models
 	PaLM2       Models = "palm-2"
@@ -90,6 +138,28 @@ const (
 	StableLM  Models = "stablelm-base-7b"
 	Dolly12B  Models = "dolly-v2-12b"
 	BLOOMZ    Models = "bloomz-7b1"
+
+	// Undefined Model
+	J2GrandeInstruct         Models = "ai21.j2-grande-instruct"
+	J2JumboInstruct          Models = "ai21.j2-jumbo-instruct"
+	J2Mid                    Models = "ai21.j2-mid"
+	J2MidV1                  Models = "ai21.j2-mid-v1"
+	J2Ultra                  Models = "ai21.j2-ultra"
+	J2UltraV1_8K             Models = "ai21.j2-ultra-v1:0:8k"
+	J2UltraV1                Models = "ai21.j2-ultra-v1"
+	JambaInstructV1          Models = "ai21.jamba-instruct-v1:0"
+	Jamba1_5LargeV1          Models = "ai21.jamba-1-5-large-v1:0"
+	Jamba1_5MiniV1           Models = "ai21.jamba-1-5-mini-v1:0"
+	CommandTextV14_7_4K      Models = "cohere.command-text-v14:7:4k"
+	CommandTextV14           Models = "cohere.command-text-v14"
+	CommandRV1               Models = "cohere.command-r-v1:0"
+	CommandRPlusV1           Models = "cohere.command-r-plus-v1:0"
+	CommandLightTextV14_7_4K Models = "cohere.command-light-text-v14:7:4k"
+	CommandLightTextV14      Models = "cohere.command-light-text-v14"
+	EmbedEnglishV3_512       Models = "cohere.embed-english-v3:0:512"
+	EmbedEnglishV3           Models = "cohere.embed-english-v3"
+	EmbedMultilingualV3_512  Models = "cohere.embed-multilingual-v3:0:512"
+	EmbedMultilingualV3      Models = "cohere.embed-multilingual-v3"
 )
 
 type ModelProviders string
@@ -257,9 +327,18 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 			TimeTaken:  int(chat.Created),
 		}, nil
 	} else if kai.Model.IsMetaModel() {
-		response := bedrock.PromptModel(kai.UserPrePrompt+" "+prompt, float32(kai.Temperature), float32(kai.TopP), int(kai.MaxTokens), string(kai.Model))
+		response, err := bedrock_runtime.InvokeBedrockConverseAPI(string(kai.Model), bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), kai.Temperature, kai.TopP, models.AIChatHistory{
+			Messages: []models.AIMessage{
+				{
+					Message: kai.UserPrePrompt + " " + prompt,
+					Role:    models.User,
+				},
+			}}, kai.SystemMessage))
+		if err != nil {
+			return nil, err
+		}
 		return &models.AIChatResponse{
-			AIResponse: response,
+			AIResponse: string(response),
 			Tokens:     0,
 			TimeTaken:  0,
 		}, nil
