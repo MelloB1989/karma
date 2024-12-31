@@ -7,7 +7,6 @@ import (
 	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
-	"github.com/MelloB1989/karma/utils"
 	oai "github.com/openai/openai-go"
 )
 
@@ -167,6 +166,7 @@ type ModelProviders string
 
 const (
 	OpenAI     ModelProviders = "OpenAI"
+	Bedrock    ModelProviders = "Bedrock" // Provider for Amazon, Meta, Mistral, Stability, AI21, Cohere
 	Anthropic  ModelProviders = "Anthropic"
 	Meta       ModelProviders = "Meta"
 	MistralAI  ModelProviders = "Mistral AI"
@@ -345,8 +345,8 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 			return nil, err
 		}
 		return &models.AIChatResponse{
-			AIResponse: string(response),
-			Tokens:     utils.CountTokens(string(response)), // Not accurate
+			AIResponse: response.Output.Message.Content[0].Text,
+			Tokens:     response.Usage.OutputTokens, // Not accurate
 			TimeTaken:  0,
 		}, nil
 	} else {
@@ -385,8 +385,8 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 			return nil, err
 		}
 		return &models.AIChatResponse{
-			AIResponse: string(response),
-			Tokens:     utils.CountTokens(string(response)), // Not accurate
+			AIResponse: response.Output.Message.Content[0].Text,
+			Tokens:     response.Usage.OutputTokens, // Not accurate
 			TimeTaken:  0,
 		}, nil
 	} else {

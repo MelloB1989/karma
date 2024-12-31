@@ -24,6 +24,27 @@ type BedrockRequest struct {
 	System                       []SystemMessage        `json:"system"`
 }
 
+type Metrics struct {
+	LatencyMs float64 `json:"latencyMs"`
+}
+
+type Output struct {
+	Message Message `json:"message"`
+}
+
+type Usage struct {
+	InputTokens  int `json:"inputTokens"`
+	OutputTokens int `json:"outputTokens"`
+	TotalTokens  int `json:"totalTokens"`
+}
+
+type BedrockResponse struct {
+	Metrics    Metrics `json:"metrics"`
+	Output     Output  `json:"output"`
+	StopReason string  `json:"stopReason"`
+	Usage      Usage   `json:"usage"`
+}
+
 // InferenceConfig defines the inference configurations.
 type InferenceConfig struct {
 	MaxTokens   int     `json:"maxTokens"`
@@ -79,7 +100,7 @@ func CreateBedrockRequest(maxTokens int, Temperature, TopP float64, messages mod
 	}
 }
 
-func InvokeBedrockConverseAPI(modelIdentifier string, requestBody BedrockRequest) ([]byte, error) {
+func InvokeBedrockConverseAPI(modelIdentifier string, requestBody BedrockRequest) (*BedrockResponse, error) {
 	// Create AWS credentials
 	creds := credentials.NewStaticCredentials(config.DefaultConfig().AwsAccessKey, config.DefaultConfig().AwsSecretKey, "")
 	region, _ := config.GetEnv("AWS_BEDROCK_REGION")
@@ -139,9 +160,11 @@ func InvokeBedrockConverseAPI(modelIdentifier string, requestBody BedrockRequest
 	}
 
 	// Check for non-2xx status codes
+	var r BedrockResponse
+	json.Unmarshal(responseBody, &r)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return responseBody, fmt.Errorf("received non-2xx status code: %d", resp.StatusCode)
+		return &r, fmt.Errorf("received non-2xx status code: %d", resp.StatusCode)
 	}
 
-	return responseBody, nil
+	return &r, nil
 }
