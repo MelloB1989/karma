@@ -69,18 +69,45 @@ type SystemMessage struct {
 	Text string `json:"text"`
 }
 
-func ProcessChatMessages(messages models.AIChatHistory) []Message {
+func ProcessChatMessages(history models.AIChatHistory) []Message {
 	processedMessages := []Message{}
-	for _, message := range messages.Messages {
-		processedMessages = append(processedMessages, Message{
-			Content: []Content{
-				{
-					Text: message.Message,
-				},
-			},
-			Role: string(message.Role),
+
+	var lastRole string
+	var currentContent []Content
+
+	for _, msg := range history.Messages {
+		if msg.Role != models.User && msg.Role != models.Assistant {
+			// Skip unknown roles or handle accordingly
+			continue
+		}
+
+		if string(msg.Role) != lastRole {
+			// If role changes, append the previous group to processedMessages
+			if len(currentContent) > 0 {
+				processedMessages = append(processedMessages, Message{
+					Content: currentContent,
+					Role:    string(lastRole),
+				})
+				// Reset currentContent for the new role
+				currentContent = []Content{}
+			}
+			lastRole = string(msg.Role)
+		}
+
+		// Append the current message's text to the currentContent
+		currentContent = append(currentContent, Content{
+			Text: msg.Message,
 		})
 	}
+
+	// Append any remaining messages after the loop
+	if len(currentContent) > 0 {
+		processedMessages = append(processedMessages, Message{
+			Content: currentContent,
+			Role:    string(lastRole),
+		})
+	}
+
 	return processedMessages
 }
 
