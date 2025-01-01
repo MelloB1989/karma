@@ -6,24 +6,87 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
-	"os"
 
-	"github.com/MelloB1989/karma/apis/aws/s3"
 	"github.com/MelloB1989/karma/config"
-	"github.com/MelloB1989/karma/utils"
+	"github.com/MelloB1989/karma/files"
 )
 
-type SegmindSecrets struct {
-	SegmindAPIKey         string `env:"SEGMIND_API_KEY"`
-	SegmindSDAPI          string `env:"SEGMIND_SD_API"`
-	SegmindSamaritanAPI   string `env:"SEGMIND_SAMARITAN_API"`
-	SegmindDreamshaperAPI string `env:"SEGMIND_DREAMSHAPER_API"`
-	SegmindProtovisAPI    string `env:"SEGMIND_PROTOVIS_API"`
+type SegmindModels string
+
+type Resolutions struct {
+	Height int `json:"height"`
+	Width  int `json:"width"`
 }
 
-func RequestCreateImage(prompt string, model string, batch_size int, width int, height int, s3dir string) (*string, error) {
+const (
+	SegmindSDAPI          SegmindModels = "https://api.segmind.com/v1/stable-diffusion-3.5-large-txt2img"
+	SegmindProtovisAPI    SegmindModels = "https://api.segmind.com/v1/sdxl1.0-protovis-lightning"
+	SegmindSamaritanAPI   SegmindModels = "https://api.segmind.com/v1/sdxl1.0-samaritan-3d"
+	SegmindDreamshaperAPI SegmindModels = "https://api.segmind.com/v1/sdxl1.0-dreamshaper-lightning"
+)
+
+var (
+	R1024x1024 = Resolutions{Height: 1024, Width: 1024}
+	R896x1152  = Resolutions{Height: 1152, Width: 896}
+	R832x1216  = Resolutions{Height: 1216, Width: 832}
+	R768x1344  = Resolutions{Height: 1344, Width: 768}
+	R640x1536  = Resolutions{Height: 1536, Width: 640}
+	R1216x832  = Resolutions{Height: 832, Width: 1216}
+	R1344x768  = Resolutions{Height: 768, Width: 1344}
+	R1536x640  = Resolutions{Height: 640, Width: 1536}
+)
+
+type Segmind struct {
+	Model     SegmindModels
+	ApiKey    string
+	BatchSize int
+	Width     int
+	Height    int
+	S3Dir     string
+}
+
+type Options func(*Segmind)
+
+func NewSegmind(model SegmindModels, opts ...Options) *Segmind {
+	r := R1024x1024
+	k, _ := config.GetEnv("SEGMIND_API-KEY")
+	return &Segmind{
+		Model:     model,
+		BatchSize: 1,
+		Width:     r.Width,
+		Height:    r.Height,
+		S3Dir:     "",
+		ApiKey:    k,
+	}
+}
+
+func WithBatchSize(batchSize int) Options {
+	return func(s *Segmind) {
+		s.BatchSize = batchSize
+	}
+}
+
+func WithResolution(res Resolutions) Options {
+	return func(s *Segmind) {
+		s.Width = res.Width
+		s.Height = res.Height
+	}
+}
+
+func WithS3Dir(s3dir string) Options {
+	return func(s *Segmind) {
+		s.S3Dir = s3dir
+	}
+}
+
+func WithApiKey(apiKey string) Options {
+	return func(s *Segmind) {
+		s.ApiKey = apiKey
+	}
+}
+
+func (s *Segmind) RequestCreateImage(prompt string) (*string, error) {
 	data := map[string]interface{}{
 		"prompt":          prompt,
 		"negative_prompt": "low quality, blurry",
@@ -32,35 +95,16 @@ func RequestCreateImage(prompt string, model string, batch_size int, width int, 
 		"seed":            98552302,
 		"sampler":         "euler",
 		"scheduler":       "sgm_uniform",
-		"width":           width,
-		"height":          height,
+		"width":           s.Width,
+		"height":          s.Height,
 		"aspect_ratio":    "custom",
-		"batch_size":      batch_size,
+		"batch_size":      s.BatchSize,
 		"image_format":    "jpeg",
 		"image_quality":   95,
 		"base64":          true,
 	}
 
-	segmindSecrets := &SegmindSecrets{}
-	err := config.CustomConfig(segmindSecrets)
-	if err != nil {
-		log.Printf("Error loading Segmind secrets: %v", err)
-		return nil, err
-	}
-
-	var api string
-	switch model {
-	case "sd":
-		api = segmindSecrets.SegmindSDAPI
-	case "protovis":
-		api = segmindSecrets.SegmindProtovisAPI
-	case "samaritan":
-		api = segmindSecrets.SegmindSamaritanAPI
-	case "dreamshaper":
-		api = segmindSecrets.SegmindDreamshaperAPI
-	default:
-		api = segmindSecrets.SegmindSDAPI
-	}
+	api := string(s.Model)
 
 	jsonPayload, err := json.Marshal(data)
 	if err != nil {
@@ -73,7 +117,7 @@ func RequestCreateImage(prompt string, model string, batch_size int, width int, 
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", segmindSecrets.SegmindAPIKey)
+	req.Header.Set("x-api-key", s.ApiKey)
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -111,25 +155,34 @@ func RequestCreateImage(prompt string, model string, batch_size int, width int, 
 	}
 
 	// Save the image to a file
-	fileId := utils.GenerateID() + ".jpeg"
-	fileName := "./tmp/" + fileId
-	err = os.WriteFile(fileName, imageBytes, 0644)
+	kf := files.NewKarmaFile(s.S3Dir, files.S3)
+	image, err := files.BytesToMultipartFileHeader(imageBytes, "Karma Imager")
 	if err != nil {
-		fmt.Println("Error saving image file:", err)
+		fmt.Println("Error converting image bytes to file:", err)
 		return nil, err
 	}
-
-	// Upload to S3
-	err = s3.UploadFile("karmaclips/"+fileId, fileName)
+	url, err := kf.HandleSingleFileUpload(image)
 	if err != nil {
-		log.Printf("Error uploading image to S3: %v", err)
+		fmt.Println("Error uploading image to S3:", err)
 		return nil, err
 	}
+	// fileId := utils.GenerateID() + ".jpeg"
+	// fileName := "./tmp/" + fileId
+	// err = os.WriteFile(fileName, imageBytes, 0644)
+	// if err != nil {
+	// 	fmt.Println("Error saving image file:", err)
+	// 	return nil, err
+	// }
 
-	// Clean up local file
-	os.Remove(fileName)
+	// // Upload to S3
+	// err = s3.UploadFile("karmaclips/"+fileId, fileName)
+	// if err != nil {
+	// 	log.Printf("Error uploading image to S3: %v", err)
+	// 	return nil, err
+	// }
 
-	// Build the S3 URL
-	uri := fmt.Sprintf("https://%s.s3.ap-south-1.amazonaws.com/%s/%s", config.DefaultConfig().AwsBucketName, s3dir, fileId)
-	return &uri, nil
+	// // Clean up local file
+	// os.Remove(fileName)
+
+	return &url, nil
 }

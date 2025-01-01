@@ -63,7 +63,7 @@ func DefaultConfig() *Config {
 	if err != nil {
 		sugar.Error("unable to load .env")
 	}
-	sugar.Info("loaded .env file")
+	// sugar.Info("loaded .env file")
 
 	return &Config{
 		Port:                 os.Getenv("PORT"),
@@ -154,7 +154,7 @@ func CustomConfig(cfg interface{}) error {
 	if err != nil {
 		sugar.Error("unable to load .env")
 	}
-	sugar.Info("loaded .env file")
+	// sugar.Info("loaded .env file")
 
 	v := reflect.ValueOf(cfg)
 	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
@@ -215,6 +215,6 @@ func GetEnv(key string) (string, error) {
 		sugar.Error("unable to load a ENV variable")
 		return "", err
 	}
-	sugar.Info("loaded .env file")
+	// sugar.Info("loaded .env file")
 	return os.Getenv(key), nil
 }
