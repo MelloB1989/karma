@@ -164,7 +164,7 @@ func InvokeBedrockConverseAPI(modelIdentifier string, requestBody BedrockRequest
 	var r BedrockResponse
 	json.Unmarshal(responseBody, &r)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Println("received non-2xx status code: %d", resp)
+		log.Println("received non-2xx status code:", resp)
 		return &r, fmt.Errorf("received non-2xx status code: %d", resp.StatusCode)
 	}
 
