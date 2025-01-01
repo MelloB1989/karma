@@ -158,7 +158,7 @@ func InvokeBedrockConverseAPI(modelIdentifier string, requestBody BedrockRequest
 		return nil, fmt.Errorf("failed to marshal request body to JSON: %v", err)
 	}
 
-	log.Printf("Request Payload: %s", string(payload)) // Debugging
+	// log.Printf("Request Payload: %s", string(payload)) // Debugging
 
 	// Create the HTTP request
 	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(payload))
