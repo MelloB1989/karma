@@ -15,18 +15,20 @@ func createClient() *openai.Client {
 }
 
 type OpenAI struct {
-	Client      *openai.Client
-	Model       string
-	Temperature float64
-	MaxTokens   int64
+	Client        *openai.Client
+	Model         string
+	Temperature   float64
+	MaxTokens     int64
+	SystemMessage string
 }
 
 func NewOpenAI(model string, temperature float64, maxTokens int64) *OpenAI {
 	return &OpenAI{
-		Client:      createClient(),
-		Model:       model,
-		Temperature: temperature,
-		MaxTokens:   maxTokens,
+		Client:        createClient(),
+		Model:         model,
+		Temperature:   temperature,
+		MaxTokens:     maxTokens,
+		SystemMessage: "",
 	}
 }
 
@@ -45,9 +47,11 @@ func formatMessages(messages models.AIChatHistory) []openai.ChatCompletionMessag
 }
 
 func (o *OpenAI) CreateChat(messages models.AIChatHistory) (*openai.ChatCompletion, error) {
+	mgs := formatMessages(messages)
+	mgs = append(mgs, openai.SystemMessage(o.SystemMessage))
 	chatCompletion, err := o.Client.Chat.Completions.New(context.TODO(), openai.ChatCompletionNewParams{
 		Model:    openai.F(o.Model),
-		Messages: openai.F(formatMessages(messages)),
+		Messages: openai.F(mgs),
 	})
 	if err != nil {
 		return nil, err
@@ -57,9 +61,11 @@ func (o *OpenAI) CreateChat(messages models.AIChatHistory) (*openai.ChatCompleti
 
 func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler func(chuck openai.ChatCompletionChunk)) (*openai.ChatCompletion, error) {
 	client := createClient()
+	mgs := formatMessages(messages)
+	mgs = append(mgs, openai.SystemMessage(o.SystemMessage))
 	stream := client.Chat.Completions.NewStreaming(context.TODO(), openai.ChatCompletionNewParams{
 		Model:    openai.F(o.Model),
-		Messages: openai.F(formatMessages(messages)),
+		Messages: openai.F(mgs),
 		Seed:     openai.Int(69),
 	})
 	// optionally, an accumulator helper can be used
