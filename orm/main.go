@@ -649,3 +649,213 @@ func (o *ORM) QueryRaw(sqlQuery string, args ...interface{}) (interface{}, error
 
 	return results.Interface(), nil
 }
+
+func (o *ORM) DeleteByFieldEquals(fieldName string, value any) (int64, error) {
+	// Check if the field exists in the struct
+	columnName, ok := o.fieldMap[fieldName]
+	if !ok {
+		return 0, fmt.Errorf("field %s not found in struct", fieldName)
+	}
+
+	// Establish database connection
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return 0, err
+	}
+	defer db.Close()
+
+	// Construct DELETE query
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", o.tableName, columnName)
+
+	// Execute the query
+	result, err := db.Exec(query, value)
+	if err != nil {
+		log.Println("Failed to execute DELETE:", err)
+		return 0, err
+	}
+
+	// Get the number of rows affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Println("Failed to retrieve RowsAffected:", err)
+		return 0, err
+	}
+
+	return rowsAffected, nil
+}
+
+/*
+rowsDeleted, err := ormInstance.DeleteByFieldEquals("username", "johndoe")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Deleted %d rows\n", rowsDeleted)
+*/
+
+func (o *ORM) DeleteByFieldCompare(fieldName string, value any, operator string) (int64, error) {
+	// Check if the field exists in the struct
+	columnName, ok := o.fieldMap[fieldName]
+	if !ok {
+		return 0, fmt.Errorf("field %s not found in struct", fieldName)
+	}
+
+	// Sanitize the operator to prevent SQL injection
+	allowedOperators := map[string]bool{
+		"=":    true,
+		">":    true,
+		"<":    true,
+		">=":   true,
+		"<=":   true,
+		"LIKE": true,
+	}
+	if !allowedOperators[operator] {
+		return 0, fmt.Errorf("unsupported operator: %s", operator)
+	}
+
+	// Establish database connection
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return 0, err
+	}
+	defer db.Close()
+
+	// Construct DELETE query
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s %s $1", o.tableName, columnName, operator)
+
+	// Execute the query
+	result, err := db.Exec(query, value)
+	if err != nil {
+		log.Println("Failed to execute DELETE:", err)
+		return 0, err
+	}
+
+	// Get the number of rows affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Println("Failed to retrieve RowsAffected:", err)
+		return 0, err
+	}
+
+	return rowsAffected, nil
+}
+
+/*
+rowsDeleted, err := ormInstance.DeleteByFieldCompare("age", 30, ">")
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Deleted %d rows where age > 30\n", rowsDeleted)
+*/
+
+func (o *ORM) DeleteByFieldIn(fieldName string, values []any) (int64, error) {
+	// Check if the field exists in the struct
+	columnName, ok := o.fieldMap[fieldName]
+	if !ok {
+		return 0, fmt.Errorf("field %s not found in struct", fieldName)
+	}
+
+	if len(values) == 0 {
+		return 0, fmt.Errorf("values slice is empty")
+	}
+
+	// Establish database connection
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return 0, err
+	}
+	defer db.Close()
+
+	// Construct DELETE query with IN clause
+	placeholders := make([]string, len(values))
+	for i := range values {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+	}
+	query := fmt.Sprintf("DELETE FROM %s WHERE %s IN (%s)", o.tableName, columnName, strings.Join(placeholders, ", "))
+
+	// Convert []any to []interface{}
+	args := make([]interface{}, len(values))
+	for i, v := range values {
+		args[i] = v
+	}
+
+	// Execute the query
+	result, err := db.Exec(query, args...)
+	if err != nil {
+		log.Println("Failed to execute DELETE with IN:", err)
+		return 0, err
+	}
+
+	// Get the number of rows affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Println("Failed to retrieve RowsAffected:", err)
+		return 0, err
+	}
+
+	return rowsAffected, nil
+}
+
+/*
+userIDs := []any{1, 2, 3, 4, 5}
+rowsDeleted, err := ormInstance.DeleteByFieldIn("id", userIDs)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Deleted %d rows with IDs in %v\n", rowsDeleted, userIDs)
+*/
+
+func (o *ORM) DeleteByPrimaryKey(pkValue any) (int64, error) {
+	primaryKey := o.getPrimaryKeyField()
+	if primaryKey == "" {
+		return 0, fmt.Errorf("primary key not found in struct tags")
+	}
+	return o.DeleteByFieldEquals(primaryKey, pkValue)
+}
+
+/*
+rowsDeleted, err := ormInstance.DeleteByPrimaryKey(10)
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Deleted %d row with primary key 10\n", rowsDeleted)
+*/
+
+func (o *ORM) DeleteAll() (int64, error) {
+	// Establish database connection
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return 0, err
+	}
+	defer db.Close()
+
+	// Construct DELETE ALL query
+	query := fmt.Sprintf("DELETE FROM %s", o.tableName)
+
+	// Execute the query
+	result, err := db.Exec(query)
+	if err != nil {
+		log.Println("Failed to execute DELETE ALL:", err)
+		return 0, err
+	}
+
+	// Get the number of rows affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		log.Println("Failed to retrieve RowsAffected:", err)
+		return 0, err
+	}
+
+	return rowsAffected, nil
+}
+
+/*
+rowsDeleted, err := ormInstance.DeleteAll()
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("Deleted all %d rows from the table\n", rowsDeleted)
+*/
