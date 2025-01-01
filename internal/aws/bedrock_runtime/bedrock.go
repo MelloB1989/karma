@@ -102,25 +102,24 @@ func CreateBedrockRequest(maxTokens int, Temperature, TopP float64, messages mod
 }
 
 func InvokeBedrockConverseAPI(modelIdentifier string, requestBody BedrockRequest) (*BedrockResponse, error) {
+	// Fetch configuration
+	awsAccessKey := config.DefaultConfig().AwsAccessKey
+	awsSecretKey := config.DefaultConfig().AwsSecretKey
+	region, err := config.GetEnv("AWS_BEDROCK_REGION")
+	if err != nil || region == "" {
+		return nil, fmt.Errorf("AWS_BEDROCK_REGION is not set or invalid")
+	}
+
 	// Create AWS credentials
-	creds := credentials.NewStaticCredentials(config.DefaultConfig().AwsAccessKey, config.DefaultConfig().AwsSecretKey, "")
-	region, _ := config.GetEnv("AWS_BEDROCK_REGION")
-	// Initialize a session
-	if region != "" {
-		_, err := session.NewSession(&aws.Config{
-			Credentials: creds,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create AWS session: %v", err)
-		}
-	} else {
-		_, err := session.NewSession(&aws.Config{
-			Region:      aws.String(region),
-			Credentials: creds,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create AWS session: %v", err)
-		}
+	creds := credentials.NewStaticCredentials(awsAccessKey, awsSecretKey, "")
+
+	// Initialize a session with the correct region
+	_, err = session.NewSession(&aws.Config{
+		Region:      aws.String(region),
+		Credentials: creds,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AWS session: %v", err)
 	}
 
 	// Construct the endpoint URL
@@ -132,6 +131,8 @@ func InvokeBedrockConverseAPI(modelIdentifier string, requestBody BedrockRequest
 		return nil, fmt.Errorf("failed to marshal request body to JSON: %v", err)
 	}
 
+	log.Printf("Request Payload: %s", string(payload)) // Debugging
+
 	// Create the HTTP request
 	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(payload))
 	if err != nil {
@@ -139,7 +140,7 @@ func InvokeBedrockConverseAPI(modelIdentifier string, requestBody BedrockRequest
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	// Sign the request using SigV4
+	// Sign the request using SigV4 with the correct service name
 	signer := v4.NewSigner(creds)
 	_, err = signer.Sign(req, bytes.NewReader(payload), "bedrock", region, time.Now())
 	if err != nil {
@@ -160,13 +161,17 @@ func InvokeBedrockConverseAPI(modelIdentifier string, requestBody BedrockRequest
 		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
 
-	// Check for non-2xx status codes
-	var r BedrockResponse
-	json.Unmarshal(responseBody, &r)
+	// Check for non-2xx status codes and log detailed error
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Println("received non-2xx status code:", resp)
-		return &r, fmt.Errorf("received non-2xx status code: %d", resp.StatusCode)
+		log.Printf("Received non-2xx status code: %d\nResponse Body: %s", resp.StatusCode, string(responseBody))
+		return nil, fmt.Errorf("received non-2xx status code: %d", resp.StatusCode)
 	}
 
-	return &r, nil
+	// Unmarshal the successful response
+	var bedrockResp BedrockResponse
+	if err := json.Unmarshal(responseBody, &bedrockResp); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response body: %v", err)
+	}
+
+	return &bedrockResp, nil
 }
