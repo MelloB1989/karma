@@ -141,8 +141,8 @@ func GetBookingsWithUsers(serviceProviderId string) ([]*JoinedBookingResult, err
 }
 
 type JoinedResult struct {
-	ServiceProvider map[string]interface{} `json:"service_provider"`
-	Venue           map[string]interface{} `json:"venue"`
+	ServiceProviders ServiceProvider `json:"service_providers" db:"service_providers"`
+	Venues           Venue           `json:"venues" db:"venues"`
 }
 
 func GetVenues(serviceProviderId string) ([]*JoinedResult, error) {
@@ -169,6 +169,7 @@ func GetVenues(serviceProviderId string) ([]*JoinedResult, error) {
 
 func ORMTest() {
 	h, _ := GetVenues("1j86yuzaxn")
+	fmt.Println(h)
 	for _, v := range h {
 		fmt.Println(v)
 	}

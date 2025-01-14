@@ -915,6 +915,59 @@ func (jb *JoinBuilder) Where(field string, value interface{}) *JoinBuilder {
 	return jb
 }
 
+// Helper function to build the join query with json_build_object
+func (jb *JoinBuilder) buildJoinQuery() (string, error) {
+	// Build source table json object
+	sourceJSON := buildJSONObject(jb.sourceORM.tableName, jb.sourceORM.structType)
+
+	// Build target table json object
+	targetJSON := buildJSONObject(jb.joins[0].TableName, reflect.TypeOf(jb.joins[0].Target).Elem())
+
+	// Construct base query with JSON objects
+	query := fmt.Sprintf(`
+        SELECT
+            %s AS %s,
+            %s AS %s
+        FROM %s
+        JOIN %s ON %s.%s = %s.%s`,
+		sourceJSON, jb.sourceORM.tableName,
+		targetJSON, jb.joins[0].TableName,
+		jb.sourceORM.tableName,
+		jb.joins[0].TableName,
+		jb.sourceORM.tableName, jb.joins[0].OnField,
+		jb.joins[0].TableName, jb.joins[0].TargetField)
+
+	// Add WHERE clause if specified
+	if jb.whereField != "" {
+		query += fmt.Sprintf(" WHERE %s.%s = $1", jb.sourceORM.tableName, jb.whereField)
+	}
+
+	return query, nil
+}
+
+// Helper function to build json_build_object for a table
+func buildJSONObject(tableName string, structType reflect.Type) string {
+	var fields []string
+
+	for i := 0; i < structType.NumField(); i++ {
+		field := structType.Field(i)
+		if jsonTag := field.Tag.Get("json"); jsonTag != "" && jsonTag != "-" && field.Name != "TableName" {
+			// Handle special types
+			fieldExpr := fmt.Sprintf("%s.%s", tableName, jsonTag)
+
+			// Add special handling for timestamp fields if needed
+			if field.Type.String() == "time.Time" {
+				fieldExpr = fmt.Sprintf("%s AT TIME ZONE 'UTC'", fieldExpr)
+			}
+
+			// Add the field to our json_build_object
+			fields = append(fields, fmt.Sprintf("'%s', %s", jsonTag, fieldExpr))
+		}
+	}
+
+	return fmt.Sprintf("json_build_object(%s)", strings.Join(fields, ", "))
+}
+
 // Execute runs the join query and returns the results organized by table
 func (jb *JoinBuilder) Execute() ([]interface{}, error) {
 	if jb.resultStruct == nil {
@@ -928,14 +981,14 @@ func (jb *JoinBuilder) Execute() ([]interface{}, error) {
 	}
 	defer db.Close()
 
-	// Build the query
 	query, err := jb.buildJoinQuery()
 	if err != nil {
 		log.Printf("Failed to build join query: %v", err)
 		return nil, fmt.Errorf("query building error: %v", err)
 	}
 
-	// Execute query
+	log.Printf("Executing query: %s with value: %v", query, jb.whereValue)
+
 	var rows *sql.Rows
 	if jb.whereValue != nil {
 		rows, err = db.Query(query, jb.whereValue)
@@ -948,111 +1001,24 @@ func (jb *JoinBuilder) Execute() ([]interface{}, error) {
 	}
 	defer rows.Close()
 
-	// Get column names from the result
-	columns, err := rows.Columns()
-	if err != nil {
-		log.Printf("Failed to get column names: %v", err)
-		return nil, fmt.Errorf("failed to get column names: %v", err)
+	// Create a slice of the result type
+	resultSliceType := reflect.SliceOf(reflect.TypeOf(jb.resultStruct))
+	resultsPtr := reflect.New(resultSliceType)
+
+	// Parse rows directly into the result struct
+	if err := database.ParseRows(rows, resultsPtr.Interface()); err != nil {
+		log.Printf("Failed to parse rows: %v", err)
+		return nil, fmt.Errorf("error parsing rows: %v", err)
 	}
 
-	var results []interface{}
-
-	for rows.Next() {
-		// Create scan destinations
-		values := make([]interface{}, len(columns))
-		for i := range values {
-			values[i] = new(interface{})
-		}
-
-		// Scan the row into the values slice
-		if err := rows.Scan(values...); err != nil {
-			log.Printf("Failed to scan row: %v", err)
-			return nil, fmt.Errorf("error scanning row: %v", err)
-		}
-
-		// Create a new instance of the result struct
-		resultValue := reflect.New(reflect.TypeOf(jb.resultStruct).Elem())
-		result := resultValue.Interface()
-
-		// Create maps for both tables
-		sourceData := make(map[string]interface{})
-		targetData := make(map[string]interface{})
-
-		// Organize values into their respective maps
-		for i, col := range columns {
-			value := *(values[i].(*interface{}))
-			if value == nil {
-				continue
-			}
-
-			parts := strings.Split(col, "_")
-			if len(parts) < 2 {
-				continue
-			}
-
-			tableName := parts[0]
-			fieldName := strings.Join(parts[1:], "_")
-
-			switch tableName {
-			case jb.sourceORM.tableName:
-				sourceData[fieldName] = value
-			case jb.joins[0].TableName:
-				targetData[fieldName] = value
-			}
-		}
-
-		// Set the maps in the result struct
-		resultVal := resultValue.Elem()
-
-		sourceField := resultVal.FieldByName(strings.Title(jb.sourceORM.tableName))
-		if sourceField.IsValid() && sourceField.CanSet() {
-			sourceField.Set(reflect.ValueOf(sourceData))
-		}
-
-		targetField := resultVal.FieldByName(strings.Title(jb.joins[0].TableName))
-		if targetField.IsValid() && targetField.CanSet() {
-			targetField.Set(reflect.ValueOf(targetData))
-		}
-
-		results = append(results, result)
-	}
-
-	if err := rows.Err(); err != nil {
-		log.Printf("Error iterating rows: %v", err)
-		return nil, fmt.Errorf("error iterating rows: %v", err)
+	// Convert the results to []interface{}
+	resultSlice := resultsPtr.Elem()
+	results := make([]interface{}, resultSlice.Len())
+	for i := 0; i < resultSlice.Len(); i++ {
+		results[i] = resultSlice.Index(i).Interface()
 	}
 
 	return results, nil
-}
-
-// Helper function to build the join query
-func (jb *JoinBuilder) buildJoinQuery() (string, error) {
-	// Get all columns from source table
-	sourceColumns := getTableColumns(jb.sourceORM.tableName, jb.sourceORM.structType)
-
-	// Get all columns from target table
-	targetColumns := getTableColumns(jb.joins[0].TableName, reflect.TypeOf(jb.joins[0].Target).Elem())
-
-	// Combine all columns
-	allColumns := append(sourceColumns, targetColumns...)
-
-	// Construct base query
-	query := fmt.Sprintf("SELECT %s FROM %s",
-		strings.Join(allColumns, ", "),
-		jb.sourceORM.tableName)
-
-	// Add JOIN clause
-	query += fmt.Sprintf(" JOIN %s ON %s.%s = %s.%s",
-		jb.joins[0].TableName,
-		jb.sourceORM.tableName, jb.joins[0].OnField,
-		jb.joins[0].TableName, jb.joins[0].TargetField)
-
-	// Add WHERE clause if specified
-	if jb.whereField != "" {
-		query += fmt.Sprintf(" WHERE %s.%s = $1", jb.sourceORM.tableName, jb.whereField)
-	}
-
-	return query, nil
 }
 
 // Helper function to get table columns with proper aliases
@@ -1063,8 +1029,7 @@ func getTableColumns(tableName string, structType reflect.Type) []string {
 		if jsonTag := field.Tag.Get("json"); jsonTag != "" && jsonTag != "-" &&
 			field.Name != "TableName" {
 			columns = append(columns,
-				fmt.Sprintf("%s.%s as %s_%s",
-					tableName, jsonTag, tableName, jsonTag))
+				fmt.Sprintf("%s.%s", tableName, jsonTag))
 		}
 	}
 	return columns

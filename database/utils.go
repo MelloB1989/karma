@@ -233,7 +233,7 @@ func InsertStruct(db *sqlx.DB, tableName string, data interface{}) error {
 		}
 
 		// Handle special types: Slice, Map, Struct (if dbTag is "json")
-		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || dbTag == "json" {
+		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || fieldValue.Kind() == reflect.Struct || dbTag == "json" {
 			// Marshal the field to JSON
 			jsonBytes, err := json.Marshal(fieldValue.Interface())
 			if err != nil {
