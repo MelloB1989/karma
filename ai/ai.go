@@ -220,7 +220,7 @@ func (m Models) IsGoogleModel() bool {
 
 func (m Models) IsBedrockModel() bool {
 	bedrockPrefixes := []string{
-		"meta.", "mistral.", "amazon.", "stability.", "ai21.", "anthropic.", "cohere.",
+		"meta.", "mistral.", "amazon.", "stability.", "ai21.", "anthropic.", "cohere.", "apac.",
 	}
 
 	for _, prefix := range bedrockPrefixes {
