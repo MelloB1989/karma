@@ -151,7 +151,7 @@ func GetVenues(serviceProviderId string) ([]*JoinedResult, error) {
 		Target:      &ServiceProvider{},
 		OnField:     "service_provider",
 		TargetField: "id",
-	}).Into(&JoinedResult{}).Where("id", serviceProviderId).Execute()
+	}).Into(&JoinedResult{}).Where("id", serviceProviderId).Where("name", "Nice Restraurant").Execute()
 
 	if err != nil {
 		log.Printf("Failed to get bookings with users: %v", err)
