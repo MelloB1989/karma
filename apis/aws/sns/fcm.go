@@ -90,6 +90,29 @@ func (k *KarmaFCMSNS) GetEndpointARNByUserData(user_data string) string {
 	return ""
 }
 
+func (k *KarmaFCMSNS) ListAllEndpointARNs() []string {
+	snsClient := k.Client
+	input := &sns.ListEndpointsByPlatformApplicationInput{
+		PlatformApplicationArn: aws.String(k.ApplicationArn),
+	}
+
+	paginator := sns.NewListEndpointsByPlatformApplicationPaginator(snsClient, input)
+	endpoints := []string{}
+
+	for paginator.HasMorePages() {
+		result, err := paginator.NextPage(context.TODO())
+		if err != nil {
+			log.Printf("Couldn't get endpoint attributes. Here's why: %v\n", err)
+			return endpoints
+		}
+
+		for _, endpoint := range result.Endpoints {
+			endpoints = append(endpoints, *endpoint.EndpointArn)
+		}
+	}
+	return endpoints
+}
+
 func (k *KarmaFCMSNS) PublishGCMMessage(user_data, message string) error {
 	endpoint_arn := k.GetEndpointARNByUserData(user_data)
 	snsClient := k.Client
@@ -117,6 +140,14 @@ func (k *KarmaFCMSNS) PublishGCMMessageWithArn(endpoint_arn, message string) err
 	if err != nil {
 		log.Printf("Couldn't publish message. Here's why: %v\n", err)
 		return err
+	}
+	return nil
+}
+
+func (k *KarmaFCMSNS) PublishGCMMessageToAllEndpoints(message string) error {
+	arns := k.ListAllEndpointARNs()
+	for _, arn := range arns {
+		k.PublishGCMMessageWithArn(arn, message)
 	}
 	return nil
 }
