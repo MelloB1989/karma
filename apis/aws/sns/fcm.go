@@ -25,7 +25,7 @@ func NewFCM(arn ...string) *KarmaFCMSNS {
 	}
 }
 
-func (k *KarmaFCMSNS) CreateApplicationPlatformEndpoint(user_data, token string) string {
+func (k *KarmaFCMSNS) CreateApplicationPlatformEndpoint(user_data, token string) (string, error) {
 	snsClient := k.Client
 	input := &sns.CreatePlatformEndpointInput{
 		PlatformApplicationArn: &k.ApplicationArn,
@@ -35,12 +35,12 @@ func (k *KarmaFCMSNS) CreateApplicationPlatformEndpoint(user_data, token string)
 	result, err := snsClient.CreatePlatformEndpoint(context.TODO(), input)
 	if err != nil {
 		log.Printf("Couldn't create platform endpoint. Here's why: %v\n", err)
-		return ""
+		return "", err
 	}
-	return *result.EndpointArn
+	return *result.EndpointArn, nil
 }
 
-func (k *KarmaFCMSNS) DeleteApplicationPlatformEndpoint(endpoint_arn string) {
+func (k *KarmaFCMSNS) DeleteApplicationPlatformEndpoint(endpoint_arn string) error {
 	snsClient := k.Client
 	input := &sns.DeleteEndpointInput{
 		EndpointArn: &endpoint_arn,
@@ -48,7 +48,9 @@ func (k *KarmaFCMSNS) DeleteApplicationPlatformEndpoint(endpoint_arn string) {
 	_, err := snsClient.DeleteEndpoint(context.TODO(), input)
 	if err != nil {
 		log.Printf("Couldn't delete platform endpoint. Here's why: %v\n", err)
+		return nil
 	}
+	return err
 }
 
 func (k *KarmaFCMSNS) GetEndpointAttributes(endpoint_arn string) {
@@ -88,7 +90,7 @@ func (k *KarmaFCMSNS) GetEndpointARNByUserData(user_data string) string {
 	return ""
 }
 
-func (k *KarmaFCMSNS) PublishGCMMessage(user_data, message string) {
+func (k *KarmaFCMSNS) PublishGCMMessage(user_data, message string) error {
 	endpoint_arn := k.GetEndpointARNByUserData(user_data)
 	snsClient := k.Client
 	input := &sns.PublishInput{
@@ -99,5 +101,7 @@ func (k *KarmaFCMSNS) PublishGCMMessage(user_data, message string) {
 	_, err := snsClient.Publish(context.TODO(), input)
 	if err != nil {
 		log.Printf("Couldn't publish message. Here's why: %v\n", err)
+		return err
 	}
+	return nil
 }
