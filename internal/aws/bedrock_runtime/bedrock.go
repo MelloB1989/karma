@@ -151,7 +151,7 @@ func InvokeBedrockConverseAPI(modelIdentifier string, requestBody BedrockRequest
 
 	// Construct the endpoint URL
 	endpoint := fmt.Sprintf("https://bedrock-runtime.%s.amazonaws.com/model/%s/converse", region, modelIdentifier)
-
+	// fmt.Println(endpoint)
 	// Marshal the request body to JSON
 	payload, err := json.Marshal(requestBody)
 	if err != nil {

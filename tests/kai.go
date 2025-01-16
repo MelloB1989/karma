@@ -10,12 +10,13 @@ import (
 )
 
 func TestKai() {
-	testCliChatImplentation()
+	// fmt.Println(bedrock.GetModels())
+	// testCliChatImplentation()
 	// fmt.Println(ai.ChatModelChatgpt4oLatest.IsBedrockModel())
 	// fmt.Println(ai.Llama3_8B.IsBedrockModel())
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
-	// testChatCompletion()
+	testChatCompletion()
 	// testGenerateFromSinglePrompt()
 	// testChatCompletionStream()
 }
@@ -39,7 +40,11 @@ func testCliChatImplentation() {
 }
 
 func testChatCompletion() {
-	kai := ai.NewKarmaAI(ai.ChatModelChatgpt4oLatest, ai.WithUserPrePrompt("I am Kartik Deshmukh. "))
+	kai := ai.NewKarmaAI(ai.ApacClaude3_5Sonnet20240620V1,
+		ai.WithSystemMessage("I am Kartik Deshmukh. "),
+		ai.WithTemperature(0.5),
+		ai.WithMaxTokens(10),
+		ai.WithTopP(0.9))
 	response, err := kai.ChatCompletion(models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
