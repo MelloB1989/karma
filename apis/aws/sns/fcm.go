@@ -105,3 +105,18 @@ func (k *KarmaFCMSNS) PublishGCMMessage(user_data, message string) error {
 	}
 	return nil
 }
+
+func (k *KarmaFCMSNS) PublishGCMMessageWithArn(endpoint_arn, message string) error {
+	snsClient := k.Client
+	input := &sns.PublishInput{
+		Message:          &message,
+		TargetArn:        &endpoint_arn,
+		MessageStructure: aws.String("json"),
+	}
+	_, err := snsClient.Publish(context.TODO(), input)
+	if err != nil {
+		log.Printf("Couldn't publish message. Here's why: %v\n", err)
+		return err
+	}
+	return nil
+}
