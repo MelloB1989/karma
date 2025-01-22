@@ -115,7 +115,20 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 
 					// Unmarshal the JSON into the field
 					if err := json.Unmarshal(data, field.Addr().Interface()); err != nil {
-						log.Println("Failed to unmarshal JSON for field", fieldInfo.Name, ":", err)
+						// If unmarshal fails, try to handle the case where we have a string that needs to be converted
+						var jsonStr string
+						if err := json.Unmarshal(data, &jsonStr); err == nil {
+							// If the field is a float32
+							if field.Kind() == reflect.Float32 {
+								if f, err := stringToFloat32(jsonStr); err == nil {
+									field.SetFloat(float64(f))
+									continue
+								}
+							}
+							// TODO: Add more type conversions here
+						}
+
+						log.Printf("Failed to unmarshal JSON for field %s: %v (data: %s)", fieldInfo.Name, err, string(data))
 						continue
 					}
 				} else {
@@ -147,6 +160,14 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 	}
 
 	return nil
+}
+
+func stringToFloat32(s string) (float32, error) {
+	f, err := strconv.ParseFloat(s, 32)
+	if err != nil {
+		return 0, err
+	}
+	return float32(f), nil
 }
 
 func snakeToCamel(s string) string {
