@@ -17,6 +17,13 @@ func GoogleAuth() {
 		CookieDomain:     "localhost",
 		CookieHTTPSOnly:  false,
 		OAuthStateString: "dskkjdbskdjcjkn",
+		UseJWT:           true,
+		GetClaims: func(user *models.GoogleCallbackData) map[string]interface{} {
+			return map[string]interface{}{
+				"email": user.Email,
+				"id":    user.ID,
+			}
+		},
 	})
 
 	// Add CORS middleware
