@@ -34,6 +34,25 @@ func GenerateJWT(claims jwt.Claims) (string, error) {
 	return tokenString, nil
 }
 
+func GenerateJWTWithRawClaims(c map[string]interface{}) (string, error) {
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+	sugar := logger.Sugar()
+	claims := jwt.MapClaims{}
+	for key, value := range c {
+		claims[key] = value
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	jwtSecret := []byte(config.DefaultConfig().JWTSecret)
+	tokenString, err := token.SignedString(jwtSecret)
+	if err != nil {
+		sugar.Error("Failed to create token:", err)
+		return "", err
+	}
+	sugar.Info("JWT created")
+	return tokenString, nil
+}
+
 func GenerateOTP() string {
 	otp := rand.Intn(900000) + 100000
 	return strconv.Itoa(otp)

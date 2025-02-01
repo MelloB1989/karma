@@ -390,15 +390,8 @@ func VerifyPhoneOTPHandler(getUserByPhone func(phone string) (AuthUserPhone, err
 	}
 }
 
-type GoogleConfig struct {
-	CookieExpiration time.Duration
-	CookieDomain     string
-	CookieHTTPSOnly  bool
-	OAuthStateString string
-}
-
 type GoogleAuth struct {
-	config GoogleConfig
+	config models.GoogleConfig
 }
 
 type GoogleCallbackData struct {
@@ -409,13 +402,13 @@ type GoogleCallbackData struct {
 	ID            string `json:"id"`
 }
 
-func NewGoogleAuth(config GoogleConfig) *GoogleAuth {
+func NewGoogleAuth(config models.GoogleConfig) *GoogleAuth {
 	return &GoogleAuth{
 		config: config,
 	}
 }
 
-func InitializeGoogleAuth(config GoogleConfig) *GoogleAuth {
+func InitializeGoogleAuth(config models.GoogleConfig) *GoogleAuth {
 	google.InitializeStore(config.CookieExpiration, config.CookieDomain, config.CookieHTTPSOnly, config.OAuthStateString)
 	return NewGoogleAuth(config)
 }
@@ -437,7 +430,7 @@ func (ga *GoogleAuth) GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, u
 }
 
 func (ga *GoogleAuth) GoogleHandleCallback() func(c *fiber.Ctx) error {
-	return google.HandleGoogleCallback
+	return google.HandleGoogleCallback(&ga.config)
 }
 
 func (ga *GoogleAuth) GetSessionData() func(c *fiber.Ctx) error {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/models"
+	"github.com/MelloB1989/karma/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/session"
 	"github.com/gofiber/storage/redis"
@@ -210,71 +211,123 @@ func GoogleCallbackBuilder(callbackHandler func(c *fiber.Ctx, user *models.Googl
 	}
 }
 
-func HandleGoogleCallback(c *fiber.Ctx) error {
-	// Verify state
-	state := c.Query("state")
-	if state != oauthStateString {
-		return c.Status(fiber.StatusUnauthorized).SendString("Invalid OAuth state")
+func HandleGoogleCallback(ga *models.GoogleConfig) func(c *fiber.Ctx) error {
+	if !ga.UseJWT {
+		return func(c *fiber.Ctx) error {
+			// Verify state
+			state := c.Query("state")
+			if state != oauthStateString {
+				return c.Status(fiber.StatusUnauthorized).SendString("Invalid OAuth state")
+			}
+
+			// Get authorization code
+			code := c.Query("code")
+
+			// Exchange authorization code for token
+			token, err := googleOauthConfig.Exchange(c.Context(), code)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+					Success: false,
+					Message: "Code exchange failed",
+					Data:    nil,
+				})
+			}
+
+			// Get user info
+			userInfo, err := getUserInfo(token.AccessToken)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+					Success: false,
+					Message: "Failed to get user info",
+					Data:    nil,
+				})
+			}
+
+			sess, err := Store.Get(c)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+					Success: false,
+					Message: "Session error",
+					Data:    nil,
+				})
+			}
+
+			tokenSess, err := TokenStore.Get(c)
+			if err := tokenSess.Save(); err != nil {
+				fmt.Printf("Save error: %v\n", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+					Success: false,
+					Message: "Failed to save session",
+					Data:    nil,
+				})
+			}
+			tokenSess.Set("token", token)
+
+			sess.Set("user", userInfo)
+			if err := sess.Save(); err != nil {
+				fmt.Printf("Save error: %v\n", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+					Success: false,
+					Message: "Failed to save session",
+					Data:    nil,
+				})
+			}
+
+			return c.Status(fiber.StatusAccepted).JSON(ResponseHTTP{
+				Success: true,
+				Message: "Authenticated",
+				Data:    nil,
+			})
+		}
+	} else {
+		return func(c *fiber.Ctx) error {
+			// Verify state
+			state := c.Query("state")
+			if state != oauthStateString {
+				return c.Status(fiber.StatusUnauthorized).SendString("Invalid OAuth state")
+			}
+
+			// Get authorization code
+			code := c.Query("code")
+
+			// Exchange authorization code for token
+			token, err := googleOauthConfig.Exchange(c.Context(), code)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+					Success: false,
+					Message: "Code exchange failed",
+					Data:    nil,
+				})
+			}
+
+			// Get user info
+			userInfo, err := getUserInfo(token.AccessToken)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+					Success: false,
+					Message: "Failed to get user info",
+					Data:    nil,
+				})
+			}
+
+			// Create JWT token
+			claims := ga.GetClaims(userInfo)
+			tokenString, err := utils.GenerateJWTWithRawClaims(claims)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+					Success: false,
+					Message: "Failed to create token",
+					Data:    nil,
+				})
+			}
+
+			return c.Status(fiber.StatusAccepted).JSON(ResponseHTTP{
+				Success: true,
+				Message: "Authenticated",
+				Data:    tokenString,
+			})
+		}
 	}
-
-	// Get authorization code
-	code := c.Query("code")
-
-	// Exchange authorization code for token
-	token, err := googleOauthConfig.Exchange(c.Context(), code)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
-			Success: false,
-			Message: "Code exchange failed",
-			Data:    nil,
-		})
-	}
-
-	// Get user info
-	userInfo, err := getUserInfo(token.AccessToken)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
-			Success: false,
-			Message: "Failed to get user info",
-			Data:    nil,
-		})
-	}
-
-	sess, err := Store.Get(c)
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
-			Success: false,
-			Message: "Session error",
-			Data:    nil,
-		})
-	}
-
-	tokenSess, err := TokenStore.Get(c)
-	if err := tokenSess.Save(); err != nil {
-		fmt.Printf("Save error: %v\n", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
-			Success: false,
-			Message: "Failed to save session",
-			Data:    nil,
-		})
-	}
-	tokenSess.Set("token", token)
-
-	sess.Set("user", userInfo)
-	if err := sess.Save(); err != nil {
-		fmt.Printf("Save error: %v\n", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
-			Success: false,
-			Message: "Failed to save session",
-			Data:    nil,
-		})
-	}
-
-	return c.Status(fiber.StatusAccepted).JSON(ResponseHTTP{
-		Success: true,
-		Message: "Authenticated",
-		Data:    nil,
-	})
 }
 
 // Helper function to get user info from Google

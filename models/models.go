@@ -1,12 +1,6 @@
 package models
 
-type GoogleCallbackData struct {
-	Email         string `json:"email"`
-	Name          string `json:"name"`
-	Picture       string `json:"picture"`
-	VerifiedEmail bool   `json:"verified_email"`
-	ID            string `json:"id"`
-}
+import "time"
 
 type ErrorMessage struct {
 	ErrorCode   int    `json:"error_code"`
@@ -54,4 +48,21 @@ type AIChatResponse struct {
 	AIResponse string `json:"ai_response"`
 	Tokens     int    `json:"tokens"`
 	TimeTaken  int    `json:"time_taken"`
+}
+
+type GoogleConfig struct {
+	CookieExpiration time.Duration
+	CookieDomain     string
+	CookieHTTPSOnly  bool
+	OAuthStateString string
+	UseJWT           bool
+	GetClaims        func(user *GoogleCallbackData) map[string]interface{}
+}
+
+type GoogleCallbackData struct {
+	Email         string `json:"email"`
+	Name          string `json:"name"`
+	Picture       string `json:"picture"`
+	VerifiedEmail bool   `json:"verified_email"`
+	ID            string `json:"id"`
 }

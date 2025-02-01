@@ -3,6 +3,7 @@ package tests
 import (
 	"github.com/MelloB1989/karma/auth"
 	"github.com/MelloB1989/karma/internal/google"
+	"github.com/MelloB1989/karma/models"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 )
@@ -11,7 +12,7 @@ func GoogleAuth() {
 	app := fiber.New()
 
 	// Initialize the store
-	googleAuth := auth.InitializeGoogleAuth(auth.GoogleConfig{
+	googleAuth := auth.InitializeGoogleAuth(models.GoogleConfig{
 		CookieExpiration: 60 * 60 * 24 * 7,
 		CookieDomain:     "localhost",
 		CookieHTTPSOnly:  false,
