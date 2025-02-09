@@ -1,10 +1,18 @@
 package amplify
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/amplify"
@@ -240,4 +248,248 @@ func validateRepository(repository, customBaseURL string) (string, RepositoryPro
 	default:
 		return repository, SelfHostedGit, nil
 	}
+}
+
+type ManualDeploymentType string
+
+const (
+	S3Deploy     ManualDeploymentType = "S3"
+	ZipDeploy    ManualDeploymentType = "ZIP"
+	URLDeploy    ManualDeploymentType = "URL"
+)
+
+// ManualDeploymentConfig holds configuration for manual deployments
+type ManualDeploymentConfig struct {
+	AppName     string
+	BranchName  string
+	DeployType  ManualDeploymentType
+	ZipPath     string   // Path to zip file for ZipDeploy
+	S3URL       string   // S3 URL for S3Deploy
+	PublicURL   string   // Public URL for URLDeploy
+	SourceDir   string   // Directory to zip for ZipDeploy
+	IgnorePaths []string // Paths to ignore when creating zip
+}
+
+// FileInfo represents a file to be deployed
+type FileInfo struct {
+	Path     string
+	MD5Hash  string
+	Content  []byte
+}
+
+// CreateManualDeployment creates a new manual deployment without Git
+func (a *AmplifyClient) CreateManualDeployment(cfg ManualDeploymentConfig) (*types.App, error) {
+	// Create app if it doesn't exist
+	app, err := a.createManualApp(cfg.AppName, cfg.BranchName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create manual app: %w", err)
+	}
+
+	// Handle different deployment types
+	switch cfg.DeployType {
+	case ZipDeploy:
+		err = a.handleZipDeployment(app.AppId, cfg)
+	case S3Deploy:
+		err = fmt.Errorf("S3 deployment not implemented yet")
+	case URLDeploy:
+		err = fmt.Errorf("URL deployment not implemented yet")
+	default:
+		err = fmt.Errorf("invalid deployment type")
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return app, nil
+}
+
+// createManualApp creates a new Amplify app for manual deployment
+func (a *AmplifyClient) createManualApp(appName, branchName string) (*types.App, error) {
+	input := &amplify.CreateAppInput{
+		Name:       &appName,
+		Platform:   types.PlatformWEB,
+	}
+
+	result, err := a.client.CreateApp(a.ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create app: %w", err)
+	}
+
+	// Create branch
+	_, err = a.client.CreateBranch(a.ctx, &amplify.CreateBranchInput{
+		AppId:      result.App.AppId,
+		BranchName: &branchName,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create branch: %w", err)
+	}
+
+	return result.App, nil
+}
+
+// handleZipDeployment handles deployment from a zip file or directory
+func (a *AmplifyClient) handleZipDeployment(appID *string, cfg ManualDeploymentConfig) error {
+	var files []FileInfo
+	var err error
+
+	if cfg.ZipPath != "" {
+		files, err = a.processExistingZip(cfg.ZipPath)
+	} else if cfg.SourceDir != "" {
+		files, err = a.createZipFromDirectory(cfg.SourceDir, cfg.IgnorePaths)
+	} else {
+		return fmt.Errorf("either ZipPath or SourceDir must be provided")
+	}
+
+	if err != nil {
+		return err
+	}
+
+	// Create file map for deployment
+	fileMap := make(map[string]string)
+	for _, file := range files {
+		fileMap[file.Path] = file.MD5Hash
+	}
+
+	// Start deployment
+	input := &amplify.CreateDeploymentInput{
+		AppId:      appID,
+		BranchName: &cfg.BranchName,
+		FileMap:    fileMap,
+	}
+
+	result, err := a.client.CreateDeployment(a.ctx, input)
+	if err != nil {
+		return fmt.Errorf("failed to create deployment: %w", err)
+	}
+
+	// Upload files using the provided URLs
+	jobId := result.JobId
+	for filePath, uploadURL := range result.FileUploadUrls {
+		var fileContent []byte
+		for _, file := range files {
+			if file.Path == filePath {
+				fileContent = file.Content
+				break
+			}
+		}
+
+		err = a.uploadFile(uploadURL, fileContent)
+		if err != nil {
+			return fmt.Errorf("failed to upload file %s: %w", filePath, err)
+		}
+	}
+
+	// Start the job
+	_, err = a.client.StartJob(a.ctx, &amplify.StartJobInput{
+		AppId:      appID,
+		BranchName: &cfg.BranchName,
+		JobId:      jobId,
+	})
+
+	return err
+}
+
+// processExistingZip processes an existing zip file
+func (a *AmplifyClient) processExistingZip(zipPath string) ([]FileInfo, error) {
+	zipReader, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open zip file: %w", err)
+	}
+	defer zipReader.Close()
+
+	var files []FileInfo
+	for _, file := range zipReader.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+
+		rc, err := file.Open()
+		if err != nil {
+			return nil, fmt.Errorf("failed to open file in zip: %w", err)
+		}
+
+		content, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read file content: %w", err)
+		}
+
+		hash := md5.Sum(content)
+		files = append(files, FileInfo{
+			Path:    file.Name,
+			MD5Hash: hex.EncodeToString(hash[:]),
+			Content: content,
+		})
+	}
+
+	return files, nil
+}
+
+// createZipFromDirectory creates a zip file from a directory
+func (a *AmplifyClient) createZipFromDirectory(sourceDir string, ignorePaths []string) ([]FileInfo, error) {
+	var files []FileInfo
+
+	err := filepath.Walk(sourceDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories and ignored paths
+		if info.IsDir() {
+			return nil
+		}
+		for _, ignorePath := range ignorePaths {
+			if matched, _ := filepath.Match(ignorePath, path); matched {
+				return nil
+			}
+		}
+
+		// Read file content
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to read file %s: %w", path, err)
+		}
+
+		// Calculate relative path and MD5 hash
+		relPath, err := filepath.Rel(sourceDir, path)
+		if err != nil {
+			return fmt.Errorf("failed to get relative path: %w", err)
+		}
+
+		hash := md5.Sum(content)
+		files = append(files, FileInfo{
+			Path:    relPath,
+			MD5Hash: hex.EncodeToString(hash[:]),
+			Content: content,
+		})
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to process directory: %w", err)
+	}
+
+	return files, nil
+}
+
+// uploadFile uploads a file to the provided URL
+func (a *AmplifyClient) uploadFile(url string, content []byte) error {
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(content))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to upload file: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("upload failed with status: %s", resp.Status)
+	}
+
+	return nil
 }

@@ -6,7 +6,8 @@ func main() {
 	// tests.TestKai()
 	// tests.TestSendingSingleMail()
 	// tests.ORMTest()
-	tests.GoogleAuth()
+	// tests.GoogleAuth()
 	// tests.TestKarmaErrorPackage()
 	// tests.TestKarmaFiles()
+	tests.TestAmplifyFuncs()
 }
