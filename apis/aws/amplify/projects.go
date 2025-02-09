@@ -2,17 +2,40 @@ package amplify
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/url"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/amplify"
 	"github.com/aws/aws-sdk-go-v2/service/amplify/types"
+	"github.com/aws/aws-sdk-go/aws"
 )
+
+type RepositoryProvider string
+
+const (
+	GitHub        RepositoryProvider = "github"
+	GitLab        RepositoryProvider = "gitlab"
+	BitBucket     RepositoryProvider = "bitbucket"
+	SelfHostedGit RepositoryProvider = "self-hosted"
+)
+
+// ProjectConfig holds configuration for creating a new Amplify project
+type ProjectConfig struct {
+	Name        string
+	Repository  string
+	AccessToken string
+	Platform    string
+	Framework   string
+	// Optional fields for self-hosted repositories
+	CustomBaseURL string // For self-hosted GitLab/GitHub Enterprise
+}
 
 // AmplifyClient wraps the AWS Amplify client with additional functionality
 type AmplifyClient struct {
-	client *amplify.Client
-	ctx    context.Context
+	Client *amplify.Client
+	Ctx    context.Context
 }
 
 // ClientConfig holds configuration options for the Amplify client
@@ -44,37 +67,49 @@ func NewAmplifyClient(cfg *ClientConfig) (*AmplifyClient, error) {
 	client := amplify.NewFromConfig(sdkConfig)
 
 	return &AmplifyClient{
-		client: client,
-		ctx:    ctx,
+		Client: client,
+		Ctx:    ctx,
 	}, nil
 }
 
-// ProjectConfig holds configuration for creating a new Amplify project
-type ProjectConfig struct {
-	Name        string
-	Repository  string
-	AccessToken string
-	Platform    string
-	Framework   string
-}
-
-// CreateProject creates a new Amplify project
 func (a *AmplifyClient) CreateProject(cfg ProjectConfig) (*types.App, error) {
-	input := &amplify.CreateAppInput{
-		Name: &cfg.Name,
-		Repository: &cfg.Repository,
-		OauthToken: &cfg.AccessToken,
+	// Validate repository URL and determine provider
+	repoURL, provider, err := validateRepository(cfg.Repository, cfg.CustomBaseURL)
+	if err != nil {
+		return nil, err
 	}
 
+	// Base input for creating app
+	input := &amplify.CreateAppInput{
+		Name:       aws.String(cfg.Name),
+		Repository: aws.String(repoURL),
+		OauthToken: aws.String(cfg.AccessToken),
+	}
+
+	// Add platform if specified
 	if cfg.Platform != "" {
 		input.Platform = types.Platform(cfg.Platform)
 	}
 
-	if cfg.Framework != "" {
-		input.Framework = types.Framework(cfg.Framework)
+	// Handle custom repository configurations
+	if provider == "SelfHostedGit" {
+		// For self-hosted GitLab, we need to ensure the custom base URL is set
+		if cfg.CustomBaseURL != "" {
+			// Add any provider-specific configurations here
+			// Note: AWS Amplify supports custom repository providers through additional configuration
+			headers := map[string]string{
+				"Custom-Base-URL": cfg.CustomBaseURL,
+			}
+			headersJSON, err := json.Marshal(headers)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal custom headers: %w", err)
+			}
+			headersStr := string(headersJSON)
+			input.CustomHeaders = &headersStr
+		}
 	}
 
-	result, err := a.client.CreateApp(a.ctx, input)
+	result, err := a.Client.CreateApp(a.Ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Amplify project: %w", err)
 	}
@@ -88,7 +123,7 @@ func (a *AmplifyClient) GetProject(appID string) (*types.App, error) {
 		AppId: &appID,
 	}
 
-	result, err := a.client.GetApp(a.ctx, input)
+	result, err := a.Client.GetApp(a.Ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Amplify project details: %w", err)
 	}
@@ -100,7 +135,7 @@ func (a *AmplifyClient) GetProject(appID string) (*types.App, error) {
 func (a *AmplifyClient) ListProjects() ([]types.App, error) {
 	input := &amplify.ListAppsInput{}
 
-	result, err := a.client.ListApps(a.ctx, input)
+	result, err := a.Client.ListApps(a.Ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list Amplify projects: %w", err)
 	}
@@ -123,7 +158,7 @@ func (a *AmplifyClient) CreateDeployment(cfg DeploymentConfig) (*types.JobSummar
 		JobType:    types.JobType(cfg.JobType),
 	}
 
-	result, err := a.client.StartJob(a.ctx, input)
+	result, err := a.Client.StartJob(a.Ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create deployment: %w", err)
 	}
@@ -138,7 +173,7 @@ func (a *AmplifyClient) ListDeployments(appID, branchName string) ([]types.JobSu
 		BranchName: &branchName,
 	}
 
-	result, err := a.client.ListJobs(a.ctx, input)
+	result, err := a.Client.ListJobs(a.Ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list deployments: %w", err)
 	}
@@ -154,7 +189,7 @@ func (a *AmplifyClient) GetDeployment(appID, branchName, jobID string) (*types.J
 		JobId:      &jobID,
 	}
 
-	result, err := a.client.GetJob(a.ctx, input)
+	result, err := a.Client.GetJob(a.Ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deployment details: %w", err)
 	}
@@ -168,10 +203,41 @@ func (a *AmplifyClient) DeleteProject(appID string) error {
 		AppId: &appID,
 	}
 
-	_, err := a.client.DeleteApp(a.ctx, input)
+	_, err := a.Client.DeleteApp(a.Ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to delete Amplify project: %w", err)
 	}
 
 	return nil
+}
+
+// validateRepository checks if the repository URL is valid and determines the provider
+func validateRepository(repository, customBaseURL string) (string, RepositoryProvider, error) {
+	repoURL, err := url.Parse(repository)
+	if err != nil {
+		return "", "", fmt.Errorf("invalid repository URL: %w", err)
+	}
+
+	// Handle self-hosted GitLab/GitHub Enterprise
+	if customBaseURL != "" {
+		customURL, err := url.Parse(customBaseURL)
+		if err != nil {
+			return "", "", fmt.Errorf("invalid custom base URL: %w", err)
+		}
+		if repoURL.Host == customURL.Host {
+			return repository, SelfHostedGit, nil
+		}
+	}
+
+	// Determine provider based on hostname
+	switch {
+	case repoURL.Host == "github.com":
+		return repository, GitHub, nil
+	case repoURL.Host == "gitlab.com":
+		return repository, GitLab, nil
+	case repoURL.Host == "bitbucket.org":
+		return repository, BitBucket, nil
+	default:
+		return repository, SelfHostedGit, nil
+	}
 }
