@@ -34,9 +34,13 @@ func TestAmplifyFuncs() {
 		fmt.Println(*app.AppId, *app.CustomHeaders, app.Platform.Values())
 	}
 
-	deployment, err := client.CreateDeployment(amplify.DeploymentConfig{
-		AppID:      "dpsvq4nwkea6o",
-		BranchName: "main",
-		JobType:    "RELEASE",
-	})
+	// deployment, err := client.CreateManualDeployment(amplify.ManualDeploymentConfig{
+	// 	AppName:    "Test",
+	// 	BranchName: "production",
+	// 	DeployType: amplify.URLDeploy,
+	// 	PublicURL:  "https://coffeecodes-cdn-public.s3.ap-south-1.amazonaws.com/build.zip",
+	// })
+
+	d, _ := client.ListDeployments("d25yuhwhd3eok0", "production")
+	fmt.Println(d)
 }

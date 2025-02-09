@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -253,9 +254,9 @@ func validateRepository(repository, customBaseURL string) (string, RepositoryPro
 type ManualDeploymentType string
 
 const (
-	S3Deploy     ManualDeploymentType = "S3"
-	ZipDeploy    ManualDeploymentType = "ZIP"
-	URLDeploy    ManualDeploymentType = "URL"
+	S3Deploy  ManualDeploymentType = "S3"
+	ZipDeploy ManualDeploymentType = "ZIP"
+	URLDeploy ManualDeploymentType = "URL"
 )
 
 // ManualDeploymentConfig holds configuration for manual deployments
@@ -272,9 +273,9 @@ type ManualDeploymentConfig struct {
 
 // FileInfo represents a file to be deployed
 type FileInfo struct {
-	Path     string
-	MD5Hash  string
-	Content  []byte
+	Path    string
+	MD5Hash string
+	Content []byte
 }
 
 // CreateManualDeployment creates a new manual deployment without Git
@@ -292,7 +293,7 @@ func (a *AmplifyClient) CreateManualDeployment(cfg ManualDeploymentConfig) (*typ
 	case S3Deploy:
 		err = fmt.Errorf("S3 deployment not implemented yet")
 	case URLDeploy:
-		err = fmt.Errorf("URL deployment not implemented yet")
+		err = a.handleURLDeployment(app.AppId, cfg)
 	default:
 		err = fmt.Errorf("invalid deployment type")
 	}
@@ -307,17 +308,17 @@ func (a *AmplifyClient) CreateManualDeployment(cfg ManualDeploymentConfig) (*typ
 // createManualApp creates a new Amplify app for manual deployment
 func (a *AmplifyClient) createManualApp(appName, branchName string) (*types.App, error) {
 	input := &amplify.CreateAppInput{
-		Name:       &appName,
-		Platform:   types.PlatformWEB,
+		Name:     &appName,
+		Platform: types.PlatformWeb,
 	}
 
-	result, err := a.client.CreateApp(a.ctx, input)
+	result, err := a.Client.CreateApp(a.Ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create app: %w", err)
 	}
 
 	// Create branch
-	_, err = a.client.CreateBranch(a.ctx, &amplify.CreateBranchInput{
+	_, err = a.Client.CreateBranch(a.Ctx, &amplify.CreateBranchInput{
 		AppId:      result.App.AppId,
 		BranchName: &branchName,
 	})
@@ -358,7 +359,7 @@ func (a *AmplifyClient) handleZipDeployment(appID *string, cfg ManualDeploymentC
 		FileMap:    fileMap,
 	}
 
-	result, err := a.client.CreateDeployment(a.ctx, input)
+	result, err := a.Client.CreateDeployment(a.Ctx, input)
 	if err != nil {
 		return fmt.Errorf("failed to create deployment: %w", err)
 	}
@@ -381,13 +382,98 @@ func (a *AmplifyClient) handleZipDeployment(appID *string, cfg ManualDeploymentC
 	}
 
 	// Start the job
-	_, err = a.client.StartJob(a.ctx, &amplify.StartJobInput{
+	_, err = a.Client.StartJob(a.Ctx, &amplify.StartJobInput{
 		AppId:      appID,
 		BranchName: &cfg.BranchName,
 		JobId:      jobId,
 	})
 
 	return err
+}
+
+func (a *AmplifyClient) handleURLDeployment(appID *string, cfg ManualDeploymentConfig) error {
+	// Validate URL
+	_, err := url.ParseRequestURI(cfg.PublicURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL provided: %w", err)
+	}
+
+	// Verify URL points to a zip file
+	if path.Ext(cfg.PublicURL) != ".zip" {
+		return fmt.Errorf("URL must point to a .zip file")
+	}
+
+	// Create deployment
+	input := &amplify.CreateDeploymentInput{
+		AppId:      appID,
+		BranchName: &cfg.BranchName,
+	}
+
+	// Start deployment with URL
+	result, err := a.Client.CreateDeployment(a.Ctx, input)
+	if err != nil {
+		return fmt.Errorf("failed to create deployment: %w", err)
+	}
+
+	// Download zip file from URL
+	resp, err := http.Get(cfg.PublicURL)
+	if err != nil {
+		return fmt.Errorf("failed to download zip from URL: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to download zip, status: %s", resp.Status)
+	}
+
+	// Read the content
+	content, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read zip content: %w", err)
+	}
+
+	// Upload to the first URL provided by Amplify
+	if len(result.FileUploadUrls) > 0 {
+		var uploadURL string
+		for _, url := range result.FileUploadUrls {
+			uploadURL = url
+			break
+		}
+
+		err = a.uploadFile(uploadURL, content)
+		if err != nil {
+			return fmt.Errorf("failed to upload zip file: %w", err)
+		}
+	}
+
+	// Start the job
+	_, err = a.Client.StartJob(a.Ctx, &amplify.StartJobInput{
+		AppId:      appID,
+		BranchName: &cfg.BranchName,
+		JobId:      result.JobId,
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to start deployment job: %w", err)
+	}
+
+	return nil
+}
+
+// Add function to check deployment status:
+func (a *AmplifyClient) GetDeploymentStatus(appID, branchName, jobID string) (*types.Job, error) {
+	input := &amplify.GetJobInput{
+		AppId:      &appID,
+		BranchName: &branchName,
+		JobId:      &jobID,
+	}
+
+	result, err := a.Client.GetJob(a.Ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get deployment status: %w", err)
+	}
+
+	return result.Job, nil
 }
 
 // processExistingZip processes an existing zip file
