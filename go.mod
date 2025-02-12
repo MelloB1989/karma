@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/amplify v1.28.8
 	github.com/aws/aws-sdk-go-v2/service/bedrock v1.22.4
 	github.com/aws/aws-sdk-go-v2/service/bedrockruntime v1.20.1
+	github.com/aws/aws-sdk-go-v2/service/ecs v1.53.13
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.69.0
 	github.com/aws/aws-sdk-go-v2/service/ses v1.29.2
 	github.com/aws/aws-sdk-go-v2/service/sns v1.33.12
