@@ -21,6 +21,7 @@ type Config struct {
 	DatabasePort             string
 	DatabaseUser             string
 	DatabasePassword         string
+	DatabaseSSLMode          string
 	RedisURL                 string
 	RedisToken               string
 	ErrorsDefinationFile     string
@@ -77,6 +78,7 @@ func DefaultConfig() *Config {
 		DatabasePort:         os.Getenv("DATABASE_PORT"),
 		DatabaseUser:         os.Getenv("DATABASE_USER"),
 		DatabasePassword:     os.Getenv("DATABASE_PASSWORD"),
+		DatabaseSSLMode:      os.Getenv("DATABASE_SSLMODE"),
 		RedisURL:             os.Getenv("REDIS_URL"),
 		RedisToken:           os.Getenv("REDIS_TOKEN"),
 		ErrorsDefinationFile: os.Getenv("ERRORS_DEFINATION_FILE"),
