@@ -48,6 +48,7 @@ func PostgresConn() (*sqlx.DB, error) {
 	} else {
 		sslMode = "false"
 	}
+
 	driverName = "postgres"
 	if ssl == "true" {
 		driverSource = fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%s sslmode=require", username, databaseName, password, host, port)
