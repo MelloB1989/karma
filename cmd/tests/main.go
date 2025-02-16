@@ -9,5 +9,6 @@ func main() {
 	// tests.GoogleAuth()
 	// tests.TestKarmaErrorPackage()
 	// tests.TestKarmaFiles()
-	tests.TestAmplifyFuncs()
+	// tests.TestAmplifyFuncs()
+	tests.TestECSIntegration()
 }

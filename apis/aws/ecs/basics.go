@@ -14,116 +14,149 @@ type ClientConfig struct {
 	Region string
 }
 
+// ECSConfig holds all configuration for an ECS deployment
+type ECSConfig struct {
+	// Cluster and Service details
+	ClusterName  string
+	ServiceName  string
+	DesiredCount int32
+
+	// Task Definition details
+	Family          string
+	CPU             string
+	Memory          string
+	TaskRole        string
+	ExecutionRole   string
+	Architecture    types.CPUArchitecture
+	OperatingSystem types.OSFamily
+
+	// Container configurations
+	ContainerDefinitions []types.ContainerDefinition
+
+	// Network configuration
+	NetworkMode    types.NetworkMode
+	AssignPublicIP types.AssignPublicIp
+	Subnets        []string
+	SecurityGroups []string
+
+	// Launch configuration
+	LaunchType types.LaunchType
+
+	// Load balancing
+	LoadBalancers     []types.LoadBalancer
+	ServiceRegistries []types.ServiceRegistry
+
+	// Additional settings
+	EnableECSManagedTags bool
+	EnableExecuteCommand bool
+	Tags                 []types.Tag
+}
+
 // ECSClient wraps the AWS ECS client with additional functionality
 type ECSClient struct {
 	Client *ecs.Client
 	Ctx    context.Context
+	Config *ECSConfig
 }
 
 // NewECSClient creates a new ECS client with the given configuration
-func NewECSClient(cfg *ClientConfig) (*ECSClient, error) {
+func NewECSClient(clientCfg *ClientConfig, ecsCfg *ECSConfig) (*ECSClient, error) {
 	ctx := context.Background()
 
-	// Load AWS configuration
 	sdkConfig, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load AWS config: %w", err)
 	}
 
-	// Override region if specified
-	if cfg != nil && cfg.Region != "" {
+	if clientCfg != nil && clientCfg.Region != "" {
 		sdkConfig, err = config.LoadDefaultConfig(ctx,
-			config.WithRegion(cfg.Region),
+			config.WithRegion(clientCfg.Region),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("unable to load AWS config with custom region: %w", err)
 		}
 	}
 
-	// Create ECS client
 	client := ecs.NewFromConfig(sdkConfig)
 	return &ECSClient{
 		Client: client,
 		Ctx:    ctx,
+		Config: ecsCfg,
 	}, nil
 }
 
-// TaskDefinitionInput represents the input for creating/updating a task definition
-type TaskDefinitionInput struct {
-	Family               string
-	ContainerDefinitions []types.ContainerDefinition
-	CPU                  string
-	Memory               string
-	NetworkMode          string
-	TaskRole             string
-	ExecutionRole        string
-	Tags                 []types.Tag
-}
-
-// ServiceInput represents the input for creating/updating a service
-type ServiceInput struct {
-	ClusterName          string
-	ServiceName          string
-	TaskDefinitionARN    string
-	DesiredCount         int32
-	LaunchType           types.LaunchType
-	NetworkConfiguration *types.NetworkConfiguration
-	LoadBalancers        []types.LoadBalancer
-	ServiceRegistries    []types.ServiceRegistry
-	EnableECSManagedTags bool
-	EnableExecuteCommand bool
-	Tags                 []types.Tag
-}
-
-// RegisterTaskDefinition creates or updates a task definition
-func (c *ECSClient) RegisterTaskDefinition(input *TaskDefinitionInput) (*ecs.RegisterTaskDefinitionOutput, error) {
-	return c.Client.RegisterTaskDefinition(c.Ctx, &ecs.RegisterTaskDefinitionInput{
-		Family:                  &input.Family,
-		ContainerDefinitions:    input.ContainerDefinitions,
-		Cpu:                     &input.CPU,
-		Memory:                  &input.Memory,
-		NetworkMode:             types.NetworkMode(input.NetworkMode),
-		TaskRoleArn:             &input.TaskRole,
-		ExecutionRoleArn:        &input.ExecutionRole,
-		Tags:                    input.Tags,
+// RegisterTaskDefinition creates or updates a task definition using the client config
+func (c *ECSClient) RegisterTaskDefinition() (*ecs.RegisterTaskDefinitionOutput, error) {
+	input := &ecs.RegisterTaskDefinitionInput{
+		Family:                  &c.Config.Family,
+		ContainerDefinitions:    c.Config.ContainerDefinitions,
+		Cpu:                     &c.Config.CPU,
+		Memory:                  &c.Config.Memory,
+		NetworkMode:             c.Config.NetworkMode,
+		TaskRoleArn:             &c.Config.TaskRole,
+		ExecutionRoleArn:        &c.Config.ExecutionRole,
 		RequiresCompatibilities: []types.Compatibility{types.CompatibilityFargate},
-	})
+		Tags:                    c.Config.Tags,
+		RuntimePlatform: &types.RuntimePlatform{
+			CpuArchitecture:       c.Config.Architecture,
+			OperatingSystemFamily: c.Config.OperatingSystem,
+		},
+	}
+
+	return c.Client.RegisterTaskDefinition(c.Ctx, input)
 }
 
-// CreateService creates a new ECS service
-func (c *ECSClient) CreateService(input *ServiceInput) (*ecs.CreateServiceOutput, error) {
-	return c.Client.CreateService(c.Ctx, &ecs.CreateServiceInput{
-		Cluster:              &input.ClusterName,
-		ServiceName:          &input.ServiceName,
-		TaskDefinition:       &input.TaskDefinitionARN,
-		DesiredCount:         &input.DesiredCount,
-		LaunchType:           input.LaunchType,
-		NetworkConfiguration: input.NetworkConfiguration,
-		LoadBalancers:        input.LoadBalancers,
-		ServiceRegistries:    input.ServiceRegistries,
-		EnableECSManagedTags: input.EnableECSManagedTags,
-		EnableExecuteCommand: input.EnableExecuteCommand,
-		Tags:                 input.Tags,
-	})
+// CreateService creates a new ECS service using the client config
+func (c *ECSClient) CreateService(taskDefinitionARN string) (*ecs.CreateServiceOutput, error) {
+	input := &ecs.CreateServiceInput{
+		Cluster:              &c.Config.ClusterName,
+		ServiceName:          &c.Config.ServiceName,
+		TaskDefinition:       &taskDefinitionARN,
+		DesiredCount:         &c.Config.DesiredCount,
+		LaunchType:           c.Config.LaunchType,
+		LoadBalancers:        c.Config.LoadBalancers,
+		ServiceRegistries:    c.Config.ServiceRegistries,
+		EnableECSManagedTags: c.Config.EnableECSManagedTags,
+		EnableExecuteCommand: c.Config.EnableExecuteCommand,
+		Tags:                 c.Config.Tags,
+		NetworkConfiguration: &types.NetworkConfiguration{
+			AwsvpcConfiguration: &types.AwsVpcConfiguration{
+				AssignPublicIp: c.Config.AssignPublicIP,
+				Subnets:        c.Config.Subnets,
+				SecurityGroups: c.Config.SecurityGroups,
+			},
+		},
+	}
+
+	return c.Client.CreateService(c.Ctx, input)
 }
 
-// UpdateService updates an existing ECS service
-func (c *ECSClient) UpdateService(input *ServiceInput) (*ecs.UpdateServiceOutput, error) {
-	return c.Client.UpdateService(c.Ctx, &ecs.UpdateServiceInput{
-		Cluster:              &input.ClusterName,
-		Service:              &input.ServiceName,
-		TaskDefinition:       &input.TaskDefinitionARN,
-		DesiredCount:         &input.DesiredCount,
-		NetworkConfiguration: input.NetworkConfiguration,
-		ForceNewDeployment:   true,
-	})
+// UpdateService updates an existing ECS service using the client config
+func (c *ECSClient) UpdateService(taskDefinitionARN string) (*ecs.UpdateServiceOutput, error) {
+	input := &ecs.UpdateServiceInput{
+		Cluster:        &c.Config.ClusterName,
+		Service:        &c.Config.ServiceName,
+		TaskDefinition: &taskDefinitionARN,
+		DesiredCount:   &c.Config.DesiredCount,
+		NetworkConfiguration: &types.NetworkConfiguration{
+			AwsvpcConfiguration: &types.AwsVpcConfiguration{
+				AssignPublicIp: c.Config.AssignPublicIP,
+				Subnets:        c.Config.Subnets,
+				SecurityGroups: c.Config.SecurityGroups,
+			},
+		},
+	}
+
+	return c.Client.UpdateService(c.Ctx, input)
 }
 
-// ForceNewDeployment forces a new deployment of the service
-func (c *ECSClient) ForceNewDeployment(clusterName, serviceName string) (*ecs.UpdateServiceOutput, error) {
-	return c.Client.UpdateService(c.Ctx, &ecs.UpdateServiceInput{
-		Cluster:            &clusterName,
-		Service:            &serviceName,
+// ForceNewDeployment forces a new deployment of the service using the client config
+func (c *ECSClient) ForceNewDeployment() (*ecs.UpdateServiceOutput, error) {
+	input := &ecs.UpdateServiceInput{
+		Cluster:            &c.Config.ClusterName,
+		Service:            &c.Config.ServiceName,
 		ForceNewDeployment: true,
-	})
+	}
+
+	return c.Client.UpdateService(c.Ctx, input)
 }
