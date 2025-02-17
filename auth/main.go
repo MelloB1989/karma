@@ -92,7 +92,7 @@ func NewAuthUserPhone(phone, password, id string) AuthUserPhone {
 	}
 }
 
-func NewAuthUserEmail(email, password, id string) AuthUserPhone {
+func NewAuthUserEmail(email, password, id string) AuthUserEmail {
 	return &User{
 		Phone:    "",
 		Password: password,
