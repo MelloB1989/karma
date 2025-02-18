@@ -61,7 +61,7 @@ func (u *User) GetPhone() string {
 }
 
 func (u *User) GetPassword() string {
-	return ""
+	return u.Password
 }
 
 func (u *User) GetID() string {
