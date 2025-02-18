@@ -14,7 +14,6 @@ import (
 func PostgresConn() (*sqlx.DB, error) {
 
 	env := config.DefaultConfig()
-	ssl := env.DatabaseSSLMode
 	var driverName string
 	var driverSource string
 
@@ -43,18 +42,10 @@ func PostgresConn() (*sqlx.DB, error) {
 	// Extract SSL mode
 	queryParams := parsedURL.Query()
 	sslMode := queryParams.Get("sslmode")
-	if sslMode == "require" {
-		sslMode = "true"
-	} else {
-		sslMode = "false"
-	}
 
 	driverName = "postgres"
-	if ssl == "true" {
-		driverSource = fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%s sslmode=require", username, databaseName, password, host, port)
-	} else {
-		driverSource = fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%s sslmode=disable", username, databaseName, password, host, port)
-	}
+
+	driverSource = fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%s sslmode=%s", username, databaseName, password, host, port, sslMode)
 
 	db, err := sqlx.Connect(driverName, driverSource)
 	if err != nil {
