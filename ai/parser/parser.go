@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/MelloB1989/karma/ai"
 	"github.com/MelloB1989/karma/models"
@@ -220,12 +221,13 @@ func getBasicTypeDescription(t reflect.Type) string {
 }
 
 // Parse sends a prompt to the AI and parses the response into the provided struct
-func (p *Parser) Parse(prompt string, context string, output any) error {
+func (p *Parser) Parse(prompt string, context string, output any) (time.Duration, int, error) {
+	start := time.Now()
 	outputType := reflect.TypeOf(output)
 
 	// Make sure output is a pointer to a struct
 	if outputType.Kind() != reflect.Ptr || outputType.Elem().Kind() != reflect.Struct {
-		return fmt.Errorf("output must be a pointer to a struct")
+		return time.Since(start), 0, fmt.Errorf("output must be a pointer to a struct")
 	}
 
 	// Create a prompt that instructs the AI about the expected structure
@@ -248,7 +250,7 @@ func (p *Parser) Parse(prompt string, context string, output any) error {
 		err = json.Unmarshal([]byte(cleanedJSON), output)
 		if err == nil {
 			// Success!
-			return nil
+			return time.Since(start), resp.Tokens, nil
 		}
 
 		lastErr = fmt.Errorf("JSON parsing failed: %w, Response: %s", err, cleanedJSON)
@@ -260,11 +262,11 @@ func (p *Parser) Parse(prompt string, context string, output any) error {
 			err, structPrompt)
 	}
 
-	return lastErr
+	return time.Since(start), 0, lastErr
 }
 
 // ParseChatResponse sends multiple messages and parses the final response
-func (p *Parser) ParseChatResponse(messages []models.AIMessage, output interface{}) error {
+func (p *Parser) ParseChatResponse(messages []models.AIMessage, output any) error {
 	outputType := reflect.TypeOf(output)
 
 	// Make sure output is a pointer to a struct
@@ -348,7 +350,7 @@ func cleanResponse(response string) string {
 }
 
 // ParseStream handles streaming responses and accumulates them before parsing
-func (p *Parser) ParseStream(prompt string, context string, output interface{}, progressCallback func(string)) error {
+func (p *Parser) ParseStream(prompt string, context string, output any, progressCallback func(string)) error {
 	outputType := reflect.TypeOf(output)
 
 	// Make sure output is a pointer to a struct

@@ -20,10 +20,72 @@ type ProductRecommendation struct {
 	Cons        []string `json:"cons" description:"Product disadvantages"`
 }
 
+type GitLabIssues struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Labels      []string `json:"labels"`
+}
+
+type GitLabIssuesResponse struct {
+	Issues []GitLabIssues `json:"issues"`
+}
+
 func TestKarmaParser() {
+
+	// Example with chat history
+	// chatExample()
+	// productsGeneration()
+	issuesGeneration()
+}
+
+func issuesGeneration() {
 	// Initialize the AI parser
 	p := parser.NewParser(
-		parser.WithModel((ai.ApacClaude3_5Sonnet20240620V1)),
+		parser.WithModel((ai.Llama3_70B)),
+		parser.WithAIOptions(
+			ai.WithTemperature(0.1),
+			ai.WithSystemMessage("You are a helpful AI Project manager that specializes in issue generation."),
+			ai.WithMaxTokens(2000),
+			ai.WithTopP(0.9),
+		),
+		parser.WithMaxRetries(2),
+	)
+
+	// Define a prompt
+	prompt := `
+	Generate a list of issues for Gitlab based on the following issue list, refine and make them detailed:
+	- Default country India ___HIGH
+- Need help, onboarding screens (UI/UX) ___LOW
+	`
+
+	// Context information (optional)
+	context := ""
+
+	// Initialize the output structure
+	var recommendation GitLabIssuesResponse
+
+	// Parse the response
+	timeTaken, tokens, err := p.Parse(prompt, context, &recommendation)
+	if err != nil {
+		log.Fatalf("Error parsing AI response: %v", err)
+	}
+
+	// Display the structured result
+	fmt.Println("Generated Issues:")
+	fmt.Println("Time taken: ", timeTaken)
+	fmt.Println("Tokens: ", tokens)
+	for _, issue := range recommendation.Issues {
+		fmt.Printf("Name: %s\n", issue.Name)
+		fmt.Printf("Description: %s\n", issue.Description)
+		fmt.Printf("Labels: %v\n", issue.Labels)
+		fmt.Println()
+	}
+}
+
+func productsGeneration() {
+	// Initialize the AI parser
+	p := parser.NewParser(
+		parser.WithModel((ai.Llama3_70B)),
 		parser.WithAIOptions(
 			ai.WithTemperature(0.1),
 			ai.WithSystemMessage("You are a helpful assistant that specializes in product recommendations."),
@@ -43,12 +105,14 @@ func TestKarmaParser() {
 	var recommendation ProductRecommendation
 
 	// Parse the response
-	err := p.Parse(prompt, context, &recommendation)
+	timeTaken, tokens, err := p.Parse(prompt, context, &recommendation)
 	if err != nil {
 		log.Fatalf("Error parsing AI response: %v", err)
 	}
 
 	// Display the structured result
+	fmt.Println("Time taken: ", timeTaken)
+	fmt.Println("Tokens: ", tokens)
 	fmt.Printf("Recommended Product: %s\n", recommendation.Name)
 	fmt.Printf("Description: %s\n", recommendation.Description)
 	fmt.Printf("Price: $%.2f\n", recommendation.Price)
@@ -68,9 +132,6 @@ func TestKarmaParser() {
 	for _, con := range recommendation.Cons {
 		fmt.Printf("- %s\n", con)
 	}
-
-	// Example with chat history
-	// chatExample()
 }
 
 func chatExample() {
