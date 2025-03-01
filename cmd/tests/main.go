@@ -12,5 +12,6 @@ func main() {
 	// tests.TestAmplifyFuncs()
 	// tests.TestECSIntegration()
 	// tests.TestDBConnection()
-	tests.TestKarmaParser()
+	// tests.TestKarmaParser()
+	tests.TestAICodeParser()
 }

@@ -74,6 +74,7 @@ const (
 	Claude3_5Sonnet20240620V1     Models = "anthropic.claude-3-5-sonnet-20240620-v1:0"
 	Claude3_5Sonnet20241022V2     Models = "anthropic.claude-3-5-sonnet-20241022-v2:0"
 	Claude3_5Haiku20241022V1      Models = "anthropic.claude-3-5-haiku-20241022-v1:0"
+	Claude3_7Sonnet20250219V1     Models = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
 	ApacClaude3_5Sonnet20240620V1 Models = "apac.anthropic.claude-3-5-sonnet-20240620-v1:0"
 
 	// Meta's LLaMA Models
@@ -191,7 +192,7 @@ func (m Models) IsMetaModel() bool {
 }
 
 func (m Models) IsAnthropicModel() bool {
-	return strings.HasPrefix(string(m), "anthropic.claude") || strings.HasPrefix(string(m), "claude-")
+	return strings.HasPrefix(string(m), "anthropic.claude") || strings.HasPrefix(string(m), "claude-") || strings.HasPrefix(string(m), "us.anthropic.claude")
 }
 
 func (m Models) IsAmazonModel() bool {
@@ -220,7 +221,7 @@ func (m Models) IsGoogleModel() bool {
 
 func (m Models) IsBedrockModel() bool {
 	bedrockPrefixes := []string{
-		"meta.", "mistral.", "amazon.", "stability.", "ai21.", "anthropic.", "cohere.", "apac.",
+		"meta.", "mistral.", "amazon.", "stability.", "ai21.", "anthropic.", "cohere.", "apac.", "us.anthropic",
 	}
 
 	for _, prefix := range bedrockPrefixes {
@@ -347,7 +348,7 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 		}
 		return &models.AIChatResponse{
 			AIResponse: response.Output.Message.Content[0].Text,
-			Tokens:     response.Usage.OutputTokens, // Not accurate
+			Tokens:     response.Usage.TotalTokens,
 			TimeTaken:  0,
 		}, nil
 	} else {
@@ -387,7 +388,7 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 		}
 		return &models.AIChatResponse{
 			AIResponse: response.Output.Message.Content[0].Text,
-			Tokens:     response.Usage.OutputTokens, // Not accurate
+			Tokens:     response.Usage.TotalTokens,
 			TimeTaken:  0,
 		}, nil
 	} else {

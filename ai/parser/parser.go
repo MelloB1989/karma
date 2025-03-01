@@ -232,7 +232,7 @@ func (p *Parser) Parse(prompt string, context string, output any) (time.Duration
 
 	// Create a prompt that instructs the AI about the expected structure
 	structPrompt := createPromptForStruct(outputType.Elem(), prompt, context)
-	fmt.Println(structPrompt)
+	// fmt.Println(structPrompt)
 
 	var lastErr error
 	for range p.maxRetries {
