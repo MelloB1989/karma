@@ -11,5 +11,6 @@ func main() {
 	// tests.TestKarmaFiles()
 	// tests.TestAmplifyFuncs()
 	// tests.TestECSIntegration()
-	tests.TestDBConnection()
+	// tests.TestDBConnection()
+	tests.TestKarmaParser()
 }
