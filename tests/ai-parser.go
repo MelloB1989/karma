@@ -21,9 +21,9 @@ type ProductRecommendation struct {
 }
 
 type GitLabIssues struct {
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	Labels      []string `json:"labels"`
+	Name        string   `json:"name" description:"Issue name"`
+	Description string   `json:"description" description:"Issue description"`
+	Labels      []string `json:"labels" description:"Issue labels"`
 }
 
 type GitLabIssuesResponse struct {

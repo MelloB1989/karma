@@ -278,6 +278,8 @@ func LoginWithPhoneOTPHandler(getUserByPhone func(phone string) (AuthUserPhone, 
 		// Include test_phone flag if it's a test number
 		if isTestNumber {
 			responseData["test_phone"] = true
+		} else {
+			responseData["test_phone"] = false
 		}
 
 		return c.Status(fiber.StatusOK).JSON(ResponseHTTP{
