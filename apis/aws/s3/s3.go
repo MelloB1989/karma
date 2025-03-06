@@ -14,8 +14,57 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
+
+func UploadFileToS3(accessKeyID, secretAccessKey, region, bucketName, objectKey, filePath string) error {
+	// Create a static credentials provider
+	creds := aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, ""))
+
+	// Load the AWS configuration with the provided credentials
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion(region),
+		config.WithCredentialsProvider(creds),
+	)
+	if err != nil {
+		fmt.Println("Couldn't load default configuration. Have you set up your AWS account?")
+		fmt.Println(err)
+		return err
+	}
+
+	// Create an S3 client
+	s3Client := s3.NewFromConfig(cfg)
+
+	// Open the file to upload
+	file, err := os.Open(filePath)
+	if err != nil {
+		log.Printf("Couldn't open file %v to upload. Here's why: %v\n", filePath, err)
+		return err
+	}
+	defer file.Close()
+
+	// Upload the file to S3
+	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(objectKey),
+		Body:   file,
+		ACL:    "public-read",
+	})
+	if err != nil {
+		log.Printf("Couldn't upload file %v to %v:%v. Here's why: %v\n", filePath, bucketName, objectKey, err)
+		return err
+	}
+
+	// Optionally, delete the local file after uploading
+	err = os.Remove(filePath)
+	if err != nil {
+		fmt.Println("Failed to delete file:", err)
+		return err
+	}
+
+	return nil
+}
 
 func UploadFile(objectKey string, fileName string) error {
 	bucketName := c.DefaultConfig().AwsBucketName

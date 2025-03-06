@@ -2,7 +2,9 @@ package tests
 
 import (
 	"fmt"
+	"log"
 
+	"github.com/MelloB1989/karma/apis/aws/s3"
 	"github.com/MelloB1989/karma/files"
 	"github.com/gofiber/fiber/v2"
 )
@@ -41,4 +43,20 @@ func TestKarmaFiles() {
 	})
 	app.Listen(":3000")
 
+}
+
+func TestS3Upload() {
+	accessKeyID := ""
+	secretAccessKey := ""
+	region := ""
+	bucketName := ""
+	objectKey := ""
+	filePath := ""
+
+	err := s3.UploadFileToS3(accessKeyID, secretAccessKey, region, bucketName, objectKey, filePath)
+	if err != nil {
+		log.Fatalf("Failed to upload file: %v", err)
+	} else {
+		fmt.Println("File uploaded successfully!")
+	}
 }
