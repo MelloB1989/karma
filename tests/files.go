@@ -52,8 +52,9 @@ func TestS3Upload() {
 	bucketName := ""
 	objectKey := ""
 	filePath := ""
+	debug := true
 
-	err := s3.UploadFileToS3(accessKeyID, secretAccessKey, region, bucketName, objectKey, filePath)
+	err := s3.UploadLargeFileToS3(accessKeyID, secretAccessKey, region, bucketName, objectKey, filePath, debug)
 	if err != nil {
 		log.Fatalf("Failed to upload file: %v", err)
 	} else {
