@@ -15,6 +15,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.78.1
 	github.com/aws/aws-sdk-go-v2/service/ses v1.29.2
 	github.com/aws/aws-sdk-go-v2/service/sns v1.33.12
+	github.com/aws/aws-sdk-go-v2/service/transcribestreaming v1.25.1
 	github.com/aws/smithy-go v1.22.2
 	github.com/gofiber/fiber/v2 v2.52.5
 	github.com/gofiber/storage/redis v1.3.4

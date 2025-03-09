@@ -113,27 +113,6 @@ func (o *ORM) GetByPrimaryKey(key string) (any, error) {
 	return slice.Index(0).Interface(), nil
 }
 
-func AssertAndReturnSlice(targetType reflect.Type, value interface{}, e error) ([]interface{}, error) {
-	// Check if value is a slice
-	v := reflect.ValueOf(value)
-	if v.Kind() != reflect.Slice {
-		log.Println("Expected a slice but got:", v.Kind())
-		return nil, errors.New("value is not a slice")
-	}
-
-	// Create a new slice of the target type
-	result := reflect.MakeSlice(reflect.SliceOf(targetType), v.Len(), v.Cap())
-	reflect.Copy(result, v)
-
-	// Return the value as a slice of interfaces
-	var resultSlice []interface{}
-	for i := 0; i < result.Len(); i++ {
-		resultSlice = append(resultSlice, result.Index(i).Interface())
-	}
-
-	return resultSlice, nil
-}
-
 func (o *ORM) GetByFieldLike(fieldName string, value any) (any, error) {
 	fmt.Println(reflect.TypeOf(o.structType))
 	columnName, ok := o.fieldMap[fieldName]
@@ -572,7 +551,7 @@ func (o *ORM) getPrimaryKeyField() string {
 	return ""
 }
 
-func (o *ORM) QueryRaw(sqlQuery string, args ...interface{}) (interface{}, error) {
+func (o *ORM) QueryRaw(sqlQuery string, args ...any) (any, error) {
 	// Establish database connection
 	db, err := database.PostgresConn()
 	if err != nil {

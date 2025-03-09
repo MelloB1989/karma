@@ -14,5 +14,7 @@ func main() {
 	// tests.TestDBConnection()
 	// tests.TestKarmaParser()
 	// tests.TestAICodeParser()
-	tests.TestS3Upload()
+	// tests.TestS3Upload()
+	// transcribe.StartStream()
+	tests.TestORMV2()
 }
