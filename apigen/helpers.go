@@ -34,23 +34,18 @@ func writeFieldToMarkdown(sb *strings.Builder, field RequestBodyField, indent in
 // extractStructFields recursively extracts field definitions from a struct
 func extractStructFields(t reflect.Type, overrides map[string]FieldOverride, prefix string) []RequestBodyField {
 	var fields []RequestBodyField
-
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
-
 		// Skip unexported fields
 		if !field.IsExported() {
 			continue
 		}
-
 		fieldName := field.Name
 		qualifiedName := prefix + fieldName
-
 		// Check if this field should be excluded via override
 		if override, exists := overrides[qualifiedName]; exists && override.Exclude {
 			continue
 		}
-
 		// Extract JSON tag
 		jsonTag := field.Tag.Get("json")
 		jsonName := strings.Split(jsonTag, ",")[0]
@@ -60,13 +55,10 @@ func extractStructFields(t reflect.Type, overrides map[string]FieldOverride, pre
 		if jsonName == "-" {
 			continue // Skip fields explicitly excluded with json:"-"
 		}
-
 		// Extract description
 		description := field.Tag.Get("description")
-
 		// Determine if required (assume required by default)
 		required := !strings.Contains(jsonTag, "omitempty")
-
 		// Create base field
 		requestField := RequestBodyField{
 			Name:        fieldName,
@@ -75,7 +67,6 @@ func extractStructFields(t reflect.Type, overrides map[string]FieldOverride, pre
 			Required:    required,
 			Description: description,
 		}
-
 		// Apply overrides if they exist
 		if override, exists := overrides[qualifiedName]; exists {
 			if override.JsonName != "" {
@@ -95,15 +86,36 @@ func extractStructFields(t reflect.Type, overrides map[string]FieldOverride, pre
 			}
 		}
 
-		// Handle nested structs
+		// Handle nested structs - both named and anonymous
 		if field.Type.Kind() == reflect.Struct {
 			nestedPrefix := qualifiedName + "."
 			requestField.Fields = extractStructFields(field.Type, overrides, nestedPrefix)
+		} else if field.Type.Kind() == reflect.Ptr && field.Type.Elem().Kind() == reflect.Struct {
+			// Handle pointer to struct
+			nestedPrefix := qualifiedName + "."
+			requestField.Fields = extractStructFields(field.Type.Elem(), overrides, nestedPrefix)
+		} else if field.Type.Kind() == reflect.Slice && field.Type.Elem().Kind() == reflect.Struct {
+			// Handle slice of structs - we extract the fields from the element type
+			// Note: This will only show the structure, not array-specific info
+			nestedPrefix := qualifiedName + "[]."
+			requestField.Fields = extractStructFields(field.Type.Elem(), overrides, nestedPrefix)
+		} else if field.Type.Kind() == reflect.Map && field.Type.Elem().Kind() == reflect.Struct {
+			// Handle maps with struct values - we extract fields from the value type
+			// Note: This will only show the structure of values, not map-specific info
+			nestedPrefix := qualifiedName + "{}."
+			requestField.Fields = extractStructFields(field.Type.Elem(), overrides, nestedPrefix)
 		}
 
-		fields = append(fields, requestField)
+		// Special handling for anonymous structs
+		if field.Anonymous && field.Type.Kind() == reflect.Struct {
+			// For anonymous embedded structs, we want to flatten the fields
+			// rather than nesting them under the embedded struct name
+			embeddedFields := extractStructFields(field.Type, overrides, prefix)
+			fields = append(fields, embeddedFields...)
+		} else {
+			fields = append(fields, requestField)
+		}
 	}
-
 	return fields
 }
 
