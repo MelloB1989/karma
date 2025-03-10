@@ -3,31 +3,51 @@ package apigen
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 )
 
 // APIDefinition represents a complete API with base URL and endpoints
 type APIDefinition struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	BaseURL     string     `json:"baseUrl"`
-	Endpoints   []Endpoint `json:"endpoints"`
+	Name               string            `json:"name"`
+	Description        string            `json:"description"`
+	BaseURLs           []string          `json:"baseUrls"`
+	GlobalVariables    map[string]string `json:"globalVariables,omitempty"`
+	Endpoints          []Endpoint        `json:"endpoints"`
+	OutputFileBaseName string            `json:"-"` // Not serialized but used for exports
+	OutputFolder       string            `json:"-"` // Not serialized but used for exports
 }
+
+type Headers string
+type KarmaHeaders map[Headers]string
+
+const (
+	HeaderPrivateToken    Headers = "Private-Token"
+	HeaderContentType     Headers = "Content-Type"
+	HeaderAccept          Headers = "Accept"
+	HeaderUserAgent       Headers = "User-Agent"
+	HeaderAuthorization   Headers = "Authorization"
+	HeaderCacheControl    Headers = "Cache-Control"
+	HeaderContentLength   Headers = "Content-Length"
+	HeaderContentEncoding Headers = "Content-Encoding"
+	HeaderContentLanguage Headers = "Content-Language"
+	HeaderContentLocation Headers = "Content-Location"
+)
 
 // Endpoint represents a single API endpoint
 type Endpoint struct {
-	Path           string            `json:"path"`
-	Method         string            `json:"method"`
-	Summary        string            `json:"summary"`
-	Description    string            `json:"description"`
-	Headers        map[string]string `json:"headers,omitempty"`
-	QueryParams    []Parameter       `json:"queryParams,omitempty"`
-	RequestBody    *RequestBody      `json:"requestBody,omitempty"`
-	Responses      []Response        `json:"responses"`
-	Authentication *Auth             `json:"authentication,omitempty"`
+	Path           string             `json:"path"`
+	Method         string             `json:"method"`
+	Summary        string             `json:"summary"`
+	Description    string             `json:"description"`
+	Headers        map[Headers]string `json:"headers,omitempty"`
+	QueryParams    []Parameter        `json:"queryParams,omitempty"`
+	PathParams     []Parameter        `json:"pathParams,omitempty"` // New field for path parameters
+	RequestBody    *RequestBody       `json:"requestBody,omitempty"`
+	Responses      []Response         `json:"responses"`
+	Authentication *Auth              `json:"authentication,omitempty"`
 }
 
 // Parameter defines a request parameter (query or path param)
@@ -41,20 +61,33 @@ type Parameter struct {
 
 // RequestBody defines the structure of a request body
 type RequestBody struct {
-	ContentType string          `json:"contentType"`
-	Required    bool            `json:"required"`
-	Schema      json.RawMessage `json:"schema,omitempty"`
-	Example     json.RawMessage `json:"example,omitempty"`
+	ContentType string             `json:"contentType"`
+	Required    bool               `json:"required"`
+	Schema      json.RawMessage    `json:"schema,omitempty"`
+	Example     json.RawMessage    `json:"example,omitempty"`
+	Fields      []RequestBodyField `json:"fields,omitempty"` // Structured field definitions
+}
+
+// RequestBodyField represents a single field in a request body
+type RequestBodyField struct {
+	Name        string             `json:"name"`
+	JsonName    string             `json:"jsonName"`
+	Type        string             `json:"type"`
+	Required    bool               `json:"required"`
+	Description string             `json:"description,omitempty"`
+	Example     any                `json:"example,omitempty"`
+	Fields      []RequestBodyField `json:"fields,omitempty"` // For nested objects
 }
 
 // Response defines a possible API response
 type Response struct {
-	StatusCode  int               `json:"statusCode"`
-	Description string            `json:"description"`
-	Headers     map[string]string `json:"headers,omitempty"`
-	ContentType string            `json:"contentType,omitempty"`
-	Schema      json.RawMessage   `json:"schema,omitempty"`
-	Example     json.RawMessage   `json:"example,omitempty"`
+	StatusCode  int                `json:"statusCode"`
+	Description string             `json:"description"`
+	Headers     map[Headers]string `json:"headers,omitempty"`
+	ContentType string             `json:"contentType,omitempty"`
+	Schema      json.RawMessage    `json:"schema,omitempty"`
+	Example     json.RawMessage    `json:"example,omitempty"`
+	Fields      []RequestBodyField `json:"fields,omitempty"` // Reusing the same field structure
 }
 
 // Auth defines authentication details
@@ -64,42 +97,172 @@ type Auth struct {
 	Parameters  map[string]string `json:"parameters,omitempty"`
 }
 
-// NewAPIDefinition creates a new API definition with the given name and base URL
-func NewAPIDefinition(name, description, baseURL string) *APIDefinition {
+// FieldOverride allows overriding specific fields in a struct
+type FieldOverride struct {
+	Name        string `json:"name"`
+	JsonName    string `json:"jsonName,omitempty"`
+	Type        string `json:"type,omitempty"`
+	Required    *bool  `json:"required,omitempty"`
+	Description string `json:"description,omitempty"`
+	Example     any    `json:"example,omitempty"`
+	Exclude     bool   `json:"exclude,omitempty"`
+}
+
+// NewAPIDefinition creates a new API definition with the given name and base URLs
+func NewAPIDefinition(name, description string, baseURLs []string, outputFolder, outputFileName string) *APIDefinition {
 	return &APIDefinition{
-		Name:        name,
-		Description: description,
-		BaseURL:     baseURL,
-		Endpoints:   []Endpoint{},
+		Name:               name,
+		Description:        description,
+		BaseURLs:           baseURLs,
+		GlobalVariables:    make(map[string]string),
+		Endpoints:          []Endpoint{},
+		OutputFileBaseName: outputFileName,
+		OutputFolder:       outputFolder,
 	}
+}
+
+// AddGlobalVariable adds a global variable to the API definition
+func (api *APIDefinition) AddGlobalVariable(name, value string) *APIDefinition {
+	api.GlobalVariables[name] = value
+	return api
 }
 
 // AddEndpoint adds a new endpoint to the API definition
 func (api *APIDefinition) AddEndpoint(endpoint Endpoint) *APIDefinition {
+	// Extract path parameters from the path
+	pathParams := extractPathParams(endpoint.Path)
+
+	// If path parameters are found but not defined in the endpoint, create them
+	if len(pathParams) > 0 {
+		paramMap := make(map[string]bool)
+		for _, param := range endpoint.PathParams {
+			paramMap[param.Name] = true
+		}
+
+		for _, paramName := range pathParams {
+			if !paramMap[paramName] {
+				endpoint.PathParams = append(endpoint.PathParams, Parameter{
+					Name:        paramName,
+					Type:        "string",
+					Required:    true,
+					Description: fmt.Sprintf("Path parameter: %s", paramName),
+				})
+			}
+		}
+	}
+
 	api.Endpoints = append(api.Endpoints, endpoint)
 	return api
 }
 
+// RequestBodyFromStruct creates a RequestBody from a struct type
+func RequestBodyFromStruct(structPtr any, contentType string, required bool, overrides []FieldOverride) (*RequestBody, error) {
+	t := reflect.TypeOf(structPtr)
+
+	// Ensure we're dealing with a struct
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("expected struct or pointer to struct, got %v", t.Kind())
+	}
+
+	// Create overrides map for quick lookup
+	overrideMap := make(map[string]FieldOverride)
+	for _, override := range overrides {
+		overrideMap[override.Name] = override
+	}
+
+	fields := extractStructFields(t, overrideMap, "")
+
+	// Create example JSON
+	exampleValue := reflect.New(t).Interface()
+	exampleJSON, err := json.MarshalIndent(exampleValue, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("error creating example JSON: %w", err)
+	}
+
+	// // Create JSON schema (simplified)
+	// schemaMap := map[string]any{
+	// 	"type":       "object",
+	// 	"properties": map[string]any{},
+	// 	"required":   []string{},
+	// }
+
+	return &RequestBody{
+		ContentType: contentType,
+		Required:    required,
+		Fields:      fields,
+		Example:     exampleJSON,
+		Schema:      nil, // Advanced schema generation would go here
+	}, nil
+}
+
+// ResponseFromStruct creates a Response from a struct type
+func ResponseFromStruct(statusCode int, description string, structPtr any, contentType string, overrides []FieldOverride) (*Response, error) {
+	t := reflect.TypeOf(structPtr)
+
+	// Ensure we're dealing with a struct
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+
+	if t.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("expected struct or pointer to struct, got %v", t.Kind())
+	}
+
+	// Create overrides map for quick lookup
+	overrideMap := make(map[string]FieldOverride)
+	for _, override := range overrides {
+		overrideMap[override.Name] = override
+	}
+
+	fields := extractStructFields(t, overrideMap, "")
+
+	// Create example JSON
+	exampleValue := reflect.New(t).Interface()
+	exampleJSON, err := json.MarshalIndent(exampleValue, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("error creating example JSON: %w", err)
+	}
+
+	return &Response{
+		StatusCode:  statusCode,
+		Description: description,
+		ContentType: contentType,
+		Fields:      fields,
+		Example:     exampleJSON,
+	}, nil
+}
+
 // SaveToFile saves the API definition to a JSON file
-func (api *APIDefinition) SaveToFile(filename string) error {
+func (api *APIDefinition) SaveToFile() error {
+	if api.OutputFolder == "" {
+		api.OutputFolder = "."
+	}
+
+	if api.OutputFileBaseName == "" {
+		api.OutputFileBaseName = strings.ToLower(strings.ReplaceAll(api.Name, " ", "_"))
+	}
+
+	jsonFilename := filepath.Join(api.OutputFolder, api.OutputFileBaseName+".json")
+
 	data, err := json.MarshalIndent(api, "", "  ")
 	if err != nil {
 		return fmt.Errorf("error marshaling API definition: %w", err)
 	}
 
-	dir := filepath.Dir(filename)
-	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("error creating directory: %w", err)
-		}
+	if err := os.MkdirAll(api.OutputFolder, 0755); err != nil {
+		return fmt.Errorf("error creating directory: %w", err)
 	}
 
-	return ioutil.WriteFile(filename, data, 0644)
+	return os.WriteFile(jsonFilename, data, 0644)
 }
 
 // LoadFromFile loads an API definition from a JSON file
 func LoadFromFile(filename string) (*APIDefinition, error) {
-	data, err := ioutil.ReadFile(filename)
+	data, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("error reading file: %w", err)
 	}
@@ -109,280 +272,64 @@ func LoadFromFile(filename string) (*APIDefinition, error) {
 		return nil, fmt.Errorf("error unmarshaling API definition: %w", err)
 	}
 
+	// Set output file information based on input file
+	api.OutputFolder = filepath.Dir(filename)
+	api.OutputFileBaseName = strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
+
 	return &api, nil
 }
 
 // ExportToPostman exports the API definition to a Postman collection
-func (api *APIDefinition) ExportToPostman(filename string) error {
+func (api *APIDefinition) ExportToPostman() error {
 	collection := generatePostmanCollection(api)
 
+	filename := filepath.Join(api.OutputFolder, api.OutputFileBaseName+"_postman.json")
 	data, err := json.MarshalIndent(collection, "", "  ")
 	if err != nil {
 		return fmt.Errorf("error marshaling Postman collection: %w", err)
 	}
 
-	return ioutil.WriteFile(filename, data, 0644)
+	return os.WriteFile(filename, data, 0644)
 }
 
 // ExportToOpenAPI exports the API definition to an OpenAPI JSON file
-func (api *APIDefinition) ExportToOpenAPI(filename string) error {
+func (api *APIDefinition) ExportToOpenAPI() error {
 	openapi := generateOpenAPI(api)
 
+	filename := filepath.Join(api.OutputFolder, api.OutputFileBaseName+"_openapi.json")
 	data, err := json.MarshalIndent(openapi, "", "  ")
 	if err != nil {
 		return fmt.Errorf("error marshaling OpenAPI specification: %w", err)
 	}
 
-	return ioutil.WriteFile(filename, data, 0644)
+	return os.WriteFile(filename, data, 0644)
 }
 
 // ExportToMarkdown exports the API definition to a Markdown file
-// This format is particularly LLM-friendly
-func (api *APIDefinition) ExportToMarkdown(filename string) error {
+func (api *APIDefinition) ExportToMarkdown() error {
 	markdown := generateMarkdown(api)
-	return ioutil.WriteFile(filename, []byte(markdown), 0644)
+
+	filename := filepath.Join(api.OutputFolder, api.OutputFileBaseName+"_docs.md")
+	return os.WriteFile(filename, []byte(markdown), 0644)
 }
 
-// Helper functions to generate different export formats
-
-func generatePostmanCollection(api *APIDefinition) map[string]any {
-	collection := map[string]any{
-		"info": map[string]any{
-			"name":        api.Name,
-			"description": api.Description,
-			"schema":      "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-		},
-		"item": []any{},
+// ExportAll exports to all supported formats
+func (api *APIDefinition) ExportAll() error {
+	if err := api.SaveToFile(); err != nil {
+		return err
 	}
 
-	items := []any{}
-	for _, endpoint := range api.Endpoints {
-		item := map[string]any{
-			"name": endpoint.Summary,
-			"request": map[string]any{
-				"method": endpoint.Method,
-				"url": map[string]any{
-					"raw":  api.BaseURL + endpoint.Path,
-					"host": strings.Split(strings.TrimPrefix(strings.TrimPrefix(api.BaseURL, "http://"), "https://"), "/")[0],
-					"path": strings.Split(strings.Trim(endpoint.Path, "/"), "/"),
-				},
-				"description": endpoint.Description,
-			},
-			"response": []any{},
-		}
-
-		// Add headers
-		if len(endpoint.Headers) > 0 {
-			headers := []any{}
-			for key, value := range endpoint.Headers {
-				headers = append(headers, map[string]string{
-					"key":   key,
-					"value": value,
-				})
-			}
-			item["request"].(map[string]any)["header"] = headers
-		}
-
-		// Add request body if present
-		if endpoint.RequestBody != nil {
-			item["request"].(map[string]any)["body"] = map[string]any{
-				"mode": "raw",
-				"raw":  string(endpoint.RequestBody.Example),
-				"options": map[string]any{
-					"raw": map[string]any{
-						"language": "json",
-					},
-				},
-			}
-		}
-
-		// Add responses
-		responses := []any{}
-		for _, resp := range endpoint.Responses {
-			response := map[string]any{
-				"name":        fmt.Sprintf("%d %s", resp.StatusCode, resp.Description),
-				"code":        resp.StatusCode,
-				"description": resp.Description,
-			}
-
-			if resp.Example != nil {
-				response["body"] = string(resp.Example)
-			}
-
-			responses = append(responses, response)
-		}
-		item["response"] = responses
-
-		items = append(items, item)
+	if err := api.ExportToPostman(); err != nil {
+		return err
 	}
 
-	collection["item"] = items
-	return collection
-}
-
-func generateOpenAPI(api *APIDefinition) map[string]any {
-	openapi := map[string]any{
-		"openapi": "3.0.0",
-		"info": map[string]string{
-			"title":       api.Name,
-			"description": api.Description,
-			"version":     "1.0.0",
-		},
-		"servers": []map[string]string{
-			{
-				"url": api.BaseURL,
-			},
-		},
-		"paths": map[string]any{},
+	if err := api.ExportToOpenAPI(); err != nil {
+		return err
 	}
 
-	paths := map[string]any{}
-	for _, endpoint := range api.Endpoints {
-		method := strings.ToLower(endpoint.Method)
-
-		pathData := map[string]any{
-			"summary":     endpoint.Summary,
-			"description": endpoint.Description,
-			"responses":   map[string]any{},
-		}
-
-		// Add parameters
-		parameters := []any{}
-		for _, param := range endpoint.QueryParams {
-			parameters = append(parameters, map[string]any{
-				"name":        param.Name,
-				"in":          "query",
-				"description": param.Description,
-				"required":    param.Required,
-				"schema": map[string]string{
-					"type": param.Type,
-				},
-				"example": param.Example,
-			})
-		}
-
-		for key := range endpoint.Headers {
-			parameters = append(parameters, map[string]any{
-				"name":     key,
-				"in":       "header",
-				"required": true,
-				"schema": map[string]string{
-					"type": "string",
-				},
-			})
-		}
-
-		if len(parameters) > 0 {
-			pathData["parameters"] = parameters
-		}
-
-		// Add request body
-		if endpoint.RequestBody != nil {
-			pathData["requestBody"] = map[string]any{
-				"required": endpoint.RequestBody.Required,
-				"content": map[string]any{
-					endpoint.RequestBody.ContentType: map[string]any{
-						"schema":  endpoint.RequestBody.Schema,
-						"example": endpoint.RequestBody.Example,
-					},
-				},
-			}
-		}
-
-		// Add responses
-		responses := map[string]any{}
-		for _, resp := range endpoint.Responses {
-			respData := map[string]any{
-				"description": resp.Description,
-			}
-
-			if resp.Schema != nil {
-				respData["content"] = map[string]any{
-					resp.ContentType: map[string]any{
-						"schema":  resp.Schema,
-						"example": resp.Example,
-					},
-				}
-			}
-
-			responses[fmt.Sprintf("%d", resp.StatusCode)] = respData
-		}
-		pathData["responses"] = responses
-
-		// Add path to paths object
-		if _, ok := paths[endpoint.Path]; !ok {
-			paths[endpoint.Path] = map[string]any{}
-		}
-		paths[endpoint.Path].(map[string]any)[method] = pathData
+	if err := api.ExportToMarkdown(); err != nil {
+		return err
 	}
 
-	openapi["paths"] = paths
-	return openapi
-}
-
-func generateMarkdown(api *APIDefinition) string {
-	var sb strings.Builder
-
-	sb.WriteString(fmt.Sprintf("# %s\n\n", api.Name))
-	sb.WriteString(fmt.Sprintf("%s\n\n", api.Description))
-	sb.WriteString(fmt.Sprintf("Base URL: `%s`\n\n", api.BaseURL))
-
-	sb.WriteString("## Endpoints\n\n")
-	for _, endpoint := range api.Endpoints {
-		sb.WriteString(fmt.Sprintf("### %s\n\n", endpoint.Summary))
-		sb.WriteString(fmt.Sprintf("**Path:** `%s`\n\n", endpoint.Path))
-		sb.WriteString(fmt.Sprintf("**Method:** `%s`\n\n", endpoint.Method))
-
-		if endpoint.Description != "" {
-			sb.WriteString(fmt.Sprintf("%s\n\n", endpoint.Description))
-		}
-
-		if len(endpoint.Headers) > 0 {
-			sb.WriteString("#### Headers\n\n")
-			for key, value := range endpoint.Headers {
-				sb.WriteString(fmt.Sprintf("- `%s`: %s\n", key, value))
-			}
-			sb.WriteString("\n")
-		}
-
-		if len(endpoint.QueryParams) > 0 {
-			sb.WriteString("#### Query Parameters\n\n")
-			for _, param := range endpoint.QueryParams {
-				required := ""
-				if param.Required {
-					required = " (required)"
-				}
-				sb.WriteString(fmt.Sprintf("- `%s`: %s%s", param.Name, param.Description, required))
-				if param.Example != "" {
-					sb.WriteString(fmt.Sprintf(" (Example: `%s`)", param.Example))
-				}
-				sb.WriteString("\n")
-			}
-			sb.WriteString("\n")
-		}
-
-		if endpoint.RequestBody != nil {
-			sb.WriteString("#### Request Body\n\n")
-			sb.WriteString(fmt.Sprintf("Content-Type: `%s`\n\n", endpoint.RequestBody.ContentType))
-
-			if endpoint.RequestBody.Example != nil {
-				sb.WriteString("Example:\n\n```json\n")
-				sb.WriteString(string(endpoint.RequestBody.Example))
-				sb.WriteString("\n```\n\n")
-			}
-		}
-
-		sb.WriteString("#### Responses\n\n")
-		for _, resp := range endpoint.Responses {
-			sb.WriteString(fmt.Sprintf("**%d**: %s\n\n", resp.StatusCode, resp.Description))
-
-			if resp.Example != nil {
-				sb.WriteString("Example:\n\n```json\n")
-				sb.WriteString(string(resp.Example))
-				sb.WriteString("\n```\n\n")
-			}
-		}
-	}
-
-	return sb.String()
+	return nil
 }

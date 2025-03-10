@@ -1,136 +1,240 @@
 package tests
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 
 	"github.com/MelloB1989/karma/apigen"
 )
 
+type GitLabIssue struct {
+	Name        string   `json:"name" description:"Issue name"`
+	Description string   `json:"description" description:"Issue description"`
+	Labels      []string `json:"labels" description:"Issue labels"`
+	Assignees   []string `json:"assignees,omitempty" description:"Users assigned to this issue"`
+	DueDate     string   `json:"due_date,omitempty" description:"Issue due date (YYYY-MM-DD)"`
+}
+
+type GitLabIssueResponse struct {
+	ID          int      `json:"id" description:"Issue ID"`
+	Name        string   `json:"name" description:"Issue name"`
+	Description string   `json:"description" description:"Issue description"`
+	Labels      []string `json:"labels" description:"Issue labels"`
+	Assignees   []string `json:"assignees" description:"Users assigned to this issue"`
+	DueDate     string   `json:"due_date" description:"Issue due date (YYYY-MM-DD)"`
+	CreatedAt   string   `json:"created_at" description:"Creation timestamp"`
+	UpdatedAt   string   `json:"updated_at" description:"Last update timestamp"`
+	WebURL      string   `json:"web_url" description:"URL to view the issue in browser"`
+}
+
 func TestAPIGen() {
-	// Create a new API definition
+	// Initialize API definition with output details
 	api := apigen.NewAPIDefinition(
-		"User Management API",
-		"API for managing users in the system",
-		"https://api.example.com/v1",
+		"GitLab Issues API",
+		"API for managing issues in GitLab projects",
+		[]string{
+			"https://gitlab.com/api/v4",
+			"https://gitlab.example.com/api/v4",
+		},
+		"./docstest",    // Output folder
+		"gitlab_issues", // Base filename for exports
 	)
 
-	// Define the Get Users endpoint
-	getUsersEndpoint := apigen.Endpoint{
-		Path:        "/users",
+	// Add global variables
+	api.AddGlobalVariable("api_version", "v4")
+	api.AddGlobalVariable("default_per_page", "20")
+
+	// Create request body from struct with field overrides
+	requestBody, err := apigen.RequestBodyFromStruct(
+		GitLabIssue{},
+		"application/json",
+		true,
+		[]apigen.FieldOverride{
+			{
+				Name:        "DueDate",
+				Description: "Due date in ISO format (YYYY-MM-DD)",
+				Example:     "2025-06-30",
+			},
+			{
+				Name:     "Assignees",
+				Example:  []string{"user1", "user2"},
+				Required: new(bool), // false
+			},
+		},
+	)
+	if err != nil {
+		log.Fatalf("Error creating request body: %v", err)
+	}
+
+	// Create response from struct with field overrides
+	successResponse, err := apigen.ResponseFromStruct(
+		200,
+		"Issue created successfully",
+		GitLabIssueResponse{},
+		"application/json",
+		[]apigen.FieldOverride{
+			{
+				Name:    "ID",
+				Example: 42,
+			},
+			{
+				Name:    "WebURL",
+				Example: "https://gitlab.com/mygroup/myproject/-/issues/42",
+			},
+		},
+	)
+	if err != nil {
+		log.Fatalf("Error creating response: %v", err)
+	}
+
+	// Add endpoints with dynamic path parameters
+	api.AddEndpoint(apigen.Endpoint{
+		Path:        "/projects/{project_id}/issues",
 		Method:      "GET",
-		Summary:     "Get all users",
-		Description: "Retrieves a list of all users in the system with pagination",
-		Headers: map[string]string{
-			"Authorization": "Bearer {token}",
+		Summary:     "List project issues",
+		Description: "Get a list of issues for a specific project",
+		PathParams: []apigen.Parameter{
+			{
+				Name:        "project_id",
+				Type:        "integer",
+				Required:    true,
+				Description: "The ID or URL-encoded path of the project",
+				Example:     "12345",
+			},
 		},
 		QueryParams: []apigen.Parameter{
 			{
-				Name:        "page",
-				Type:        "integer",
+				Name:        "state",
+				Type:        "string",
 				Required:    false,
-				Description: "Page number for pagination",
-				Example:     "1",
+				Description: "Return issues with the specified state (opened, closed, or all)",
+				Example:     "opened",
 			},
 			{
-				Name:        "limit",
-				Type:        "integer",
+				Name:        "labels",
+				Type:        "string",
 				Required:    false,
-				Description: "Number of items per page",
-				Example:     "10",
+				Description: "Comma-separated list of label names",
+				Example:     "bug,critical",
 			},
 		},
-		Authentication: &apigen.Auth{
-			Type:        "bearer",
-			Description: "JWT token for authentication",
+		Headers: apigen.KarmaHeaders{
+			apigen.HeaderPrivateToken: "YOUR_GITLAB_TOKEN",
+			apigen.HeaderContentType:  "application/json",
+			apigen.HeaderAccept:       "application/json",
 		},
 		Responses: []apigen.Response{
 			{
 				StatusCode:  200,
-				Description: "Successful response",
+				Description: "List of issues",
 				ContentType: "application/json",
-				Schema:      json.RawMessage(`{"type":"object","properties":{"users":{"type":"array","items":{"$ref":"#/components/schemas/User"}},"total":{"type":"integer"}}}`),
-				Example:     json.RawMessage(`{"users":[{"id":1,"name":"John Doe","email":"john@example.com"},{"id":2,"name":"Jane Smith","email":"jane@example.com"}],"total":2}`),
+				Example:     []byte(`[{"id": 1, "name": "Bug report", "description": "App crashes on startup"}, {"id": 2, "name": "Feature request", "description": "Add dark mode"}]`),
 			},
 			{
 				StatusCode:  401,
 				Description: "Unauthorized",
-				Example:     json.RawMessage(`{"error":"Invalid or missing authentication token"}`),
+				Example:     []byte(`{"message": "401 Unauthorized"}`),
 			},
 		},
-	}
+	})
 
-	// Define the Create User endpoint
-	createUserEndpoint := apigen.Endpoint{
-		Path:        "/users",
+	api.AddEndpoint(apigen.Endpoint{
+		Path:        "/projects/{project_id}/issues",
 		Method:      "POST",
-		Summary:     "Create a new user",
-		Description: "Creates a new user in the system",
-		Headers: map[string]string{
-			"Authorization": "Bearer {token}",
-			"Content-Type":  "application/json",
+		Summary:     "Create new issue",
+		Description: "Creates a new issue in the specified project",
+		PathParams: []apigen.Parameter{
+			{
+				Name:        "project_id",
+				Type:        "integer",
+				Required:    true,
+				Description: "The ID or URL-encoded path of the project",
+				Example:     "12345",
+			},
 		},
-		RequestBody: &apigen.RequestBody{
-			ContentType: "application/json",
-			Required:    true,
-			Schema:      json.RawMessage(`{"type":"object","required":["name","email"],"properties":{"name":{"type":"string"},"email":{"type":"string","format":"email"},"role":{"type":"string","enum":["admin","user"]}}}`),
-			Example:     json.RawMessage(`{"name":"John Doe","email":"john@example.com","role":"user"}`),
+		Headers: apigen.KarmaHeaders{
+			apigen.HeaderPrivateToken: "YOUR_GITLAB_TOKEN",
+			apigen.HeaderContentType:  "application/json",
+			apigen.HeaderAccept:       "application/json",
+		},
+		RequestBody: requestBody,
+		Responses: []apigen.Response{
+			*successResponse,
+			{
+				StatusCode:  400,
+				Description: "Bad request",
+				ContentType: "application/json",
+				Example:     []byte(`{"message": "Required fields missing or invalid"}`),
+			},
+		},
+	})
+
+	api.AddEndpoint(apigen.Endpoint{
+		Path:        "/projects/{project_id}/issues/{issue_id}",
+		Method:      "GET",
+		Summary:     "Get issue details",
+		Description: "Get details of a specific issue",
+		// Path parameters will be automatically detected from the URL pattern
+		Headers: apigen.KarmaHeaders{
+			apigen.HeaderPrivateToken: "YOUR_GITLAB_TOKEN",
+			apigen.HeaderContentType:  "application/json",
+			apigen.HeaderAccept:       "application/json",
 		},
 		Responses: []apigen.Response{
 			{
-				StatusCode:  201,
-				Description: "User created successfully",
+				StatusCode:  200,
+				Description: "Issue details",
 				ContentType: "application/json",
-				Example:     json.RawMessage(`{"id":3,"name":"John Doe","email":"john@example.com","role":"user"}`),
+				Example:     []byte(`{"id": 42, "name": "Bug report", "description": "App crashes on startup", "labels": ["bug", "critical"], "created_at": "2025-03-11T10:00:00Z"}`),
 			},
 			{
-				StatusCode:  400,
-				Description: "Invalid request",
-				ContentType: "application/json",
-				Example:     json.RawMessage(`{"error":"Invalid email format"}`),
-			},
-			{
-				StatusCode:  401,
-				Description: "Unauthorized",
-				ContentType: "application/json",
-				Example:     json.RawMessage(`{"error":"Invalid or missing authentication token"}`),
+				StatusCode:  404,
+				Description: "Issue not found",
+				Example:     []byte(`{"message": "404 Issue Not Found"}`),
 			},
 		},
+	})
+
+	// Alternative URL pattern syntax example
+	api.AddEndpoint(apigen.Endpoint{
+		Path:        "/groups/{group_id}/issues",
+		Method:      "GET",
+		Summary:     "List group issues",
+		Description: "Get a list of issues for a specific group",
+		// Path parameters will be automatically detected
+		QueryParams: []apigen.Parameter{
+			{
+				Name:        "state",
+				Type:        "string",
+				Required:    false,
+				Description: "Return issues with the specified state",
+				Example:     "all",
+			},
+		},
+		Headers: apigen.KarmaHeaders{
+			apigen.HeaderPrivateToken: "YOUR_GITLAB_TOKEN",
+			apigen.HeaderContentType:  "application/json",
+			apigen.HeaderAccept:       "application/json",
+		},
+		Responses: []apigen.Response{
+			{
+				StatusCode:  200,
+				Description: "List of issues",
+				ContentType: "application/json",
+				Example:     []byte(`[{"id": 1, "name": "Bug report"}, {"id": 2, "name": "Feature request"}]`),
+			},
+		},
+	})
+
+	// Export to all formats
+	if err := api.ExportAll(); err != nil {
+		log.Fatalf("Error exporting API definition: %v", err)
 	}
 
-	// Add endpoints to the API definition
-	api.AddEndpoint(getUsersEndpoint)
-	api.AddEndpoint(createUserEndpoint)
-
-	// Save API definition to a file
-	if err := api.SaveToFile("./docstest/api-definition.json"); err != nil {
-		log.Fatalf("Error saving API definition: %v", err)
-	}
-	fmt.Println("API definition saved to api-definition.json")
-
-	// Export to Postman collection
-	if err := api.ExportToPostman("./docstest/postman-collection.json"); err != nil {
-		log.Fatalf("Error exporting to Postman: %v", err)
-	}
-	fmt.Println("Postman collection exported to postman-collection.json")
-
-	// Export to OpenAPI JSON
-	if err := api.ExportToOpenAPI("./docstest/openapi.json"); err != nil {
-		log.Fatalf("Error exporting to OpenAPI: %v", err)
-	}
-	fmt.Println("OpenAPI specification exported to openapi.json")
-
-	// Export to Markdown (LLM-friendly format)
-	if err := api.ExportToMarkdown("./docstest/api-docs.md"); err != nil {
-		log.Fatalf("Error exporting to Markdown: %v", err)
-	}
-	fmt.Println("Markdown documentation exported to api-docs.md")
-
-	// Load API definition from file
-	loadedAPI, err := apigen.LoadFromFile("./docstest/api-definition.json")
-	if err != nil {
-		log.Fatalf("Error loading API definition: %v", err)
-	}
-	fmt.Printf("Loaded API: %s with %d endpoints\n", loadedAPI.Name, len(loadedAPI.Endpoints))
+	fmt.Println("API definition exported successfully to ./output directory")
+	fmt.Println("Files generated:")
+	fmt.Println("- gitlab_issues.json (Raw API definition)")
+	fmt.Println("- gitlab_issues_postman.json (Postman collection)")
+	fmt.Println("- gitlab_issues_openapi.json (OpenAPI specification)")
+	fmt.Println("- gitlab_issues_docs.md (Markdown documentation)")
 }
