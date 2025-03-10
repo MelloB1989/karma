@@ -55,7 +55,7 @@ func Load(entity any) *ORM {
 	if err != nil {
 		log.Fatal("DB connection error:", err)
 	}
-	defer db.Close()
+	// defer db.Close()
 
 	return &ORM{
 		tableName:  tableName,
