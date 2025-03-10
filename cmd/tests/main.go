@@ -16,5 +16,6 @@ func main() {
 	// tests.TestAICodeParser()
 	// tests.TestS3Upload()
 	// transcribe.StartStream()
-	tests.TestORMV2()
+	// tests.TestORMV2()
+	tests.TestAPIGen()
 }
