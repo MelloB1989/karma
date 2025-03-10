@@ -233,7 +233,7 @@ func generateOpenAPI(api *APIDefinition) map[string]any {
 			pathData["requestBody"] = map[string]any{
 				"required": endpoint.RequestBody.Required,
 				"content": map[string]any{
-					endpoint.RequestBody.ContentType: map[string]any{
+					string(endpoint.RequestBody.ContentType): map[string]any{
 						"schema":  endpoint.RequestBody.Schema,
 						"example": endpoint.RequestBody.Example,
 					},
@@ -263,7 +263,7 @@ func generateOpenAPI(api *APIDefinition) map[string]any {
 						contentData["example"] = resp.Example
 					}
 
-					content[contentType] = contentData
+					content[string(contentType)] = contentData
 					respData["content"] = content
 				}
 			}

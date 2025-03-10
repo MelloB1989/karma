@@ -57,7 +57,7 @@ func (api *APIDefinition) AddEndpoint(endpoint Endpoint) *APIDefinition {
 }
 
 // RequestBodyFromStruct creates a RequestBody from a struct type
-func RequestBodyFromStruct(structPtr any, contentType string, required bool, overrides []FieldOverride) (*RequestBody, error) {
+func RequestBodyFromStruct(structPtr any, contentType ContentType, required bool, overrides []FieldOverride) (*RequestBody, error) {
 	t := reflect.TypeOf(structPtr)
 
 	// Ensure we're dealing with a struct
@@ -101,7 +101,7 @@ func RequestBodyFromStruct(structPtr any, contentType string, required bool, ove
 }
 
 // ResponseFromStruct creates a Response from a struct type
-func ResponseFromStruct(statusCode int, description string, structPtr any, contentType string, overrides []FieldOverride) (*Response, error) {
+func ResponseFromStruct(statusCode int, description string, structPtr any, contentType ContentType, overrides []FieldOverride) (*Response, error) {
 	t := reflect.TypeOf(structPtr)
 
 	// Ensure we're dealing with a struct

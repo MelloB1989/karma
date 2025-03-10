@@ -29,6 +29,21 @@ const (
 	HeaderContentLocation Headers = "Content-Location"
 )
 
+type ContentType string
+
+const (
+	ContentTypeJSON              ContentType = "application/json"
+	ContentTypeXML               ContentType = "application/xml"
+	ContentTypeFormURLEncoded    ContentType = "application/x-www-form-urlencoded"
+	ContentTypeMultipartFormData ContentType = "multipart/form-data"
+	ContentTypeTextPlain         ContentType = "text/plain"
+	ContentTypeTextHTML          ContentType = "text/html"
+	ContentTypeOctetStream       ContentType = "application/octet-stream"
+	ContentTypeJPEG              ContentType = "image/jpeg"
+	ContentTypePNG               ContentType = "image/png"
+	ContentTypeGIF               ContentType = "image/gif"
+)
+
 // Endpoint represents a single API endpoint
 type Endpoint struct {
 	Path           string             `json:"path"`
@@ -54,7 +69,7 @@ type Parameter struct {
 
 // RequestBody defines the structure of a request body
 type RequestBody struct {
-	ContentType string             `json:"contentType"`
+	ContentType ContentType        `json:"contentType"`
 	Required    bool               `json:"required"`
 	Schema      json.RawMessage    `json:"schema,omitempty"`
 	Example     json.RawMessage    `json:"example,omitempty"`
@@ -77,7 +92,7 @@ type Response struct {
 	StatusCode  int                `json:"statusCode"`
 	Description string             `json:"description"`
 	Headers     map[Headers]string `json:"headers,omitempty"`
-	ContentType string             `json:"contentType,omitempty"`
+	ContentType ContentType        `json:"contentType,omitempty"`
 	Schema      json.RawMessage    `json:"schema,omitempty"`
 	Example     json.RawMessage    `json:"example,omitempty"`
 	Fields      []RequestBodyField `json:"fields,omitempty"` // Reusing the same field structure
