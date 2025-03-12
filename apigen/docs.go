@@ -59,12 +59,10 @@ func (api *APIDefinition) AddEndpoint(endpoint Endpoint) *APIDefinition {
 // RequestBodyFromStruct creates a RequestBody from a struct type
 func RequestBodyFromStruct(structPtr any, contentType ContentType, required bool, overrides []FieldOverride) (*RequestBody, error) {
 	t := reflect.TypeOf(structPtr)
-
 	// Ensure we're dealing with a struct
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-
 	if t.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("expected struct or pointer to struct, got %v", t.Kind())
 	}
@@ -77,19 +75,43 @@ func RequestBodyFromStruct(structPtr any, contentType ContentType, required bool
 
 	fields := extractStructFields(t, overrideMap, "")
 
-	// Create example JSON
-	exampleValue := reflect.New(t).Interface()
-	exampleJSON, err := json.MarshalIndent(exampleValue, "", "  ")
+	// Create a map for our example instead of using reflection directly
+	exampleMap := make(map[string]interface{})
+
+	// Populate the example map with fields that aren't excluded
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		fieldName := field.Name
+		jsonTag := field.Tag.Get("json")
+		jsonName := fieldName
+
+		// Parse the json tag to get the field name
+		if jsonTag != "" {
+			parts := strings.Split(jsonTag, ",")
+			if parts[0] != "-" {
+				jsonName = parts[0]
+			}
+		}
+
+		// Skip excluded fields
+		if override, exists := overrideMap[fieldName]; exists && override.Exclude {
+			continue
+		}
+
+		// Add field to example with its zero value or override example
+		if override, exists := overrideMap[fieldName]; exists && override.Example != nil {
+			exampleMap[jsonName] = override.Example
+		} else {
+			// Use zero value
+			exampleMap[jsonName] = getZeroValue(field.Type)
+		}
+	}
+
+	// Marshal the map to JSON
+	exampleJSON, err := json.MarshalIndent(exampleMap, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("error creating example JSON: %w", err)
 	}
-
-	// // Create JSON schema (simplified)
-	// schemaMap := map[string]any{
-	// 	"type":       "object",
-	// 	"properties": map[string]any{},
-	// 	"required":   []string{},
-	// }
 
 	return &RequestBody{
 		ContentType: contentType,
@@ -103,12 +125,10 @@ func RequestBodyFromStruct(structPtr any, contentType ContentType, required bool
 // ResponseFromStruct creates a Response from a struct type
 func ResponseFromStruct(statusCode int, description string, structPtr any, contentType ContentType, overrides []FieldOverride) (*Response, error) {
 	t := reflect.TypeOf(structPtr)
-
 	// Ensure we're dealing with a struct
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-
 	if t.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("expected struct or pointer to struct, got %v", t.Kind())
 	}
@@ -121,9 +141,69 @@ func ResponseFromStruct(statusCode int, description string, structPtr any, conte
 
 	fields := extractStructFields(t, overrideMap, "")
 
-	// Create example JSON
-	exampleValue := reflect.New(t).Interface()
-	exampleJSON, err := json.MarshalIndent(exampleValue, "", "  ")
+	// Create a map for our example
+	exampleMap := make(map[string]interface{})
+
+	// Populate the example map with fields that aren't excluded
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		fieldName := field.Name
+		// jsonTag := field.Tag.Get("json")
+		jsonName := getJSONFieldName(field)
+
+		// Skip fields with no JSON name
+		if jsonName == "" {
+			continue
+		}
+
+		// Skip excluded fields
+		if override, exists := overrideMap[fieldName]; exists && override.Exclude {
+			continue
+		}
+
+		// Handle field with override
+		if override, exists := overrideMap[fieldName]; exists && override.Example != nil {
+			switch ex := override.Example.(type) {
+			case []byte:
+				// Try to parse the bytes as JSON first
+				var jsonData interface{}
+				if err := json.Unmarshal(ex, &jsonData); err == nil {
+					exampleMap[jsonName] = jsonData
+				} else {
+					// If not valid JSON, use as string
+					exampleMap[jsonName] = string(ex)
+				}
+			case string:
+				// Try to parse the string as JSON if it looks like JSON
+				if len(ex) > 0 && (ex[0] == '{' || ex[0] == '[') {
+					var jsonData interface{}
+					if err := json.Unmarshal([]byte(ex), &jsonData); err == nil {
+						exampleMap[jsonName] = jsonData
+					} else {
+						exampleMap[jsonName] = ex
+					}
+				} else {
+					exampleMap[jsonName] = ex
+				}
+			case json.RawMessage:
+				// Parse raw JSON
+				var jsonData interface{}
+				if err := json.Unmarshal(ex, &jsonData); err == nil {
+					exampleMap[jsonName] = jsonData
+				} else {
+					exampleMap[jsonName] = string(ex)
+				}
+			default:
+				exampleMap[jsonName] = override.Example
+			}
+		} else {
+			// Use zero value for fields without overrides
+			exampleMap[jsonName] = getZeroValue(field.Type)
+		}
+	}
+
+	// Marshal the example map
+	example, err := json.MarshalIndent(exampleMap, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("error creating example JSON: %w", err)
 	}
@@ -133,7 +213,7 @@ func ResponseFromStruct(statusCode int, description string, structPtr any, conte
 		Description: description,
 		ContentType: contentType,
 		Fields:      fields,
-		Example:     exampleJSON,
+		Example:     example,
 	}, nil
 }
 

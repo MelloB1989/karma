@@ -142,3 +142,72 @@ func extractPathParams(path string) []string {
 
 	return params
 }
+
+// Helper function to set a field value from an example
+func setFieldValue(field reflect.Value, example any) {
+	if !field.CanSet() {
+		return
+	}
+
+	exampleValue := reflect.ValueOf(example)
+
+	// Handle type conversion if needed
+	if field.Type() != exampleValue.Type() && exampleValue.Type().ConvertibleTo(field.Type()) {
+		exampleValue = exampleValue.Convert(field.Type())
+	}
+
+	// Only set if types are compatible
+	if field.Type() == exampleValue.Type() {
+		field.Set(exampleValue)
+	}
+}
+
+// Helper to get JSON field name from struct field
+func getJSONFieldName(field reflect.StructField) string {
+	jsonTag := field.Tag.Get("json")
+	if jsonTag == "" {
+		return field.Name
+	}
+
+	parts := strings.Split(jsonTag, ",")
+	if parts[0] == "-" {
+		return ""
+	}
+	if parts[0] != "" {
+		return parts[0]
+	}
+
+	return field.Name
+}
+
+// Helper function to get zero value for a type
+func getZeroValue(t reflect.Type) interface{} {
+	switch t.Kind() {
+	case reflect.Struct:
+		// For structs, create an empty map
+		if t.Name() == "Time" && t.PkgPath() == "time" {
+			return "0001-01-01T00:00:00Z" // Special case for time.Time
+		}
+		return map[string]interface{}{}
+	case reflect.Map:
+		return nil
+	case reflect.Slice, reflect.Array:
+		return nil
+	case reflect.String:
+		return ""
+	case reflect.Bool:
+		return false
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return 0
+	case reflect.Float32, reflect.Float64:
+		return 0.0
+	case reflect.Ptr:
+		return nil
+	case reflect.Interface:
+		return nil
+	default:
+		return nil
+	}
+}

@@ -1,8 +1,8 @@
 package tests
 
 import (
-	"fmt"
 	"log"
+	"time"
 
 	"github.com/MelloB1989/karma/apigen"
 )
@@ -25,6 +25,54 @@ type GitLabIssueResponse struct {
 	CreatedAt   string   `json:"created_at" description:"Creation timestamp"`
 	UpdatedAt   string   `json:"updated_at" description:"Last update timestamp"`
 	WebURL      string   `json:"web_url" description:"URL to view the issue in browser"`
+}
+
+type UsersB struct {
+	TableName    struct{}          `karma_table:"users"`
+	Id           string            `json:"id" karma:"primary"`
+	Username     string            `json:"username"`
+	Email        string            `json:"email"`
+	Name         string            `json:"name"`
+	Phone        string            `json:"phone"`
+	Bio          string            `json:"bio"`
+	ProfileImage string            `json:"profile_image"`
+	Socials      map[string]string `json:"socials" db:"socials"`
+	DateOfBirth  time.Time         `json:"date_of_birth"`
+	Gender       string            `json:"gender"`
+	CreatedAt    time.Time         `json:"created_at"`
+	DeviceId     string            `json:"device_id"`
+	PasswordHash string            `json:"password_hash"`
+}
+
+type LoginBody struct {
+	Phone string `json:"phone" description:"Phone number of the user"`
+}
+
+type LoginSuccessData struct {
+	AccountExists bool `json:"account_exists" description:"If Account exists"`
+	TestPhone     bool `json:"test_phone" description:"Is it a Test phone"`
+}
+
+type LoginSuccess struct {
+	Success bool             `json:"success" description:"Success status"`
+	Message string           `json:"message" description:"Message"`
+	Data    LoginSuccessData `json:"data" description:"Data"`
+}
+
+type VerifyOTPBody struct {
+	Phone string `json:"phone" description:"Phone number of the user"`
+	OTP   string `json:"otp" description:"OTP sent to the user"`
+}
+
+type VerifySuccessData struct {
+	AccountExists bool   `json:"account_exists" description:"If Account exists"`
+	Token         string `json:"token" description:"JWT Token"`
+}
+
+type VerifyOTPSuccess struct {
+	Success bool              `json:"success" description:"Success status"`
+	Message string            `json:"message" description:"Message"`
+	Data    VerifySuccessData `json:"data" description:"Data"`
 }
 
 func TestAPIGen() {
@@ -226,15 +274,159 @@ func TestAPIGen() {
 		},
 	})
 
-	// Export to all formats
-	if err := api.ExportAll(); err != nil {
-		log.Fatalf("Error exporting API definition: %v", err)
+	auth := apigen.NewAPIDefinition("Auth APIs", "Authentication apis for users", []string{"http://localhost:9000"}, "./docstest/auth", "auth")
+	auth.AddGlobalVariable("api_version", "v1")
+
+	invalidBodyResponse := apigen.Response{
+		StatusCode:  400,
+		Description: "Invalid request body",
+		ContentType: apigen.ContentTypeJSON,
+		Example:     []byte(`{"success": false, "message": "Failed to parse request body.", "data": null}`),
 	}
 
-	fmt.Println("API definition exported successfully to ./output directory")
-	fmt.Println("Files generated:")
-	fmt.Println("- gitlab_issues.json (Raw API definition)")
-	fmt.Println("- gitlab_issues_postman.json (Postman collection)")
-	fmt.Println("- gitlab_issues_openapi.json (OpenAPI specification)")
-	fmt.Println("- gitlab_issues_docs.md (Markdown documentation)")
+	invalidPhoneResponse := apigen.Response{
+		StatusCode:  400,
+		Description: "Invalid phone number",
+		ContentType: apigen.ContentTypeJSON,
+		Example:     []byte(`{"success": false, "message": "Invalid phone number", "data": null}`),
+	}
+
+	configurationErrorResponse := apigen.Response{
+		StatusCode:  500,
+		Description: "Configuration error. This is a server error.",
+		ContentType: apigen.ContentTypeJSON,
+		Example:     []byte(`{"success": false, "message": "Configuration error.", "data": null}`),
+	}
+
+	loginBody, _ := apigen.RequestBodyFromStruct(LoginBody{}, apigen.ContentTypeJSON, true, []apigen.FieldOverride{})
+	successLoginResponse, _ := apigen.ResponseFromStruct(200, "OTP sent to the phone", LoginSuccess{}, apigen.ContentTypeJSON, []apigen.FieldOverride{})
+
+	auth.AddEndpoint(apigen.Endpoint{
+		Path:        "/auth/login",
+		Method:      "POST",
+		Summary:     "Login with phone number",
+		Description: "This endpoint is used to login with phone number.",
+		RequestBody: loginBody,
+		Responses: []apigen.Response{
+			*successLoginResponse,
+			invalidBodyResponse,
+			invalidPhoneResponse,
+			configurationErrorResponse,
+			{
+				StatusCode:  500,
+				Description: "Failed to send OTP. This is a server error.",
+				ContentType: apigen.ContentTypeJSON,
+				Example:     []byte(`{"success": false, "message": "Failed to send OTP.", "data": null}`),
+			},
+		},
+	})
+
+	verifyOTPBody, _ := apigen.RequestBodyFromStruct(VerifyOTPBody{}, apigen.ContentTypeJSON, true, []apigen.FieldOverride{})
+	verifySuccessResponse, _ := apigen.ResponseFromStruct(200, "OTP verified successfully", VerifyOTPSuccess{}, apigen.ContentTypeJSON, []apigen.FieldOverride{
+		{
+			Name:        "Data",
+			Description: "Data containing account information and authentication token",
+			Example: map[string]interface{}{
+				"account_exists": true,
+				"token":          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkb2IiOiIxOTkwLTAxLTAxVDAwOjAwOjAwWiIsImVtYWlsIjoiam9obi5kb2VAZXhhbXBsZS5jb20iLCJleHAiOjE3NDQyMzI1NTYsImdlbmRlciI6Im1hbGUiLCJwaG9uZSI6Iis5MTk4MTI5NDA3MDYiLCJ1aWQiOiIzeDIyXzJkIn0.fVRaF88T3xVXHX3-i4EY3utSqcSIxlfc45EVCr8byNM",
+				"test_phone":     false,
+			},
+		},
+	})
+
+	auth.AddEndpoint(apigen.Endpoint{
+		Path:        "/auth/verify_otp",
+		Method:      "POST",
+		Summary:     "Verify OTP",
+		Description: "This endpoint is used to verify OTP sent to the phone number.",
+		RequestBody: verifyOTPBody,
+		Responses: []apigen.Response{
+			*verifySuccessResponse,
+			invalidBodyResponse,
+			invalidPhoneResponse,
+			configurationErrorResponse,
+			{
+				StatusCode:  500,
+				Description: "Failed to send OTP. This is a server error.",
+				ContentType: apigen.ContentTypeJSON,
+				Example:     []byte(`{"success": false, "message": "Failed to send OTP.", "data": null}`),
+			},
+			{
+				StatusCode:  500,
+				Description: "Failed to create JWT token. This is a server error.",
+				ContentType: apigen.ContentTypeJSON,
+				Example:     []byte(`{"success": false, "message": "Failed to create JWT token.", "data": null}`),
+			},
+			{
+				StatusCode:  400,
+				Description: "Invalid OTP. Please check the OTP and try again.",
+				ContentType: apigen.ContentTypeJSON,
+				Example:     []byte(`{"success": false, "message": "Invalid OTP.", "data": null}`),
+			},
+		},
+	})
+
+	registerReqBody, err := apigen.RequestBodyFromStruct(
+		UsersB{},
+		apigen.ContentTypeJSON,
+		true, []apigen.FieldOverride{
+			{
+				Name:    "TableName",
+				Exclude: true,
+			},
+			{
+				Name:    "Id",
+				Exclude: true,
+			},
+			{
+				Name:    "CreatedAt",
+				Exclude: true,
+			},
+			{
+				Name:    "DeviceId",
+				Exclude: true,
+			},
+			{
+				Name:    "Phone",
+				Exclude: true,
+			},
+		})
+
+	if err != nil {
+		println(err)
+	}
+
+	auth.AddEndpoint(apigen.Endpoint{
+		Path:        "/auth/register",
+		Method:      "POST",
+		Summary:     "Register user",
+		Description: "This endpoint is used to register a new user.",
+		RequestBody: registerReqBody,
+		Responses: []apigen.Response{
+			invalidBodyResponse,
+			{
+				StatusCode:  500,
+				Description: "Failed to register. This is a server error.",
+				ContentType: apigen.ContentTypeJSON,
+				Example:     []byte(`{"success": false, "message": "Failed to register user.", "data": null}`),
+			},
+			{
+				StatusCode:  201,
+				Description: "User registered successfully.",
+				ContentType: apigen.ContentTypeJSON,
+				Example:     []byte(`{"success": false, "message": "User registered successfully.", "data": {}}`),
+			},
+		},
+	})
+
+	// Generate API documentation
+	err = auth.ExportAll()
+	if err != nil {
+		log.Fatalf("Error exporting API documentation: %v", err)
+	}
+
+	// err = api.ExportAll()
+	// if err != nil {
+	// 	log.Fatalf("Error exporting API documentation: %v", err)
+	// }
 }
