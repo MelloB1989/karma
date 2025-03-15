@@ -241,7 +241,10 @@ func (p *Parser) Parse(prompt string, context string, output any) (time.Duration
 
 	// Create a prompt that instructs the AI about the expected structure
 	structPrompt := createPromptForStruct(outputType.Elem(), prompt, context)
-	fmt.Println(structPrompt)
+
+	if p.Debug {
+		log.Println("Prompt: ", structPrompt)
+	}
 
 	var lastErr error
 	resp, err := p.client.GenerateFromSinglePrompt(structPrompt)
