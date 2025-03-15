@@ -12,68 +12,49 @@ import (
 )
 
 func PostgresConn() (*sqlx.DB, error) {
-
 	env := config.DefaultConfig()
-	var driverName string
-	var driverSource string
 
-	// Parse the URL according to the environment
-	environment := env.Environment
-	var parsedURL *url.URL
-	if environment == "" {
-		p, err := url.Parse(env.DatabaseURL)
-		if err != nil {
-			log.Fatal(err)
-		}
-		parsedURL = p
+	// Choose URL based on environment
+	var dbURL string
+	if env.Environment == "" {
+		dbURL = env.DatabaseURL
 	} else {
-		dburl, _ := config.GetEnv(environment + "_" + "DATABASE_URL")
-		p, err := url.Parse(dburl)
-		if err != nil {
-			log.Fatal(err)
-		}
-		parsedURL = p
+		dbURL, _ = config.GetEnv(env.Environment + "_DATABASE_URL")
 	}
-	parsedURL, err := url.Parse(env.DatabaseURL)
+
+	parsedURL, err := url.Parse(dbURL)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Extract user info
+	// Extract credentials and connection components
 	userInfo := parsedURL.User
 	username := userInfo.Username()
 	password, _ := userInfo.Password()
 
-	// Extract host and port
 	host := parsedURL.Hostname()
 	port := parsedURL.Port()
 	if port == "" {
-		port = "5432" // Default PostgreSQL port
+		port = "5432"
 	}
 
-	// Extract database name
+	// The database name is the last segment in the path
 	pathSegments := strings.Split(parsedURL.Path, "/")
 	databaseName := pathSegments[len(pathSegments)-1]
+	sslMode := parsedURL.Query().Get("sslmode")
 
-	// Extract SSL mode
-	queryParams := parsedURL.Query()
-	sslMode := queryParams.Get("sslmode")
+	connStr := fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%s sslmode=%s",
+		username, databaseName, password, host, port, sslMode)
 
-	driverName = "postgres"
-
-	driverSource = fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%s sslmode=%s", username, databaseName, password, host, port, sslMode)
-
-	db, err := sqlx.Connect(driverName, driverSource)
+	db, err := sqlx.Connect("postgres", connStr)
 	if err != nil {
-		log.Fatalln(err)
-		return nil, err
+		log.Fatal(err)
 	}
 
-	if err := db.Ping(); err != nil {
+	if err = db.Ping(); err != nil {
 		log.Fatal(err)
-		return nil, err
-	} else {
-		log.Println("Successfully Connected")
-		return db, nil
 	}
+
+	log.Println("Successfully Connected")
+	return db, nil
 }

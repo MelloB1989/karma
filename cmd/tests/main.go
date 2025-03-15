@@ -11,11 +11,11 @@ func main() {
 	// tests.TestKarmaFiles()
 	// tests.TestAmplifyFuncs()
 	// tests.TestECSIntegration()
-	// tests.TestDBConnection()
+	tests.TestDBConnection()
 	// tests.TestKarmaParser()
 	// tests.TestAICodeParser()
 	// tests.TestS3Upload()
 	// transcribe.StartStream()
 	// tests.TestORMV2()
-	tests.TestAPIGen()
+	// tests.TestAPIGen()
 }
