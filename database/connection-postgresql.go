@@ -17,7 +17,23 @@ func PostgresConn() (*sqlx.DB, error) {
 	var driverName string
 	var driverSource string
 
-	// Parse the URL
+	// Parse the URL according to the environment
+	environment := env.Environment
+	var parsedURL *url.URL
+	if environment == "" {
+		p, err := url.Parse(env.DatabaseURL)
+		if err != nil {
+			log.Fatal(err)
+		}
+		parsedURL = p
+	} else {
+		dburl, _ := config.GetEnv(environment + "_" + "DATABASE_URL")
+		p, err := url.Parse(dburl)
+		if err != nil {
+			log.Fatal(err)
+		}
+		parsedURL = p
+	}
 	parsedURL, err := url.Parse(env.DatabaseURL)
 	if err != nil {
 		log.Fatal(err)
