@@ -185,3 +185,123 @@ func TestORMV2() {
              .Select("users.name", "users.email", "orders.order_date", "orders.total")
              .Execute()
 */
+
+/*
+For new:
+package main
+
+import (
+	"fmt"
+	"log"
+
+	"github.com/MelloB1989/karma/orm"
+)
+
+// User represents a user in the system
+type User struct {
+	TableName string `karma_table:"users"`
+	ID        int    `json:"id" karma_pk:"true"`
+	Username  string `json:"username"`
+	Email     string `json:"email"`
+	Age       int    `json:"age"`
+	Active    bool   `json:"active"`
+}
+
+func main() {
+	// Create a new User instance
+	user := &User{}
+
+	// Load the ORM
+	ormInstance := orm.Load(user)
+	defer ormInstance.Close()
+
+	// Example 1: Basic Select
+	fmt.Println("Example 1: Basic Select")
+	var users []User
+	err := ormInstance.Select().Execute().ScanAll(&users)
+	if err != nil {
+		log.Fatalf("Error selecting users: %v", err)
+	}
+
+	// Example 2: Select with conditions
+	fmt.Println("Example 2: Select with conditions")
+	var activeUsers []User
+	err = ormInstance.Select().
+		Where("active", orm.Equals, true).
+		Where("age", orm.GreaterThan, 18).
+		OrderBy("username", orm.OrderAsc).
+		Execute().ScanAll(&activeUsers)
+	if err != nil {
+		log.Fatalf("Error selecting active users: %v", err)
+	}
+
+	// Example 3: Complex query with multiple conditions
+	fmt.Println("Example 3: Complex query with multiple conditions")
+	var filteredUsers []User
+	err = ormInstance.Select("id", "username", "email").
+		Where("age", orm.GreaterThanOrEquals, 21).
+		WhereIn("username", "john", "jane", "bob").
+		OrderBy("age", orm.OrderDesc).
+		Limit(10).
+		Execute().ScanAll(&filteredUsers)
+	if err != nil {
+		log.Fatalf("Error selecting filtered users: %v", err)
+	}
+
+	// Example 4: Find by primary key
+	fmt.Println("Example 4: Find by primary key")
+	foundUser := &User{}
+	err = ormInstance.FindByPK(1).Execute().Scan(foundUser)
+	if err != nil {
+		log.Fatalf("Error finding user by ID: %v", err)
+	}
+
+	// Example 5: Count
+	fmt.Println("Example 5: Count")
+	count, err := ormInstance.Count().
+		Where("active", orm.Equals, true).
+		Execute().Value()
+	if err != nil {
+		log.Fatalf("Error counting active users: %v", err)
+	}
+	fmt.Printf("Active users count: %v\n", count)
+
+	// Example 7: Delete
+	fmt.Println("Example 7: Delete")
+	result := ormInstance.Delete().
+		Where("active", orm.Equals, false).
+		Execute()
+	if result.err != nil {
+		log.Fatalf("Error deleting inactive users: %v", result.err)
+	}
+
+	// Example 8: Between
+	fmt.Println("Example 8: Between")
+	var middleAgedUsers []User
+	err = ormInstance.Select().
+		WhereBetween("age", 30, 50).
+		Execute().ScanAll(&middleAgedUsers)
+	if err != nil {
+		log.Fatalf("Error selecting middle-aged users: %v", err)
+	}
+
+	// Example 9: Null checks
+	fmt.Println("Example 9: Null checks")
+	var usersWithoutEmail []User
+	err = ormInstance.Select().
+		WhereNull("email").
+		Execute().ScanAll(&usersWithoutEmail)
+	if err != nil {
+		log.Fatalf("Error selecting users without email: %v", err)
+	}
+
+	// Example 10: Raw query
+	fmt.Println("Example 10: Raw query")
+	var rawUsers []User
+	err = ormInstance.Raw("SELECT * FROM users WHERE age > $1 AND active = $2", 18, true).
+		Execute().ScanAll(&rawUsers)
+	if err != nil {
+		log.Fatalf("Error executing raw query: %v", err)
+	}
+}
+*/

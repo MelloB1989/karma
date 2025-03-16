@@ -1,4 +1,4 @@
-package orm
+package korm
 
 import (
 	"database/sql"
@@ -12,7 +12,80 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// ORM struct encapsulates the metadata and methods for a table.
+// Operator represents comparison operators for query conditions
+type Operator string
+
+const (
+	Equals              Operator = "="
+	NotEquals           Operator = "!="
+	GreaterThan         Operator = ">"
+	LessThan            Operator = "<"
+	GreaterThanOrEquals Operator = ">="
+	LessThanOrEquals    Operator = "<="
+	Like                Operator = "LIKE"
+	IsNull              Operator = "IS NULL"
+	IsNotNull           Operator = "IS NOT NULL"
+	In                  Operator = "IN"
+	Between             Operator = "BETWEEN"
+)
+
+// OrderDirection defines the sorting direction
+type OrderDirection string
+
+const (
+	OrderAsc  OrderDirection = "ASC"
+	OrderDesc OrderDirection = "DESC"
+)
+
+// JoinType defines the type of SQL JOIN
+type JoinType string
+
+const (
+	InnerJoin JoinType = "INNER JOIN"
+	LeftJoin  JoinType = "LEFT JOIN"
+	RightJoin JoinType = "RIGHT JOIN"
+	FullJoin  JoinType = "FULL JOIN"
+)
+
+// Condition represents a WHERE clause condition
+type Condition struct {
+	Field    string
+	Operator Operator
+	Value    any
+	Values   []any // For IN and BETWEEN operators
+}
+
+// Order represents an ORDER BY clause
+type Order struct {
+	Field     string
+	Direction OrderDirection
+}
+
+// Join represents a JOIN clause
+type Join struct {
+	TableName  string
+	Type       JoinType
+	Conditions []Condition
+}
+
+// QueryBuilder builds SQL queries incrementally
+type QueryBuilder struct {
+	orm           *ORM
+	operation     string
+	selectFields  []string
+	conditions    []Condition
+	orders        []Order
+	joins         []Join
+	groupByFields []string
+	havingConds   []Condition
+	limit         int
+	offset        int
+	rawQuery      string
+	rawArgs       []any
+	isCount       bool
+}
+
+// ORM struct encapsulates the metadata and methods for a table
 type ORM struct {
 	tableName  string
 	structType reflect.Type
@@ -68,34 +141,30 @@ func Load(entity any) *ORM {
 
 // Scan maps the query result to the provided destination pointer
 func (qr *QueryResult) Scan(dest any) error {
+	if qr.err != nil {
+		return qr.err
+	}
+	defer qr.rows.Close()
+
+	// Check if there's a row to scan
+	if !qr.rows.Next() {
+		return sql.ErrNoRows
+	}
+
+	// Scan the row into the destination
 	err := database.ParseRows(qr.rows, dest)
 	if err != nil {
-		log.Println("Failed to scan rows:", err)
 		return err
 	}
+
+	// Check for errors from iterating over rows
+	if err := qr.rows.Err(); err != nil {
+		return err
+	}
+
 	return nil
 }
 
-// QueryRaw to return a QueryResult for chaining
-// func (o *ORM) QueryRaw(sqlQuery string, args ...any) *QueryResult {
-// 	// Establish database connection
-// 	db, err := database.PostgresConn()
-// 	if err != nil {
-// 		log.Println("DB connection error:", err)
-// 		return &QueryResult{nil, err, sqlQuery, args}
-// 	}
-// 	defer db.Close()
-
-// // Execute the query
-// rows, err := db.Query(sqlQuery, args...)
-//
-//	if err != nil {
-//		log.Println("Query execution error:", err)
-//		return &QueryResult{nil, err, sqlQuery, args}
-//	}
-//
-//		return &QueryResult{rows, nil, sqlQuery, args}
-//	}
 func (o *ORM) QueryRaw(query string, args ...any) *QueryResult {
 	var rows *sql.Rows
 	var err error
