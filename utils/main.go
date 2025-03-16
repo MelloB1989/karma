@@ -2,6 +2,7 @@ package utils
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand"
@@ -34,7 +35,7 @@ func GenerateJWT(claims jwt.Claims) (string, error) {
 	return tokenString, nil
 }
 
-func GenerateJWTWithRawClaims(c map[string]interface{}) (string, error) {
+func GenerateJWTWithRawClaims(c map[string]any) (string, error) {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 	sugar := logger.Sugar()
@@ -230,4 +231,65 @@ func CountTokens(text string) int {
 	re := regexp.MustCompile(`[^\s]+`)
 	tokens := re.FindAllString(text, -1)
 	return len(tokens)
+}
+
+func OmitJSONKeys(data any, keysToOmit ...string) (any, error) {
+	// First convert to JSON
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+
+	// Then parse to map or slice of maps
+	var parsed any
+	if err := json.Unmarshal(jsonBytes, &parsed); err != nil {
+		return nil, err
+	}
+
+	// Process the data structure
+	result := processData(parsed, keysToOmit)
+
+	return result, nil
+}
+
+func processData(data any, keysToOmit []string) any {
+	// Handle slice/array case
+	if arr, ok := data.([]any); ok {
+		result := make([]any, len(arr))
+		for i, item := range arr {
+			result[i] = processData(item, keysToOmit)
+		}
+		return result
+	}
+
+	// Handle object/map case
+	if obj, ok := data.(map[string]any); ok {
+		// Remove direct keys
+		for _, key := range keysToOmit {
+			if !strings.Contains(key, ".") {
+				delete(obj, key)
+			}
+		}
+
+		// Process nested keys
+		for objKey, objValue := range obj {
+			// Check if we need to recurse into this key
+			for _, keyToOmit := range keysToOmit {
+				parts := strings.SplitN(keyToOmit, ".", 2)
+				if len(parts) == 2 && parts[0] == objKey {
+					// This is a nested key to omit
+					if nestedObj, ok := objValue.(map[string]any); ok {
+						obj[objKey] = processData(nestedObj, []string{parts[1]})
+					} else if nestedArr, ok := objValue.([]any); ok {
+						obj[objKey] = processData(nestedArr, []string{parts[1]})
+					}
+				}
+			}
+		}
+
+		return obj
+	}
+
+	// For primitive values, just return as is
+	return data
 }
