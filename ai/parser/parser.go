@@ -85,8 +85,16 @@ func NewParser(opts ...ParserOption) *Parser {
 
 // createPromptForStruct generates a prompt that instructs the AI to output according to the given struct
 func createPromptForStruct(structType reflect.Type, prompt string, context string) string {
+	var fullPrompt string
+	// Add context if provided
+	if context != "" {
+		fullPrompt += "CONTEXT:\n" + context + "\n\n"
+	}
 	// Start building the full prompt
-	fullPrompt := "I need a response in the following JSON structure:\n\n"
+	fullPrompt += "I need a response in the following JSON structure:\n\n"
+
+	// Add the user's original prompt
+	fullPrompt += "PROMPT:\n" + prompt
 
 	// Add schema description
 	schemaDesc := generateSchemaDescription(structType, 0)
@@ -98,14 +106,6 @@ func createPromptForStruct(structType reflect.Type, prompt string, context strin
 	fullPrompt += "2. Do not include markdown code blocks, explanations, or other text\n"
 	fullPrompt += "3. Ensure all required fields are filled\n"
 	fullPrompt += "4. Use proper JSON formatting with double quotes for keys and string values\n\n"
-
-	// Add context if provided
-	if context != "" {
-		fullPrompt += "CONTEXT:\n" + context + "\n\n"
-	}
-
-	// Add the user's original prompt
-	fullPrompt += "PROMPT:\n" + prompt
 
 	return fullPrompt
 }
