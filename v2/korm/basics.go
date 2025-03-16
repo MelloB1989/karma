@@ -104,17 +104,28 @@ type QueryResult struct {
 
 // Load initializes the ORM with the given struct.
 func Load(entity any) *ORM {
-	t := reflect.TypeOf(entity).Elem() // Get the type of the struct
+	var t reflect.Type
+
+	// Check if the entity is a pointer
+	entityType := reflect.TypeOf(entity)
+	if entityType.Kind() == reflect.Ptr {
+		// If it's a pointer, get the element type
+		t = entityType.Elem()
+	} else {
+		// If it's not a pointer, use it directly
+		t = entityType
+	}
+
 	tableName := ""
 
-	// Get the table name from the struct tag
+	// Check if TableName field exists and has karma_table tag
 	if field, ok := t.FieldByName("TableName"); ok {
 		tableName = field.Tag.Get("karma_table")
 	}
 
 	// Build the field mapping
 	fieldMap := make(map[string]string)
-	for i := range make([]int, t.NumField()) {
+	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		jsonTag := field.Tag.Get("json")
 		if jsonTag != "" {
@@ -128,7 +139,6 @@ func Load(entity any) *ORM {
 	if err != nil {
 		log.Fatal("DB connection error:", err)
 	}
-	// defer db.Close()
 
 	return &ORM{
 		tableName:  tableName,
