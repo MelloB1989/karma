@@ -295,12 +295,17 @@ func GetFileByPath(objectKey string, envPrefix ...string) (*os.File, error) {
 		prefix = envPrefix[0]
 	}
 
-	// Prepare S3 client config
+	// Get bucket name and region from default config
+	bucketName := c.DefaultConfig().AwsBucketName
+	bucketRegion := c.DefaultConfig().S3BucketRegion
+
+	// Prepare S3 client config with explicit region
 	clientConfig := S3ClientConfig{
+		Region:    bucketRegion,
 		EnvPrefix: prefix,
 	}
 
-	// Create S3 client
+	// Create S3 client with the specific bucket region
 	s3Client, err := CreateS3Client(clientConfig)
 	if err != nil {
 		fmt.Println("Couldn't create S3 client:", err)
@@ -308,7 +313,6 @@ func GetFileByPath(objectKey string, envPrefix ...string) (*os.File, error) {
 	}
 
 	// Prepare download
-	bucketName := c.DefaultConfig().AwsBucketName
 	destinationPath := "./tmp/" + utils.GenerateID()
 
 	// Download object
@@ -317,6 +321,8 @@ func GetFileByPath(objectKey string, envPrefix ...string) (*os.File, error) {
 		Key:    aws.String(objectKey),
 	})
 	if err != nil {
+		// Log the full error for debugging
+		log.Printf("S3 GetObject error: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
