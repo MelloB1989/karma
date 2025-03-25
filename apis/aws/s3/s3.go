@@ -245,7 +245,7 @@ func UploadFile(objectKey string, fileName string) error {
 	return nil
 }
 
-func UploadRawFile(objectKey string, file multipart.File) error {
+func UploadRawFile(objectKey string, file multipart.File) (*string, error) {
 	bucketName := c.DefaultConfig().AwsBucketName
 	sdkConfig, err := config.LoadDefaultConfig(context.TODO())
 	s3Config := aws.Config{
@@ -267,9 +267,10 @@ func UploadRawFile(objectKey string, file multipart.File) error {
 	})
 	if err != nil {
 		log.Printf("Couldn't upload file %v to %v:%v. Here's why: %v\n", "0", bucketName, objectKey, err)
-		return err
+		return nil, err
 	}
-	return nil
+	url := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", bucketName, c.DefaultConfig().S3BucketRegion, objectKey)
+	return aws.String(url), nil
 }
 
 func GetFileByPath(objectKey string) (*os.File, error) {

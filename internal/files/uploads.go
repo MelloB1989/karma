@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 
 	"github.com/MelloB1989/karma/apis/aws/s3"
-	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/utils"
 )
 
@@ -19,11 +18,11 @@ func HandleSingleFileUploadToS3(file *multipart.FileHeader, prefix string) (stri
 		return "", err
 	}
 	defer f.Close()
-	err = s3.UploadRawFile(file.Filename, f)
+	u, err := s3.UploadRawFile(file.Filename, f)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", config.DefaultConfig().AwsBucketName, file.Filename), nil
+	return *u, nil
 }
 
 func HandleMultipleFileUploadToS3(files []*multipart.FileHeader, prefix string) ([]string, error) {
@@ -35,11 +34,11 @@ func HandleMultipleFileUploadToS3(files []*multipart.FileHeader, prefix string) 
 		}
 		defer f.Close()
 		file.Filename = prefix + "/" + utils.GenerateID(25) + "_" + file.Filename
-		err = s3.UploadRawFile(file.Filename, f)
+		u, err := s3.UploadRawFile(file.Filename, f)
 		if err != nil {
 			return urls, err
 		}
-		urls = append(urls, fmt.Sprintf("https://%s.s3.amazonaws.com/%s", config.DefaultConfig().AwsBucketName, file.Filename))
+		urls = append(urls, *u)
 	}
 	return urls, nil
 }
