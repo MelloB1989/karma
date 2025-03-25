@@ -9,9 +9,8 @@ import (
 	"mime/multipart"
 	"os"
 
-	"github.com/MelloB1989/karma/utils"
-
 	c "github.com/MelloB1989/karma/config"
+	"github.com/MelloB1989/karma/utils"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -22,32 +21,114 @@ import (
 	"github.com/aws/smithy-go"
 )
 
-type BucketBasics struct {
-	S3Client *s3.Client
+// S3ClientConfig holds configuration for creating an S3 client
+type S3ClientConfig struct {
+	Region          string
+	AccessKeyID     string
+	SecretAccessKey string
+	EnvPrefix       string
 }
 
-func UploadLargeFileToS3(accessKeyID, secretAccessKey, region, bucketName, objectKey, filePath string, debug bool) error {
-	// Create a static credentials provider
-	creds := aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, ""))
+// CreateS3Client creates an S3 client with flexible configuration
+func CreateS3Client(s3config S3ClientConfig) (*s3.Client, error) {
+	// Determine region and credentials
+	region := s3config.Region
+	if region == "" {
+		// Try to get region from environment variable with optional prefix
+		envRegionKey := "AWS_REGION"
+		if s3config.EnvPrefix != "" {
+			envRegionKey = s3config.EnvPrefix + "_AWS_REGION"
+		}
+		region = os.Getenv(envRegionKey)
+	}
 
-	// Load the AWS configuration with the provided credentials
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
-		config.WithRegion(region),
-		config.WithCredentialsProvider(creds),
-	)
+	// Prepare credential options
+	var credOptions []func(*config.LoadOptions) error
+
+	// If region is specified, add it to config
+	if region != "" {
+		credOptions = append(credOptions, config.WithRegion(region))
+	}
+
+	// Check for credentials
+	accessKeyID := s3config.AccessKeyID
+	secretAccessKey := s3config.SecretAccessKey
+
+	if accessKeyID == "" || secretAccessKey == "" {
+		// Try to get from environment variables with optional prefix
+		accessKeyEnvKey := "AWS_ACCESS_KEY_ID"
+		secretKeyEnvKey := "AWS_SECRET_ACCESS_KEY"
+
+		if s3config.EnvPrefix != "" {
+			accessKeyEnvKey = s3config.EnvPrefix + "_AWS_ACCESS_KEY_ID"
+			secretKeyEnvKey = s3config.EnvPrefix + "_AWS_SECRET_ACCESS_KEY"
+		}
+
+		accessKeyID = os.Getenv(accessKeyEnvKey)
+		secretAccessKey = os.Getenv(secretKeyEnvKey)
+	}
+
+	// If specific credentials are provided, use them
+	if accessKeyID != "" && secretAccessKey != "" {
+		creds := aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, ""))
+		credOptions = append(credOptions, config.WithCredentialsProvider(creds))
+	}
+
+	// Load AWS configuration
+	cfg, err := config.LoadDefaultConfig(context.TODO(), credOptions...)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't load AWS configuration: %v", err)
+	}
+
+	// Create and return S3 client
+	return s3.NewFromConfig(cfg), nil
+}
+
+// ProgressReader is a custom io.Reader that tracks upload progress
+type ProgressReader struct {
+	Reader   io.Reader
+	Size     int64
+	Progress int64
+	Debug    bool
+}
+
+// Read reads data from the underlying reader and updates progress
+func (r *ProgressReader) Read(p []byte) (int, error) {
+	n, err := r.Reader.Read(p)
+	if n > 0 {
+		r.Progress += int64(n)
+		if r.Debug {
+			percent := float64(r.Progress) / float64(r.Size) * 100
+
+			// Display progress bar
+			width := 50
+			completed := int(float64(width) * float64(r.Progress) / float64(r.Size))
+
+			fmt.Printf("\r[")
+			for i := 0; i < width; i++ {
+				if i < completed {
+					fmt.Print("=")
+				} else {
+					fmt.Print(" ")
+				}
+			}
+
+			fmt.Printf("] %.2f%% (%d/%d bytes)", percent, r.Progress, r.Size)
+		}
+	}
+	return n, err
+}
+
+// UploadLargeFileToS3 uploads a large file to S3 with progress tracking
+func UploadLargeFileToS3(opts S3ClientConfig, bucketName, objectKey, filePath string, debug bool) error {
+	// Create S3 client
+	s3Client, err := CreateS3Client(opts)
 	if err != nil {
 		if debug {
-			fmt.Println("Couldn't load default configuration. Have you set up your AWS account?")
-			fmt.Println(err)
+			fmt.Println("Couldn't create S3 client:", err)
 		}
 		return err
 	}
-
-	// Create an S3 client
-	s3Client := s3.NewFromConfig(cfg)
-
-	// Create a BucketBasics instance
-	// basics := BucketBasics{S3Client: s3Client}
 
 	// Open the file to upload
 	file, err := os.Open(filePath)
@@ -69,7 +150,7 @@ func UploadLargeFileToS3(accessKeyID, secretAccessKey, region, bucketName, objec
 	}
 	fileSize := fileInfo.Size()
 
-	// Set a reasonable part size (10MB as used in the example)
+	// Set a reasonable part size (10MB)
 	var partMiBs int64 = 10
 
 	// Create a custom reader that tracks progress
@@ -115,111 +196,30 @@ func UploadLargeFileToS3(accessKeyID, secretAccessKey, region, bucketName, objec
 		log.Printf("\nSuccessfully uploaded %s to %s/%s\n", filePath, bucketName, objectKey)
 	}
 
-	// Optionally, delete the local file after uploading
-	// err = os.Remove(filePath)
-	// if err != nil {
-	// 	fmt.Println("Failed to delete file:", err)
-	// 	return err
-	// }
-
 	return nil
 }
 
-// ProgressReader is a custom io.Reader that tracks upload progress
-type ProgressReader struct {
-	Reader   io.Reader
-	Size     int64
-	Progress int64
-	Debug    bool
-}
-
-// Read reads data from the underlying reader and updates progress
-func (r *ProgressReader) Read(p []byte) (int, error) {
-	n, err := r.Reader.Read(p)
-	if n > 0 {
-		r.Progress += int64(n)
-		if r.Debug {
-			percent := float64(r.Progress) / float64(r.Size) * 100
-
-			// Display progress bar
-			width := 50
-			completed := int(float64(width) * float64(r.Progress) / float64(r.Size))
-
-			fmt.Printf("\r[")
-			for i := 0; i < width; i++ {
-				if i < completed {
-					fmt.Print("=")
-				} else {
-					fmt.Print(" ")
-				}
-			}
-
-			fmt.Printf("] %.2f%% (%d/%d bytes)", percent, r.Progress, r.Size)
-		}
+// UploadFile uploads a file to the default S3 bucket
+func UploadFile(objectKey, fileName string, envPrefix ...string) error {
+	prefix := ""
+	if len(envPrefix) > 0 {
+		prefix = envPrefix[0]
 	}
-	return n, err
-}
 
-func UploadFileToS3(accessKeyID, secretAccessKey, region, bucketName, objectKey, filePath string) error {
-	// Create a static credentials provider
-	creds := aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, ""))
+	// Prepare S3 client config
+	clientConfig := S3ClientConfig{
+		Region:    c.DefaultConfig().S3BucketRegion,
+		EnvPrefix: prefix,
+	}
 
-	// Load the AWS configuration with the provided credentials
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
-		config.WithRegion(region),
-		config.WithCredentialsProvider(creds),
-	)
+	// Create S3 client
+	s3Client, err := CreateS3Client(clientConfig)
 	if err != nil {
-		fmt.Println("Couldn't load default configuration. Have you set up your AWS account?")
-		fmt.Println(err)
+		fmt.Println("Couldn't create S3 client:", err)
 		return err
 	}
-
-	// Create an S3 client
-	s3Client := s3.NewFromConfig(cfg)
 
 	// Open the file to upload
-	file, err := os.Open(filePath)
-	if err != nil {
-		log.Printf("Couldn't open file %v to upload. Here's why: %v\n", filePath, err)
-		return err
-	}
-	defer file.Close()
-
-	// Upload the file to S3
-	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(objectKey),
-		Body:   file,
-		ACL:    "public-read",
-	})
-	if err != nil {
-		log.Printf("Couldn't upload file %v to %v:%v. Here's why: %v\n", filePath, bucketName, objectKey, err)
-		return err
-	}
-
-	// Optionally, delete the local file after uploading
-	err = os.Remove(filePath)
-	if err != nil {
-		fmt.Println("Failed to delete file:", err)
-		return err
-	}
-
-	return nil
-}
-
-func UploadFile(objectKey string, fileName string) error {
-	bucketName := c.DefaultConfig().AwsBucketName
-	sdkConfig, err := config.LoadDefaultConfig(context.TODO())
-	s3Config := aws.Config{
-		Region:      *aws.String(c.DefaultConfig().S3BucketRegion),
-		Credentials: sdkConfig.Credentials,
-	}
-	if err != nil {
-		fmt.Println("Couldn't load default configuration. Have you set up your AWS account?")
-		fmt.Println(err)
-	}
-	s3Client := s3.NewFromConfig(s3Config)
 	file, err := os.Open(fileName)
 	if err != nil {
 		log.Printf("Couldn't open file %v to upload. Here's why: %v\n", fileName, err)
@@ -227,6 +227,8 @@ func UploadFile(objectKey string, fileName string) error {
 	}
 	defer file.Close()
 
+	// Upload to default bucket
+	bucketName := c.DefaultConfig().AwsBucketName
 	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(bucketName),
 		Key:    aws.String(objectKey),
@@ -237,28 +239,39 @@ func UploadFile(objectKey string, fileName string) error {
 		log.Printf("Couldn't upload file %v to %v:%v. Here's why: %v\n", fileName, bucketName, objectKey, err)
 		return err
 	}
+
+	// Optionally delete the local file
 	err = os.Remove(fileName)
 	if err != nil {
 		fmt.Println("Failed to delete file:", err)
 		return err
 	}
+
 	return nil
 }
 
-func UploadRawFile(objectKey string, file multipart.File) (*string, error) {
-	bucketName := c.DefaultConfig().AwsBucketName
-	sdkConfig, err := config.LoadDefaultConfig(context.TODO())
-	s3Config := aws.Config{
-		Region:      *aws.String(c.DefaultConfig().S3BucketRegion),
-		Credentials: sdkConfig.Credentials,
+// UploadRawFile uploads a multipart file to S3
+func UploadRawFile(objectKey string, file multipart.File, envPrefix ...string) (*string, error) {
+	prefix := ""
+	if len(envPrefix) > 0 {
+		prefix = envPrefix[0]
 	}
+
+	// Prepare S3 client config
+	clientConfig := S3ClientConfig{
+		Region:    c.DefaultConfig().S3BucketRegion,
+		EnvPrefix: prefix,
+	}
+
+	// Create S3 client
+	s3Client, err := CreateS3Client(clientConfig)
 	if err != nil {
-		fmt.Println("Couldn't load default configuration. Have you set up your AWS account?")
-		fmt.Println(err)
+		fmt.Println("Couldn't create S3 client:", err)
+		return nil, err
 	}
 
-	s3Client := s3.NewFromConfig(s3Config)
-
+	// Upload to default bucket
+	bucketName := c.DefaultConfig().AwsBucketName
 	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(bucketName),
 		Key:    aws.String(objectKey),
@@ -269,21 +282,36 @@ func UploadRawFile(objectKey string, file multipart.File) (*string, error) {
 		log.Printf("Couldn't upload file %v to %v:%v. Here's why: %v\n", "0", bucketName, objectKey, err)
 		return nil, err
 	}
+
+	// Generate and return S3 URL
 	url := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", bucketName, c.DefaultConfig().S3BucketRegion, objectKey)
 	return aws.String(url), nil
 }
 
-func GetFileByPath(objectKey string) (*os.File, error) {
-	bucketName := c.DefaultConfig().AwsBucketName
-	destinationPath := "./tmp/" + utils.GenerateID()
-	sdkConfig, err := config.LoadDefaultConfig(context.TODO())
+// GetFileByPath downloads a file from S3 to a local temporary path
+func GetFileByPath(objectKey string, envPrefix ...string) (*os.File, error) {
+	prefix := ""
+	if len(envPrefix) > 0 {
+		prefix = envPrefix[0]
+	}
+
+	// Prepare S3 client config
+	clientConfig := S3ClientConfig{
+		EnvPrefix: prefix,
+	}
+
+	// Create S3 client
+	s3Client, err := CreateS3Client(clientConfig)
 	if err != nil {
-		fmt.Println("Couldn't load default configuration. Have you set up your AWS account?")
-		fmt.Println(err)
+		fmt.Println("Couldn't create S3 client:", err)
 		return nil, err
 	}
 
-	s3Client := s3.NewFromConfig(sdkConfig)
+	// Prepare download
+	bucketName := c.DefaultConfig().AwsBucketName
+	destinationPath := "./tmp/" + utils.GenerateID()
+
+	// Download object
 	resp, err := s3Client.GetObject(context.TODO(), &s3.GetObjectInput{
 		Bucket: aws.String(bucketName),
 		Key:    aws.String(objectKey),
@@ -293,17 +321,20 @@ func GetFileByPath(objectKey string) (*os.File, error) {
 	}
 	defer resp.Body.Close()
 
+	// Create local file
 	outFile, err := os.Create(destinationPath)
 	if err != nil {
 		return nil, err
 	}
 
+	// Copy file contents
 	_, err = io.Copy(outFile, resp.Body)
 	if err != nil {
 		outFile.Close()
 		return nil, err
 	}
 
+	// Reset file pointer
 	_, err = outFile.Seek(0, io.SeekStart)
 	if err != nil {
 		outFile.Close()
