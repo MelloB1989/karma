@@ -313,7 +313,7 @@ func GetFileByPath(objectKey string, envPrefix ...string) (*os.File, error) {
 	}
 
 	// Prepare download
-	destinationPath := "./tmp/" + utils.GenerateID()
+	destinationPath := "/tmp/" + utils.GenerateID()
 
 	// Download object
 	resp, err := s3Client.GetObject(context.TODO(), &s3.GetObjectInput{
