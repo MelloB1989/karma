@@ -39,8 +39,6 @@ func StartChatSession() {
 
 		chatHistory = msg + response
 
-		// fmt.Println("\n--- Response ---")
-		// fmt.Println(response)
 	}
 }
 
@@ -52,7 +50,7 @@ func send(msg string) (string, error) {
 		fmt.Println("[sending message]", msg)
 	}
 
-	stream, err := PromptModelStream(msg, 0.1, 0.9, 50, "meta.llama3-8b-instruct-v1:0")
+	stream, err := PromptModelStream(msg, 0.1, 0.9, 50, "us.meta.llama3-3-70b-instruct-v1:0")
 	if err != nil {
 		return "", err
 	}

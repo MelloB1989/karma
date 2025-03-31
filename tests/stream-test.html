@@ -127,7 +127,10 @@
 
                 eventSource.onmessage = function (event) {
                     // Append the new chunk to the response area
-                    responseElem.textContent += event.data;
+                    responseElem.textContent += event.data.replace(
+                        /KARMANEWLINE/g,
+                        "\n",
+                    );
                     // Auto-scroll to the bottom
                     responseElem.scrollTop = responseElem.scrollHeight;
                 };

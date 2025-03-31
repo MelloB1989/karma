@@ -1,14 +1,13 @@
 package bedrock_runtime
 
 import (
-	"bufio"
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -236,11 +235,17 @@ func processBedrockStream(
 	// Construct the endpoint URL for streaming
 	endpoint := fmt.Sprintf("https://bedrock-runtime.%s.amazonaws.com/model/%s/converse-stream", region, modelIdentifier)
 
+	// Debug initial request
+	fmt.Println("Making request to:", endpoint)
+
 	// Marshal the request body to JSON
 	payload, err := json.Marshal(requestBody)
 	if err != nil {
 		return fmt.Errorf("failed to marshal request body to JSON: %v", err)
 	}
+
+	// Debug request payload
+	fmt.Println("Request payload:", string(payload))
 
 	// Create the HTTP request
 	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(payload))
@@ -257,12 +262,17 @@ func processBedrockStream(
 	}
 
 	// Send the request
-	client := &http.Client{}
+	fmt.Println("Sending request...")
+	client := &http.Client{
+		Timeout: time.Second * 60, // Increase timeout
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("HTTP request failed: %v", err)
 	}
 	defer resp.Body.Close()
+
+	fmt.Println("Response status:", resp.Status)
 
 	// Check for non-2xx status codes
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -272,96 +282,85 @@ func processBedrockStream(
 
 	// Verify content type is event-stream
 	contentType := resp.Header.Get("Content-Type")
+	fmt.Println("Content-Type:", contentType)
+
 	if !strings.Contains(contentType, "application/vnd.amazon.eventstream") {
 		return fmt.Errorf("unexpected content type: %s", contentType)
 	}
 
-	// Process the event stream response
-	reader := bufio.NewReader(resp.Body)
+	// Read and process raw bytes
+	fmt.Println("Reading response body...")
+
+	// Create a tee reader to see the raw data
+	// var rawBuffer bytes.Buffer
+	// teeReader := io.TeeReader(resp.Body, &rawBuffer)
+
+	// Create a buffer for binary data
+	buffer := make([]byte, 4096)
 
 	for {
-		// Read the headers
-		headers, err := readEventStreamHeaders(reader)
-		if err != nil {
-			if err == io.EOF {
-				break // End of stream
-			}
-			return fmt.Errorf("error reading event stream headers: %v", err)
-		}
-
-		// Read the event payload
-		contentLength, ok := headers["content-length"]
-		if !ok {
-			return fmt.Errorf("missing content-length header")
-		}
-
-		length, err := strconv.Atoi(contentLength)
-		if err != nil {
-			return fmt.Errorf("invalid content-length: %v", err)
-		}
-
-		payload := make([]byte, length)
-		_, err = io.ReadFull(reader, payload)
-		if err != nil {
-			return fmt.Errorf("error reading event payload: %v", err)
-		}
-
-		// Process the event based on its type
-		eventType, ok := headers["event-type"]
-		if !ok {
-			return fmt.Errorf("missing event-type header")
-		}
-
-		messageType, _ := headers["message-type"]
-
-		if messageType == "event" {
-			switch eventType {
-			case "contentBlockDelta":
-				// Parse the delta content
-				var delta struct {
-					ContentBlockIndex int `json:"contentBlockIndex"`
-					Delta             struct {
-						Text string `json:"text"`
-					} `json:"delta"`
-					P string `json:"p"`
-				}
-
-				if err := json.Unmarshal(payload, &delta); err != nil {
-					log.Printf("Error parsing delta: %v", err)
-					continue
-				}
-
-				// Call the text callback if provided and text is not empty
-				if textCallback != nil && delta.Delta.Text != "" {
-					if err := textCallback(delta.Delta.Text); err != nil {
-						return fmt.Errorf("text callback error: %v", err)
-					}
-				}
-
-			case "metadata":
-				// Parse metadata for token usage, etc.
-				var metadata map[string]interface{}
-				if err := json.Unmarshal(payload, &metadata); err != nil {
-					log.Printf("Error parsing metadata: %v", err)
-					continue
-				}
-
-				// Call the metadata callback if provided
-				if metadataCallback != nil {
-					if err := metadataCallback(metadata); err != nil {
-						return fmt.Errorf("metadata callback error: %v", err)
-					}
-				}
-			}
-		}
-
-		// Read the trailing newline after each event
-		_, err = reader.ReadByte()
+		n, err := resp.Body.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
 				break
 			}
-			return fmt.Errorf("error reading trailing newline: %v", err)
+			return err
+		}
+
+		if n == 0 {
+			continue
+		}
+
+		// Process buffer data
+		data := buffer[:n]
+		var offset int = 0
+
+		for offset < n {
+			// Need at least 8 bytes for the prelude
+			if offset+8 > n {
+				break
+			}
+
+			// Read message length (first 4 bytes)
+			messageLength := binary.BigEndian.Uint32(data[offset : offset+4])
+
+			// Ensure we have the complete message
+			if offset+int(messageLength) > n {
+				break
+			}
+
+			// Read headers length (next 4 bytes)
+			headersLength := binary.BigEndian.Uint32(data[offset+4 : offset+8])
+
+			// Parse headers
+			headerEnd := offset + 8 + int(headersLength)
+
+			// Process headers
+			// [Header parsing logic here]
+
+			// Payload starts after headers
+			payloadStart := headerEnd
+			payloadEnd := offset + int(messageLength) - 4 // -4 for the trailing CRC
+
+			payload := data[payloadStart:payloadEnd]
+
+			// Process payload based on headers
+			// From your debug output, you want to look for contentBlockDelta events
+			// and extract the text from the delta.text field
+
+			var eventData map[string]interface{}
+			if err := json.Unmarshal(payload, &eventData); err == nil {
+				if delta, ok := eventData["delta"].(map[string]interface{}); ok {
+					if text, ok := delta["text"].(string); ok && textCallback != nil {
+						if err := textCallback(text); err != nil {
+							return err
+						}
+					}
+				}
+			}
+
+			// Move to the next message
+			offset += int(messageLength)
 		}
 	}
 
@@ -372,7 +371,7 @@ func processBedrockStream(
 func InvokeBedrockConverseStreamAPI(modelIdentifier string, requestBody BedrockRequest) error {
 	// Text callback function for printing to console
 	textCallback := func(text string) error {
-		fmt.Print("ghfgh", text)
+		fmt.Print(text) // Removed "ghfgh" prefix that was in the original code
 		return nil
 	}
 
@@ -408,34 +407,4 @@ func InvokeBedrockConverseStreamAPIWithCallback(
 
 	// Use the generic function with the custom text callback and no metadata callback
 	return processBedrockStream(modelIdentifier, requestBody, textCallback, nil)
-}
-
-// Helper function to read event stream headers (unchanged)
-func readEventStreamHeaders(reader *bufio.Reader) (map[string]string, error) {
-	headers := make(map[string]string)
-
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			return nil, err
-		}
-
-		// Trim the newline
-		line = strings.TrimSuffix(line, "\n")
-
-		// Empty line marks the end of headers
-		if line == "" {
-			break
-		}
-
-		// Parse the header
-		parts := strings.SplitN(line, ":", 2)
-		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid header format: %s", line)
-		}
-
-		headers[parts[0]] = parts[1]
-	}
-
-	return headers, nil
 }

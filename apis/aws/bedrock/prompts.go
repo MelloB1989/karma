@@ -126,9 +126,6 @@ func ProcessStreamingOutput(output *bedrockruntime.InvokeModelWithResponseStream
 	for event := range output.GetStream().Events() {
 		switch v := event.(type) {
 		case *types.ResponseStreamMemberChunk:
-
-			//fmt.Println("payload", string(v.Value.Bytes))
-
 			var resp Generation
 			err := json.NewDecoder(bytes.NewReader(v.Value.Bytes)).Decode(&resp)
 			if err != nil {

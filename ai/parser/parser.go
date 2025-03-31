@@ -12,7 +12,7 @@ import (
 
 	"github.com/MelloB1989/karma/ai"
 	"github.com/MelloB1989/karma/models"
-	"github.com/openai/openai-go" // Import for OpenAI chunk type
+	// Import for OpenAI chunk type
 )
 
 // Parser represents the main parser configuration
@@ -412,15 +412,13 @@ func (p *Parser) ParseStream(prompt string, context string, output any, progress
 	var fullResponse strings.Builder
 
 	// Define the chunk handler for OpenAI-compatible ChatCompletionChunk
-	chunkHandler := func(chunk openai.ChatCompletionChunk) {
+	chunkHandler := func(chunk ai.StreamedResponse) error {
 		// Extract content from the chunk
-		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-			content := chunk.Choices[0].Delta.Content
-			fullResponse.WriteString(content)
-			if progressCallback != nil {
-				progressCallback(content)
-			}
+		fullResponse.WriteString(chunk.AIResponse)
+		if progressCallback != nil {
+			progressCallback(chunk.AIResponse)
 		}
+		return nil
 	}
 
 	var lastErr error
