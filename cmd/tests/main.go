@@ -3,7 +3,7 @@ package main
 import "github.com/MelloB1989/karma/tests"
 
 func main() {
-	// tests.TestKai()
+	tests.TestKai()
 	// tests.TestSendingSingleMail()
 	// tests.ORMTest()
 	// tests.GoogleAuth()
@@ -11,7 +11,7 @@ func main() {
 	// tests.TestKarmaFiles()
 	// tests.TestAmplifyFuncs()
 	// tests.TestECSIntegration()
-	tests.TestDBConnection()
+	// tests.TestDBConnection()
 	// tests.TestKarmaParser()
 	// tests.TestAICodeParser()
 	// tests.TestS3Upload()

@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Bedrock API Stream Test</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 20px;
+                line-height: 1.6;
+            }
+            .container {
+                display: flex;
+                flex-direction: column;
+                gap: 20px;
+            }
+            .input-group {
+                display: flex;
+                gap: 10px;
+            }
+            #prompt {
+                flex-grow: 1;
+                padding: 10px;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+            }
+            button {
+                padding: 10px 15px;
+                background-color: #4caf50;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+            button:hover {
+                background-color: #45a049;
+            }
+            #response {
+                min-height: 200px;
+                padding: 15px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                background-color: #f9f9f9;
+                white-space: pre-wrap;
+            }
+            .status {
+                color: #666;
+                font-style: italic;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Bedrock API Stream Test</h1>
+        <div class="container">
+            <div>
+                <label for="server-url">Server URL:</label>
+                <input
+                    type="text"
+                    id="server-url"
+                    value="http://localhost:8080"
+                    style="width: 300px; padding: 5px; margin-left: 10px"
+                />
+            </div>
+
+            <div class="input-group">
+                <input
+                    type="text"
+                    id="prompt"
+                    placeholder="Enter your prompt here..."
+                />
+                <button id="submit-btn">Send</button>
+            </div>
+
+            <div>
+                <h3>Response:</h3>
+                <div id="status" class="status">Ready</div>
+                <div id="response"></div>
+            </div>
+        </div>
+
+        <script>
+            document
+                .getElementById("submit-btn")
+                .addEventListener("click", function () {
+                    startStream();
+                });
+
+            document
+                .getElementById("prompt")
+                .addEventListener("keypress", function (e) {
+                    if (e.key === "Enter") {
+                        startStream();
+                    }
+                });
+
+            function startStream() {
+                const prompt = document.getElementById("prompt").value.trim();
+                if (!prompt) {
+                    alert("Please enter a prompt");
+                    return;
+                }
+
+                const serverUrl = document
+                    .getElementById("server-url")
+                    .value.trim();
+                if (!serverUrl) {
+                    alert("Please enter the server URL");
+                    return;
+                }
+
+                const responseElem = document.getElementById("response");
+                const statusElem = document.getElementById("status");
+
+                // Clear previous response
+                responseElem.textContent = "";
+                statusElem.textContent = "Connecting...";
+
+                // Encode the prompt parameter
+                const encodedPrompt = encodeURIComponent(prompt);
+                const url = `${serverUrl}/stream?prompt=${encodedPrompt}`;
+
+                // Create SSE connection
+                const eventSource = new EventSource(url);
+
+                eventSource.onmessage = function (event) {
+                    // Append the new chunk to the response area
+                    responseElem.textContent += event.data;
+                    // Auto-scroll to the bottom
+                    responseElem.scrollTop = responseElem.scrollHeight;
+                };
+
+                eventSource.addEventListener("error", function (event) {
+                    statusElem.textContent =
+                        "Error: Connection failed or server error occurred";
+                    eventSource.close();
+                });
+
+                eventSource.addEventListener("done", function (event) {
+                    statusElem.textContent = "Completed";
+                    eventSource.close();
+                });
+
+                // Add a button to cancel the stream
+                const cancelBtn = document.createElement("button");
+                cancelBtn.textContent = "Cancel";
+                cancelBtn.style.marginLeft = "10px";
+                cancelBtn.style.backgroundColor = "#f44336";
+
+                cancelBtn.addEventListener("click", function () {
+                    eventSource.close();
+                    statusElem.textContent = "Cancelled by user";
+                    document
+                        .getElementById("submit-btn")
+                        .parentNode.removeChild(cancelBtn);
+                });
+
+                document
+                    .getElementById("submit-btn")
+                    .parentNode.appendChild(cancelBtn);
+            }
+        </script>
+    </body>
+</html>

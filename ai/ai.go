@@ -88,6 +88,9 @@ const (
 	Llama3_2_3B  Models = "meta.llama3-2-3b-instruct-v1:0"
 	Llama3_3_70B Models = "meta.llama3-3-70b-instruct-v1:0"
 
+	// AWS US LLaMA Models
+	US_Llama3_3_70B Models = "us.meta.llama3-3-70b-instruct-v1:0"
+
 	// Mistral AI Models
 	Mistral7BInstructV0   Models = "mistral.mistral-7b-instruct-v0:2"
 	Mixtral8x7BInstructV0 Models = "mistral.mixtral-8x7b-instruct-v0:1"

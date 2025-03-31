@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"net/http"
 
 	"github.com/MelloB1989/karma/ai"
 	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
@@ -16,9 +17,113 @@ func TestKai() {
 	// fmt.Println(ai.Llama3_8B.IsBedrockModel())
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
-	testChatCompletion()
+	// testChatCompletion()
 	// testGenerateFromSinglePrompt()
 	// testChatCompletionStream()
+	// Set up the HTTP router
+	// router := http.NewServeMux()
+
+	// // Register your stream handler at an endpoint
+	// router.HandleFunc("/stream", streamHandler)
+
+	// // Start the HTTP server
+	// port := "8080" // or get from environment variables
+	// fmt.Printf("Server starting on port %s...\n", port)
+	// err := http.ListenAndServe(":"+port, router)
+	// if err != nil {
+	// 	fmt.Printf("Error starting server: %v\n", err)
+	// }
+	//
+	bedrock_runtime.InvokeBedrockConverseStreamAPI("us.meta.llama3-3-70b-instruct-v1:0", bedrock_runtime.BedrockRequest{
+		Messages: []bedrock_runtime.Message{
+			{
+				Role:    "user",
+				Content: []bedrock_runtime.Content{{Text: "Hello!"}},
+			},
+		},
+		AdditionalModelRequestFields: map[string]interface{}{},
+		InferenceConfig: bedrock_runtime.InferenceConfig{
+			MaxTokens:   512,
+			Temperature: 0.5,
+			TopP:        0.9,
+		},
+	})
+}
+
+// BedrockRequest represents the request structure for Bedrock API
+type BedrockRequest struct {
+	Messages         []Message `json:"messages"`
+	AnthropicVersion string    `json:"anthropic_version,omitempty"` // For Claude models
+	MaxTokens        int       `json:"max_tokens,omitempty"`
+	Temperature      float64   `json:"temperature,omitempty"`
+	TopP             float64   `json:"top_p,omitempty"`
+	// Add other parameters as needed
+}
+
+// Message represents a single message in the conversation
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+func streamHandler(w http.ResponseWriter, r *http.Request) {
+	// Configure response headers for streaming
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	// Allow CORS for testing from different origins
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Create a response writer that flushes after each write
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	// Get the prompt from URL query parameters
+	prompt := r.URL.Query().Get("prompt")
+	if prompt == "" {
+		http.Error(w, "Missing prompt parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Set up the request to Bedrock
+	bedrockRequest := bedrock_runtime.BedrockRequest{
+		Messages: []bedrock_runtime.Message{
+			{
+				Role:    "user",
+				Content: []bedrock_runtime.Content{{Text: prompt}},
+			},
+		},
+		AdditionalModelRequestFields: map[string]interface{}{},
+		InferenceConfig: bedrock_runtime.InferenceConfig{
+			MaxTokens:   512,
+			Temperature: 0.5,
+			TopP:        0.9,
+		},
+	}
+
+	// Create a custom function that writes to the HTTP response
+	handleChunk := func(text string) {
+		// Format as Server-Sent Event
+		fmt.Fprintf(w, "data: %s\n\n", text)
+		flusher.Flush()
+	}
+
+	// Modified streaming function that accepts a callback
+	if err := bedrock_runtime.InvokeBedrockConverseStreamAPIWithCallback(
+		"us.meta.llama3-3-70b-instruct-v1:0",
+		bedrockRequest,
+		handleChunk,
+	); err != nil {
+		fmt.Fprintf(w, "event: error\ndata: %s\n\n", err.Error())
+		flusher.Flush()
+	}
+
+	// Signal the end of the stream
+	fmt.Fprintf(w, "event: done\ndata: \n\n")
+	flusher.Flush()
 }
 
 func testCliChatImplentation() {
