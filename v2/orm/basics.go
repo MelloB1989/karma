@@ -2,6 +2,7 @@ package orm
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"reflect"
@@ -30,22 +31,42 @@ type QueryResult struct {
 }
 
 // Load initializes the ORM with the given struct.
-func Load(entity any) *ORM {
-	t := reflect.TypeOf(entity).Elem() // Get the type of the struct
+func Load(entity any) (*ORM, error) {
+	if entity == nil {
+		return nil, errors.New("entity cannot be nil")
+	}
+
+	entityType := reflect.TypeOf(entity)
+	if entityType.Kind() != reflect.Ptr {
+		return nil, errors.New("entity must be a pointer to a struct")
+	}
+
+	t := entityType.Elem() // Get the type of the struct
+	if t.Kind() != reflect.Struct {
+		return nil, errors.New("entity must be a pointer to a struct")
+	}
+
 	tableName := ""
 
 	// Get the table name from the struct tag
 	if field, ok := t.FieldByName("TableName"); ok {
 		tableName = field.Tag.Get("karma_table")
+		if tableName == "" {
+			log.Printf("Warning: TableName field found but karma_table tag is empty")
+		}
+	} else {
+		log.Printf("Warning: No TableName field found with karma_table tag")
 	}
 
 	// Build the field mapping
 	fieldMap := make(map[string]string)
-	for i := range make([]int, t.NumField()) {
+	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		jsonTag := field.Tag.Get("json")
 		if jsonTag != "" {
-			fieldMap[field.Name] = jsonTag
+			// Handle cases where json tag includes options like `json:"name,omitempty"`
+			parts := strings.Split(jsonTag, ",")
+			fieldMap[field.Name] = parts[0]
 		} else {
 			fieldMap[field.Name] = field.Name
 		}
@@ -53,9 +74,9 @@ func Load(entity any) *ORM {
 
 	db, err := database.PostgresConn()
 	if err != nil {
-		log.Fatal("DB connection error:", err)
+		log.Printf("Database connection error: %v", err)
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-	// defer db.Close()
 
 	return &ORM{
 		tableName:  tableName,
@@ -63,7 +84,7 @@ func Load(entity any) *ORM {
 		fieldMap:   fieldMap,
 		db:         db,
 		tx:         nil,
-	}
+	}, nil
 }
 
 // Scan maps the query result to the provided destination pointer
