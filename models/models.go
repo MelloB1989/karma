@@ -48,6 +48,8 @@ type AIChatHistory struct {
 	CreatedAt   time.Time   `json:"created_at"`
 	Title       string      `json:"title"`
 	Description string      `json:"description"`
+	SystemMsg   string      `json:"system_msg"`
+	Context     string      `json:"context"`
 }
 
 type AIChatResponse struct {
