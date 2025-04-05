@@ -43,7 +43,11 @@ type AIMessage struct {
 }
 
 type AIChatHistory struct {
-	Messages []AIMessage `json:"messages"`
+	Messages    []AIMessage `json:"messages"`
+	ChatId      string      `json:"chat_id"`
+	CreatedAt   time.Time   `json:"created_at"`
+	Title       string      `json:"title"`
+	Description string      `json:"description"`
 }
 
 type AIChatResponse struct {
