@@ -36,8 +36,10 @@ const (
 )
 
 type AIMessage struct {
-	Message string  `json:"message"`
-	Role    AIRoles `json:"role"`
+	Message   string    `json:"message"`
+	Role      AIRoles   `json:"role"`
+	Timestamp time.Time `json:"timestamp"`
+	UniqueId  string    `json:"unique_id"`
 }
 
 type AIChatHistory struct {
