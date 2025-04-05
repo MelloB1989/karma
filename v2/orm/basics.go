@@ -2,7 +2,6 @@ package orm
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"log"
 	"reflect"
@@ -31,19 +30,22 @@ type QueryResult struct {
 }
 
 // Load initializes the ORM with the given struct.
-func Load(entity any) (*ORM, error) {
+func Load(entity any) *ORM {
 	if entity == nil {
-		return nil, errors.New("entity cannot be nil")
+		log.Printf("Error: entity cannot be nil")
+		return nil
 	}
 
 	entityType := reflect.TypeOf(entity)
 	if entityType.Kind() != reflect.Ptr {
-		return nil, errors.New("entity must be a pointer to a struct")
+		log.Printf("Error: entity must be a pointer to a struct")
+		return nil
 	}
 
 	t := entityType.Elem() // Get the type of the struct
 	if t.Kind() != reflect.Struct {
-		return nil, errors.New("entity must be a pointer to a struct")
+		log.Printf("Error: entity must be a pointer to a struct")
+		return nil
 	}
 
 	tableName := ""
@@ -75,7 +77,7 @@ func Load(entity any) (*ORM, error) {
 	db, err := database.PostgresConn()
 	if err != nil {
 		log.Printf("Database connection error: %v", err)
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+		return nil
 	}
 
 	return &ORM{
@@ -84,7 +86,7 @@ func Load(entity any) (*ORM, error) {
 		fieldMap:   fieldMap,
 		db:         db,
 		tx:         nil,
-	}, nil
+	}
 }
 
 // Scan maps the query result to the provided destination pointer
