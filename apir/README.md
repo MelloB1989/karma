@@ -7,7 +7,7 @@ The `apir` package provides a clean and reusable HTTP client for interacting wit
 ## 🔧 Installation
 
 ```bash
-go get github.com/yourusername/yourrepo/apir
+go get github.com/MelloB1989/karma/apir
 ```
 
 ---
