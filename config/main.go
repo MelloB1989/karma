@@ -220,3 +220,22 @@ func GetEnv(key string) (string, error) {
 	// sugar.Info("loaded .env file")
 	return os.Getenv(key), nil
 }
+
+func GetEnvOrDefault(key string, defaultValue string) string {
+	value, err := GetEnv(key)
+	if err != nil {
+		return defaultValue
+	}
+	if value == "" {
+		return defaultValue
+	}
+	return value
+}
+
+func GetEnvRaw(key string) string {
+	value, err := GetEnv(key)
+	if err != nil {
+		return ""
+	}
+	return value
+}
