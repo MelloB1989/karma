@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math/rand"
 	"net/url"
 	"os"
@@ -292,4 +293,15 @@ func processData(data any, keysToOmit []string) any {
 
 	// For primitive values, just return as is
 	return data
+}
+
+func PrintAsJson(v any) {
+	// Marshal the result to JSON
+	jsonBytes, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		log.Fatalf("Failed to marshal transcription result: %v", err)
+	}
+
+	// Print the formatted JSON
+	fmt.Println(string(jsonBytes))
 }
