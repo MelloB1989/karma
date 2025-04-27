@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/MelloB1989/karma/apis/aws/bedrock"
@@ -170,4 +171,16 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 	} else {
 		return nil, errors.New("This model is not supported yet.")
 	}
+}
+
+func (kai *KarmaAI) GetEmbeddings(text string) (*models.EmbeddingResponse, error) {
+	modelID := string(kai.Model)
+	embeddings, err := bedrock_runtime.CreateEmbeddings(text, modelID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Bedrock embeddings: %w", err)
+	}
+	return &models.EmbeddingResponse{
+		Embedding: embeddings,
+		Error:     nil,
+	}, nil
 }

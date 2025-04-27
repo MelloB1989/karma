@@ -408,3 +408,96 @@ func InvokeBedrockConverseStreamAPIWithCallback(
 	// Use the generic function with the custom text callback and no metadata callback
 	return processBedrockStream(modelIdentifier, requestBody, textCallback, nil)
 }
+
+type EmbeddingResponse struct {
+	Embedding []float32
+}
+
+func CreateEmbeddings(text string, modelID string) ([]float32, error) {
+	awsAccessKey := config.DefaultConfig().AwsAccessKey
+	awsSecretKey := config.DefaultConfig().AwsSecretKey
+	region, err := config.GetEnv("AWS_BEDROCK_REGION")
+	if err != nil || region == "" {
+		return nil, fmt.Errorf("AWS_BEDROCK_REGION is not set or invalid")
+	}
+	creds := credentials.NewStaticCredentials(awsAccessKey, awsSecretKey, "")
+	_, err = session.NewSession(&aws.Config{
+		Region:      aws.String(region),
+		Credentials: creds,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AWS session: %v", err)
+	}
+	endpoint := fmt.Sprintf("https://bedrock-runtime.%s.amazonaws.com/model/%s/invoke", region, modelID)
+	var payload []byte
+	if strings.Contains(modelID, "titan-embed") {
+		requestBody := struct {
+			InputText string `json:"inputText"`
+		}{
+			InputText: text,
+		}
+		payload, err = json.Marshal(requestBody)
+	} else if strings.Contains(modelID, "cohere") {
+		requestBody := struct {
+			Texts     []string `json:"texts"`
+			InputType string   `json:"input_type"`
+		}{
+			Texts:     []string{text},
+			InputType: "search_document",
+		}
+		payload, err = json.Marshal(requestBody)
+	} else {
+		return nil, fmt.Errorf("unsupported embedding model: %s", modelID)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %v", err)
+	}
+	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	signer := v4.NewSigner(creds)
+	_, err = signer.Sign(req, bytes.NewReader(payload), "bedrock", region, time.Now())
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign request: %v", err)
+	}
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		log.Printf("Received non-2xx status code: %d\nResponse Body: %s", resp.StatusCode, string(responseBody))
+		return nil, fmt.Errorf("received non-2xx status code: %d", resp.StatusCode)
+	}
+	var embeddings []float32
+	if strings.Contains(modelID, "titan-embed") {
+		var titanResp struct {
+			Embedding []float32 `json:"embedding"`
+		}
+		if err := json.Unmarshal(responseBody, &titanResp); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal Titan response: %v", err)
+		}
+		embeddings = titanResp.Embedding
+	} else if strings.Contains(modelID, "cohere") {
+		var cohereResp struct {
+			Embeddings [][]float32 `json:"embeddings"`
+		}
+		if err := json.Unmarshal(responseBody, &cohereResp); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal Cohere response: %v", err)
+		}
+		if len(cohereResp.Embeddings) > 0 {
+			embeddings = cohereResp.Embeddings[0]
+		} else {
+			return nil, fmt.Errorf("no embeddings returned from Cohere model")
+		}
+	}
+
+	return embeddings, nil
+}
