@@ -114,4 +114,5 @@ type FieldOverride struct {
 	Description string `json:"description,omitempty"`
 	Example     any    `json:"example,omitempty"`
 	Exclude     bool   `json:"exclude,omitempty"`
+	IsNewField  bool   `json:"isNewField,omitempty"` // Add this field
 }

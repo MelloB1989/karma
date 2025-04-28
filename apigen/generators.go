@@ -1,7 +1,10 @@
 package apigen
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -412,4 +415,23 @@ func generateMarkdown(api *APIDefinition) string {
 	}
 
 	return sb.String()
+}
+
+// LoadFromFile loads an API definition from a JSON file
+func LoadFromFile(filename string) (*APIDefinition, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("error reading file: %w", err)
+	}
+
+	var api APIDefinition
+	if err := json.Unmarshal(data, &api); err != nil {
+		return nil, fmt.Errorf("error unmarshaling API definition: %w", err)
+	}
+
+	// Set output file information based on input file
+	api.OutputFolder = filepath.Dir(filename)
+	api.OutputFileBaseName = strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
+
+	return &api, nil
 }

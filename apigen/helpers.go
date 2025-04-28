@@ -34,6 +34,11 @@ func writeFieldToMarkdown(sb *strings.Builder, field RequestBodyField, indent in
 // extractStructFields recursively extracts field definitions from a struct
 func extractStructFields(t reflect.Type, overrides map[string]FieldOverride, prefix string) []RequestBodyField {
 	var fields []RequestBodyField
+	// Add a maximum depth to prevent infinite recursion
+	// depth := 0
+	// if depth > 5 {
+	// 	return []RequestBodyField{}
+	// }
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		// Skip unexported fields
@@ -184,15 +189,31 @@ func getJSONFieldName(field reflect.StructField) string {
 func getZeroValue(t reflect.Type) interface{} {
 	switch t.Kind() {
 	case reflect.Struct:
-		// For structs, create an empty map
+		// For structs, create a map with fields
 		if t.Name() == "Time" && t.PkgPath() == "time" {
 			return "0001-01-01T00:00:00Z" // Special case for time.Time
 		}
-		return map[string]interface{}{}
+
+		result := make(map[string]interface{})
+		for i := 0; i < t.NumField(); i++ {
+			field := t.Field(i)
+			if !field.IsExported() {
+				continue
+			}
+
+			jsonName := getJSONFieldName(field)
+			if jsonName == "" {
+				continue
+			}
+
+			// Recursively get zero values for nested fields
+			result[jsonName] = getZeroValue(field.Type)
+		}
+		return result
 	case reflect.Map:
-		return nil
+		return map[string]interface{}{}
 	case reflect.Slice, reflect.Array:
-		return nil
+		return []interface{}{}
 	case reflect.String:
 		return ""
 	case reflect.Bool:
@@ -204,6 +225,9 @@ func getZeroValue(t reflect.Type) interface{} {
 	case reflect.Float32, reflect.Float64:
 		return 0.0
 	case reflect.Ptr:
+		if t.Elem().Kind() == reflect.Struct {
+			return getZeroValue(t.Elem())
+		}
 		return nil
 	case reflect.Interface:
 		return nil
