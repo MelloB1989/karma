@@ -130,6 +130,8 @@ func (o *ORM) QueryRaw(query string, args ...any) *QueryResult {
 		rows, err = o.db.Query(query, args...)
 	}
 
+	defer o.db.Close()
+
 	if err != nil {
 		return &QueryResult{nil, err, query, args}
 	}
