@@ -4,14 +4,16 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/MelloB1989/karma/config"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
 
-func PostgresConn() (*sqlx.DB, error) {
+func PostgresConn(options ...map[string]string) (*sqlx.DB, error) {
 	env := config.DefaultConfig()
 
 	// Choose URL based on environment
@@ -49,6 +51,35 @@ func PostgresConn() (*sqlx.DB, error) {
 	db, err := sqlx.Connect("postgres", connStr)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// Set connection pool settings
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
+	db.SetConnMaxLifetime(0) // No limit on connection lifetime
+
+	if len(options) > 0 {
+		if maxOpenConns, ok := options[0]["max_open_conns"]; ok {
+			maxOpenConnsInt, err := strconv.Atoi(maxOpenConns)
+			if err != nil {
+				log.Fatal(err)
+			}
+			db.SetMaxOpenConns(maxOpenConnsInt)
+		}
+		if maxIdleConns, ok := options[0]["max_idle_conns"]; ok {
+			maxIdleConnsInt, err := strconv.Atoi(maxIdleConns)
+			if err != nil {
+				log.Fatal(err)
+			}
+			db.SetMaxIdleConns(maxIdleConnsInt)
+		}
+		if connMaxLifetime, ok := options[0]["conn_max_lifetime"]; ok {
+			connMaxLifetimeInt, err := strconv.Atoi(connMaxLifetime)
+			if err != nil {
+				log.Fatal(err)
+			}
+			db.SetConnMaxLifetime(time.Duration(connMaxLifetimeInt) * time.Second)
+		}
 	}
 
 	if err = db.Ping(); err != nil {

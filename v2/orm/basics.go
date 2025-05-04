@@ -96,6 +96,7 @@ func (qr *QueryResult) Scan(dest any) error {
 		log.Println("Failed to scan rows:", err)
 		return err
 	}
+	defer qr.rows.Close()
 	return nil
 }
 
@@ -130,7 +131,7 @@ func (o *ORM) QueryRaw(query string, args ...any) *QueryResult {
 		rows, err = o.db.Query(query, args...)
 	}
 
-	defer o.db.Close()
+	// defer o.db.Close()
 
 	if err != nil {
 		return &QueryResult{nil, err, query, args}
@@ -141,6 +142,20 @@ func (o *ORM) QueryRaw(query string, args ...any) *QueryResult {
 		err:   err,
 		query: query,
 		args:  args,
+	}
+}
+
+func (o *ORM) Close() {
+	if o.tx != nil {
+		err := o.tx.Commit()
+		if err != nil {
+			log.Println("Failed to commit transaction:", err)
+		}
+	} else {
+		err := o.db.Close()
+		if err != nil {
+			log.Println("Failed to close database connection:", err)
+		}
 	}
 }
 
