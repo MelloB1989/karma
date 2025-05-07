@@ -392,34 +392,30 @@ func InsertTrxStruct(db *sqlx.Tx, tableName string, data any) error {
 }
 
 // UpdateStruct updates fields in the specified table for a given struct based on a condition.
-func UpdateStruct(db *sqlx.DB, tableName string, data any, conditionField string, conditionValue interface{}) error {
+func UpdateStruct(db *sqlx.DB, tableName string, data any, conditionField string, conditionValue any) error {
 	var columns []string
 	var values []any
-
 	val := reflect.ValueOf(data).Elem() // Get the value pointed to by data
 	typ := val.Type()
-
 	placeholderIdx := 1 // Start placeholder index at 1
-
 	for i := 0; i < val.NumField(); i++ {
 		field := typ.Field(i)
 		column := field.Tag.Get("json")
 		dbTag := field.Tag.Get("db")
-
 		// Skip fields not mapped to a database column (e.g., with `db:"-"` tag)
 		if dbTag == "-" || column == "" {
 			continue
 		}
-
 		// Skip the condition field to avoid updating it
 		if column == conditionField {
 			continue
 		}
-
 		fieldValue := val.Field(i)
-
-		// Handle slice, map, or fields marked with `db:"json"`
-		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || dbTag == "json" {
+		// Handle slice, map, struct, or fields marked with `db:"json"`
+		if fieldValue.Kind() == reflect.Slice ||
+			fieldValue.Kind() == reflect.Map ||
+			fieldValue.Kind() == reflect.Struct ||
+			dbTag == "json" {
 			jsonValue, err := json.Marshal(fieldValue.Interface())
 			if err != nil {
 				log.Printf("Failed to marshal JSON field '%s': %v\n", column, err)
@@ -430,12 +426,10 @@ func UpdateStruct(db *sqlx.DB, tableName string, data any, conditionField string
 			// Use the actual value for other types
 			values = append(values, fieldValue.Interface())
 		}
-
 		// Add the column update statement with the placeholder
 		columns = append(columns, fmt.Sprintf("%s = $%d", camelToSnake(column), placeholderIdx))
 		placeholderIdx++
 	}
-
 	// Add the condition field and its value as the last placeholder
 	values = append(values, conditionValue)
 	query := fmt.Sprintf(
@@ -446,47 +440,39 @@ func UpdateStruct(db *sqlx.DB, tableName string, data any, conditionField string
 		placeholderIdx,
 	)
 
-	// Log the final query for debugging
-	// fmt.Println("Generated SQL query:", query)
-
 	// Execute the query
 	_, err := db.Exec(query, values...)
 	if err != nil {
-		log.Println("Failed to update record in table:", err)
+		log.Printf("Failed to update record in table: %v. Query: %s, Values: %v", err, query, values)
 		return err
 	}
-
 	return nil
 }
 
-func UpdateTrxStruct(db *sqlx.Tx, tableName string, data any, conditionField string, conditionValue interface{}) error {
+func UpdateTrxStruct(db *sqlx.Tx, tableName string, data any, conditionField string, conditionValue any) error {
 	var columns []string
 	var values []any
-
 	val := reflect.ValueOf(data).Elem() // Get the value pointed to by data
 	typ := val.Type()
-
 	placeholderIdx := 1 // Start placeholder index at 1
-
 	for i := 0; i < val.NumField(); i++ {
 		field := typ.Field(i)
 		column := field.Tag.Get("json")
 		dbTag := field.Tag.Get("db")
-
 		// Skip fields not mapped to a database column (e.g., with `db:"-"` tag)
 		if dbTag == "-" || column == "" {
 			continue
 		}
-
 		// Skip the condition field to avoid updating it
 		if column == conditionField {
 			continue
 		}
-
 		fieldValue := val.Field(i)
-
-		// Handle slice, map, or fields marked with `db:"json"`
-		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || dbTag == "json" {
+		// Handle slice, map, struct, or fields marked with `db:"json"`
+		if fieldValue.Kind() == reflect.Slice ||
+			fieldValue.Kind() == reflect.Map ||
+			fieldValue.Kind() == reflect.Struct ||
+			dbTag == "json" {
 			jsonValue, err := json.Marshal(fieldValue.Interface())
 			if err != nil {
 				log.Printf("Failed to marshal JSON field '%s': %v\n", column, err)
@@ -497,12 +483,10 @@ func UpdateTrxStruct(db *sqlx.Tx, tableName string, data any, conditionField str
 			// Use the actual value for other types
 			values = append(values, fieldValue.Interface())
 		}
-
 		// Add the column update statement with the placeholder
 		columns = append(columns, fmt.Sprintf("%s = $%d", camelToSnake(column), placeholderIdx))
 		placeholderIdx++
 	}
-
 	// Add the condition field and its value as the last placeholder
 	values = append(values, conditionValue)
 	query := fmt.Sprintf(
@@ -513,16 +497,12 @@ func UpdateTrxStruct(db *sqlx.Tx, tableName string, data any, conditionField str
 		placeholderIdx,
 	)
 
-	// Log the final query for debugging
-	// fmt.Println("Generated SQL query:", query)
-
 	// Execute the query
 	_, err := db.Exec(query, values...)
 	if err != nil {
-		log.Println("Failed to update record in table:", err)
+		log.Printf("Failed to update record in table: %v. Query: %s, Values: %v", err, query, values)
 		return err
 	}
-
 	return nil
 }
 
