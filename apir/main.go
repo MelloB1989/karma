@@ -15,11 +15,15 @@ type APIClient struct {
 	DebugMode bool
 }
 
-func NewAPIClient(baseURL string, headers map[string]string) *APIClient {
+func NewAPIClient(baseURL string, headers map[string]string, debug ...bool) *APIClient {
+	var debugMode bool
+	if len(debug) > 0 {
+		debugMode = debug[0]
+	}
 	return &APIClient{
 		BaseURL:   baseURL,
 		Headers:   headers,
-		DebugMode: false,
+		DebugMode: debugMode,
 	}
 }
 
