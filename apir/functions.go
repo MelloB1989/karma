@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -15,6 +16,9 @@ import (
 func (client *APIClient) Get(endpoint string, responseStruct any) error {
 	respBody, err := client.sendRequest(http.MethodGet, endpoint, nil)
 	if err != nil {
+		if client.DebugMode {
+			log.Printf("Error in GET request: %v\n", err)
+		}
 		return err
 	}
 
@@ -24,6 +28,9 @@ func (client *APIClient) Get(endpoint string, responseStruct any) error {
 func (client *APIClient) Post(endpoint string, requestBody, responseStruct any) error {
 	respBody, err := client.sendRequest(http.MethodPost, endpoint, requestBody)
 	if err != nil {
+		if client.DebugMode {
+			log.Printf("Error in GET request: %v\n", err)
+		}
 		return err
 	}
 
