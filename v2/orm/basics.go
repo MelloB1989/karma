@@ -91,6 +91,10 @@ func Load(entity any) *ORM {
 
 // Scan maps the query result to the provided destination pointer
 func (qr *QueryResult) Scan(dest any) error {
+	if qr.err != nil {
+		log.Println("Query error:", qr.err)
+		return qr.err
+	}
 	err := database.ParseRows(qr.rows, dest)
 	if err != nil {
 		log.Println("Failed to scan rows:", err)
@@ -139,7 +143,7 @@ func (o *ORM) QueryRaw(query string, args ...any) *QueryResult {
 
 	return &QueryResult{
 		rows:  rows,
-		err:   err,
+		err:   nil,
 		query: query,
 		args:  args,
 	}

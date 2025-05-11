@@ -1,24 +1,21 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/MelloB1989/karma/tests"
-	"github.com/joho/godotenv"
 )
 
 func main() {
 	// bedrock.StartChatSession()
-	err := godotenv.Load()
-	if err != nil {
-		panic(err)
-	}
-	embeddings, error := tests.GetEmbedding("Hello this is test embeddings")
-	if error != nil {
-		panic(error)
-	}
-	fmt.Print(embeddings)
-	//tests.TestKai()
+	// err := godotenv.Load()
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// embeddings, error := tests.GetEmbedding("Hello this is test embeddings")
+	// if error != nil {
+	// 	panic(error)
+	// }
+	// fmt.Print(embeddings)
+	tests.TestKai()
 	// tests.TestSendingSingleMail()
 	// tests.ORMTest()
 	// tests.GoogleAuth()

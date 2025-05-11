@@ -35,7 +35,8 @@ func TestKai() {
 	// if err != nil {
 	// 	fmt.Printf("Error starting server: %v\n", err)
 	// }
-	testCliChatImplentation()
+	// testCliChatImplentation()
+	testChatCompletion()
 
 }
 
@@ -144,10 +145,10 @@ func testCliChatImplentation() {
 }
 
 func testChatCompletion() {
-	kai := ai.NewKarmaAI(ai.ApacClaude3_5Sonnet20240620V1,
+	kai := ai.NewKarmaAI(ai.US_Llama3_3_70B,
 		ai.WithSystemMessage("I am Kartik Deshmukh. "),
 		ai.WithTemperature(0.5),
-		ai.WithMaxTokens(10),
+		ai.WithMaxTokens(100),
 		ai.WithTopP(0.9))
 	response, err := kai.ChatCompletion(models.AIChatHistory{
 		Messages: []models.AIMessage{
