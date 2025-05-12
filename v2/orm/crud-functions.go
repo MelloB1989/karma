@@ -152,18 +152,53 @@ func (o *ORM) GetByFieldCompare(fieldName string, operator string, value any) *Q
 }
 
 // GetCount returns the count of records matching the given condition
-func (o *ORM) GetCount() *QueryResult {
-	query := "SELECT COUNT(*) FROM " + o.tableName
-	return o.QueryRaw(query)
-}
-
-// GetCountWhere returns the count of records matching the WHERE condition
-func (o *ORM) GetCountWhere(condition string, args ...any) *QueryResult {
-	query := "SELECT COUNT(*) FROM " + o.tableName
-	if condition != "" {
-		query += " WHERE " + condition
+func (o *ORM) GetCount(filters map[string]any) (int, error) {
+	// Check if any filters are provided
+	if len(filters) == 0 {
+		return 0, fmt.Errorf("no filters provided")
 	}
-	return o.QueryRaw(query, args...)
+
+	// Prepare slices to hold WHERE clauses and their corresponding values
+	var whereClauses []string
+	var args []any
+	placeholder := 1 // PostgreSQL placeholders start at $1
+
+	// Iterate over the filters to build the WHERE clause
+	for fieldName, value := range filters {
+		columnName, ok := o.fieldMap[fieldName]
+		if !ok {
+			return 0, fmt.Errorf("field %s not found in struct", fieldName)
+		}
+
+		// Append the condition with the appropriate placeholder
+		whereClauses = append(whereClauses, fmt.Sprintf("%s = $%d", columnName, placeholder))
+		args = append(args, value)
+		placeholder++
+	}
+
+	// Join all conditions with AND
+	whereStatement := strings.Join(whereClauses, " AND ")
+
+	// Connect to the database
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return 0, err
+	}
+	defer db.Close()
+
+	// Construct query for count
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s", o.tableName, whereStatement)
+
+	// Execute the query
+	var count int
+	err = db.QueryRow(query, args...).Scan(&count)
+	if err != nil {
+		log.Println("Failed to get count by field comparison:", err)
+		return 0, err
+	}
+
+	return count, nil
 }
 
 // GetByFieldNotEquals returns records where the field does not equal the value
