@@ -201,6 +201,30 @@ func (o *ORM) GetCount(filters map[string]any) (int, error) {
 	return count, nil
 }
 
+// GetTotalRowCount returns the total number of rows in the table
+func (o *ORM) GetTotalRowCount() (int, error) {
+	// Connect to the database
+	db, err := database.PostgresConn()
+	if err != nil {
+		log.Println("DB connection error:", err)
+		return 0, err
+	}
+	defer db.Close()
+
+	// Construct simple count query
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", o.tableName)
+
+	// Execute the query
+	var count int
+	err = db.QueryRow(query).Scan(&count)
+	if err != nil {
+		log.Println("Failed to get total row count:", err)
+		return 0, err
+	}
+
+	return count, nil
+}
+
 // GetByFieldNotEquals returns records where the field does not equal the value
 func (o *ORM) GetByFieldNotEquals(fieldName string, value any) *QueryResult {
 	return o.GetByFieldCompare(fieldName, "!=", value)
