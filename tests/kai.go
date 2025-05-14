@@ -20,7 +20,7 @@ func TestKai() {
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
 	// testChatCompletion()
-	// testGenerateFromSinglePrompt()
+	testGenerateFromSinglePrompt()
 	// testChatCompletionStream()
 	// Set up the HTTP router
 	// router := http.NewServeMux()
@@ -36,7 +36,7 @@ func TestKai() {
 	// 	fmt.Printf("Error starting server: %v\n", err)
 	// }
 	// testCliChatImplentation()
-	testChatCompletion()
+	// testChatCompletion()
 
 }
 
@@ -165,10 +165,10 @@ func testChatCompletion() {
 }
 
 func testGenerateFromSinglePrompt() {
-	kai := ai.NewKarmaAI(ai.Llama3_8B,
-		ai.WithUserPrePrompt("This is Kartik Deshmukh. "),
+	kai := ai.NewKarmaAI(ai.Gemini20Flash,
+		ai.WithSystemMessage("Act as a AI assistant, respond in clear text"),
 		ai.WithTemperature(0.5),
-		ai.WithMaxTokens(10),
+		ai.WithMaxTokens(100),
 		ai.WithTopP(0.9))
 	response, err := kai.GenerateFromSinglePrompt("Hello!")
 	if err != nil {

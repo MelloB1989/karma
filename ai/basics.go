@@ -119,10 +119,23 @@ const (
 	StableDiffusionXLV1 Models = "stability.stable-diffusion-xl-v1:0"
 
 	// Google Models
-	PaLM2       Models = "palm-2"
-	Gemini      Models = "gemini-pro"
-	GeminiPro   Models = "gemini-pro"
-	GeminiUltra Models = "gemini-ultra"
+	PaLM2                          Models = "palm-2"
+	Gemini_2_5_Flash_Preview_04_17 Models = "gemini-2.5-flash-preview-04-17"
+	Gemini25ProPreview             Models = "gemini-2.5-pro-preview-05-06"
+	Gemini20Flash                  Models = "gemini-2.0-flash"
+	Gemini20FlashPreviewImageGen   Models = "gemini-2.0-flash-preview-image-generation"
+	Gemini20FlashLite              Models = "gemini-2.0-flash-lite"
+	Gemini15Flash                  Models = "gemini-1.5-flash"
+	Gemini15Flash8B                Models = "gemini-1.5-flash-8b"
+	Gemini15Pro                    Models = "gemini-1.5-pro"
+	GeminiEmbedding                Models = "gemini-embedding-exp"
+	Gemini20FlashLive              Models = "gemini-2.0-flash-live-001"
+
+	// Imagen Model
+	Imagen3 Models = "imagen-3.0-generate-002"
+
+	// Veo Model
+	Veo2 Models = "veo-2.0-generate-001"
 
 	// Cohere Models
 	Command        Models = "command"
@@ -179,6 +192,11 @@ func (m Models) IsOpenAIModel() bool {
 	return strings.HasPrefix(string(m), "gpt-") ||
 		strings.HasPrefix(string(m), "o1") ||
 		strings.HasPrefix(string(m), "chatgpt-")
+}
+
+// IsGeminiModel checks if the model is from Google
+func (m Models) IsGeminiModel() bool {
+	return strings.HasPrefix(string(m), "gemini-")
 }
 
 // IsMetaModel checks if the model is from Meta
@@ -249,7 +267,9 @@ type KarmaAI struct {
 	UserPrePrompt string // User pre-prompt is the message that is added before the user's message
 	Temperature   float64
 	TopP          float64
+	TopK          float64
 	MaxTokens     int64
+	ResponseType  string // `text/plain`, `application/json`, `application/xml`, `application/yaml` and `text/x.enum`
 }
 
 type StreamedResponse struct {
@@ -300,6 +320,19 @@ func WithMaxTokens(maxTokens int64) Option {
 func WithTopP(topP float64) Option {
 	return func(k *KarmaAI) {
 		k.TopP = topP
+	}
+}
+
+// WithTopK sets the top k
+func WithTopK(topK float64) Option {
+	return func(k *KarmaAI) {
+		k.TopK = topK
+	}
+}
+
+func WithResponseType(responseType string) Option {
+	return func(k *KarmaAI) {
+		k.ResponseType = responseType
 	}
 }
 

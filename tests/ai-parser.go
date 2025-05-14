@@ -41,12 +41,13 @@ func TestKarmaParser() {
 func issuesGeneration() {
 	// Initialize the AI parser
 	p := parser.NewParser(
-		parser.WithModel((ai.Llama3_70B)),
+		parser.WithModel((ai.Gemini20Flash)),
 		parser.WithAIOptions(
-			ai.WithTemperature(0.1),
+			ai.WithTemperature(0.5),
 			ai.WithSystemMessage("You are a helpful AI Project manager that specializes in issue generation."),
-			ai.WithMaxTokens(2000),
+			ai.WithMaxTokens(500),
 			ai.WithTopP(0.9),
+			ai.WithResponseType("application/json"),
 		),
 		parser.WithMaxRetries(2),
 	)

@@ -1,8 +1,6 @@
 package main
 
-import (
-	"github.com/MelloB1989/karma/tests"
-)
+import "github.com/MelloB1989/karma/tests"
 
 func main() {
 	// bedrock.StartChatSession()
@@ -15,7 +13,7 @@ func main() {
 	// 	panic(error)
 	// }
 	// fmt.Print(embeddings)
-	tests.TestKai()
+	// tests.TestKai()
 	// tests.TestSendingSingleMail()
 	// tests.ORMTest()
 	// tests.GoogleAuth()
@@ -24,7 +22,7 @@ func main() {
 	// tests.TestAmplifyFuncs()
 	// tests.TestECSIntegration()
 	// tests.TestDBConnection()
-	// tests.TestKarmaParser()
+	tests.TestKarmaParser()
 	// tests.TestAICodeParser()
 	// tests.TestS3Upload()
 	// transcribe.StartStream()

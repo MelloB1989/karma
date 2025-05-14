@@ -7,10 +7,12 @@ import (
 	"time"
 
 	"github.com/MelloB1989/karma/apis/aws/bedrock"
+	"github.com/MelloB1989/karma/apis/gemini"
 	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
 	oai "github.com/openai/openai-go"
+	"google.golang.org/genai"
 )
 
 func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
@@ -75,6 +77,26 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 			AIResponse: response.Output.Message.Content[0].Text,
 			Tokens:     response.Usage.TotalTokens,
 			TimeTaken:  0,
+		}, nil
+	} else if kai.Model.IsGeminiModel() {
+		var response *genai.GenerateContentResponse
+		var err error
+		if kai.ResponseType != "" {
+			response, err = gemini.RunGemini(prompt, string(kai.Model), kai.SystemMessage, kai.Temperature, kai.TopP, kai.TopK, kai.MaxTokens, kai.ResponseType)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get response from Gemini: %w", err)
+			}
+		} else {
+			response, err = gemini.RunGemini(prompt, string(kai.Model), kai.SystemMessage, kai.Temperature, kai.TopP, kai.TopK, kai.MaxTokens)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get response from Gemini: %w", err)
+			}
+		}
+
+		return &models.AIChatResponse{
+			AIResponse: response.Text(),
+			Tokens:     int(response.UsageMetadata.TotalTokenCount),
+			TimeTaken:  int(time.Since(response.CreateTime).Milliseconds()),
 		}, nil
 	} else {
 		return nil, errors.New("This model is not supported yet.")
