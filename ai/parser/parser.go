@@ -263,6 +263,7 @@ func (p *Parser) Parse(prompt string, context string, output any) (time.Duration
 			if p.Debug {
 				log.Println("Failed to get response, Retrying...")
 			}
+			p.maxRetries--
 			continue
 		}
 		cleanedJSON := cleanResponse(resp.AIResponse)
@@ -277,38 +278,6 @@ func (p *Parser) Parse(prompt string, context string, output any) (time.Duration
 		promptFinal = fmt.Sprintf("Clean the following JSON. Error: %v\n\n"+"Please provide a response in STRICTLY valid JSON format, with NO additional text:\n\n%s", err, resp.AIResponse)
 		p.maxRetries--
 	}
-	// for range p.maxRetries {
-	// 	// Send prompt to the AI
-	// 	resp, err := p.client.GenerateFromSinglePrompt(structPrompt)
-	// 	if err != nil {
-	// 		if p.Debug {
-	// 			log.Println("Failed to get response, Retrying...")
-	// 		}
-	// 		lastErr = fmt.Errorf("AI request failed: %w", err)
-	// 		continue
-	// 	}
-
-	// 	// Clean the response to extract just the JSON
-	// 	cleanedJSON := cleanResponse(resp.AIResponse)
-
-	// 	// Try to parse the JSON
-	// 	err = json.Unmarshal([]byte(cleanedJSON), output)
-	// 	if err == nil {
-	// 		// Success!
-	// 		return time.Since(start), resp.Tokens, nil
-	// 	}
-
-	// 	lastErr = fmt.Errorf("JSON parsing failed: %w, Response: %s", err, cleanedJSON)
-	// 	if p.Debug {
-	// 		log.Println("Failed to parse, Retrying...")
-	// 	}
-
-	// 	// For retries, add more explicit instructions about the failure
-	// 	structPrompt = fmt.Sprintf(
-	// 		"Your previous response could not be parsed correctly. Error: %v\n\n"+
-	// 			"Please provide a response in STRICTLY valid JSON format, with NO additional text:\n\n%s",
-	// 		err, structPrompt)
-	// }
 
 	return time.Since(start), 0, lastErr
 }
