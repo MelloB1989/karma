@@ -11,8 +11,16 @@ import (
 	"github.com/MelloB1989/karma/utils"
 )
 
-func HandleSingleFileUploadToS3(file *multipart.FileHeader, prefix string) (string, error) {
-	file.Filename = prefix + "/" + utils.GenerateID(25) + "_" + file.Filename
+func HandleSingleFileUploadToS3(file *multipart.FileHeader, prefix string, options ...map[string]any) (string, error) {
+	opts := map[string]any{}
+	if len(options) > 0 {
+		opts = options[0]
+	}
+	if opts["noFilePrefix"] == true {
+		file.Filename = prefix + "/" + file.Filename
+	} else {
+		file.Filename = prefix + "/" + utils.GenerateID(25) + "_" + file.Filename
+	}
 	f, err := file.Open()
 	if err != nil {
 		return "", err

@@ -72,9 +72,13 @@ func BytesToMultipartFileHeader(imageBytes []byte, filename string) (*multipart.
 	return fileHeaders[0], nil
 }
 
-func (kf *KarmaFiles) HandleSingleFileUpload(file *multipart.FileHeader) (string, error) {
+func (kf *KarmaFiles) HandleSingleFileUpload(file *multipart.FileHeader, options ...map[string]any) (string, error) {
+	opts := make(map[string]any)
+	if len(options) > 0 {
+		opts = options[0]
+	}
 	if kf.UploadMode == S3 {
-		return f.HandleSingleFileUploadToS3(file, kf.PathPrefix)
+		return f.HandleSingleFileUploadToS3(file, kf.PathPrefix, opts)
 	} else {
 		return f.HandleSingleFileUploadToLocal(file, kf.LocalUploadDir)
 	}
