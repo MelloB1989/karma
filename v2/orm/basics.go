@@ -120,17 +120,17 @@ func Load(entity any, opts ...Options) *ORM {
 		}
 	}
 
-	db, err := database.PostgresConn()
-	if err != nil {
-		log.Printf("Database connection error: %v", err)
-		return nil
-	}
+	// db, err := database.PostgresConn()
+	// if err != nil {
+	// 	log.Printf("Database connection error: %v", err)
+	// 	return nil
+	// }
 
 	orm := &ORM{
 		tableName:  tableName,
 		structType: t,
 		fieldMap:   fieldMap,
-		db:         db,
+		db:         nil,
 		tx:         nil,
 	}
 
@@ -294,6 +294,14 @@ func (o *ORM) executeQuery(query string, args ...any) *QueryResult {
 	if o.tx != nil {
 		rows, err = o.tx.Query(query, args...)
 	} else {
+		if o.db == nil {
+			db, err := database.PostgresConn()
+			if err != nil {
+				log.Printf("Database connection error: %v", err)
+				return &QueryResult{nil, err, query, args, nil, o}
+			}
+			o.db = db
+		}
 		rows, err = o.db.Query(query, args...)
 	}
 
@@ -317,7 +325,7 @@ func (o *ORM) Close() {
 		if err != nil {
 			log.Println("Failed to commit transaction:", err)
 		}
-	} else {
+	} else if o.db != nil {
 		err := o.db.Close()
 		if err != nil {
 			log.Println("Failed to close database connection:", err)
