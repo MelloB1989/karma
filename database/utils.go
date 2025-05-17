@@ -196,6 +196,14 @@ func camelToSnake(s string) string {
 
 // InsertStruct inserts a struct's fields into the specified table.
 func InsertStruct(db *sqlx.DB, tableName string, data any) error {
+	var err error
+	if db == nil {
+		db, err = PostgresConn()
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer db.Close()
+	}
 	// Input validation
 	if data == nil {
 		return fmt.Errorf("data cannot be nil")
@@ -284,7 +292,7 @@ func InsertStruct(db *sqlx.DB, tableName string, data any) error {
 	)
 
 	// Execute the query
-	_, err := db.Exec(query, values...)
+	_, err = db.Exec(query, values...)
 	if err != nil {
 		log.Printf("Failed to insert data into table '%s': %v\n", tableName, err)
 		return fmt.Errorf("failed to insert data into table '%s': %w", tableName, err)
@@ -393,6 +401,14 @@ func InsertTrxStruct(db *sqlx.Tx, tableName string, data any) error {
 
 // UpdateStruct updates fields in the specified table for a given struct based on a condition.
 func UpdateStruct(db *sqlx.DB, tableName string, data any, conditionField string, conditionValue any) error {
+	var err error
+	if db == nil {
+		db, err = PostgresConn()
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer db.Close()
+	}
 	var columns []string
 	var values []any
 	val := reflect.ValueOf(data).Elem() // Get the value pointed to by data
@@ -441,7 +457,7 @@ func UpdateStruct(db *sqlx.DB, tableName string, data any, conditionField string
 	)
 
 	// Execute the query
-	_, err := db.Exec(query, values...)
+	_, err = db.Exec(query, values...)
 	if err != nil {
 		log.Printf("Failed to update record in table: %v. Query: %s, Values: %v", err, query, values)
 		return err
