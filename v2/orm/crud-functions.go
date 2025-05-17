@@ -14,13 +14,13 @@ func (o *ORM) GetByFieldIn(fieldName string, values ...any) *QueryResult {
 	// Normalize values into a slice
 	valuesSlice, err := o.normalizeValues(values...)
 	if err != nil {
-		return &QueryResult{nil, fmt.Errorf("IN clause error: %w", err), "", nil}
+		return &QueryResult{nil, fmt.Errorf("IN clause error: %w", err), "", nil, nil, o}
 	}
 
 	// Get the column name
 	columnName, err := o.resolveColumn(fieldName)
 	if err != nil {
-		return &QueryResult{nil, err, "", nil}
+		return &QueryResult{nil, err, "", nil, nil, o}
 	}
 
 	// Construct query with IN clause
@@ -52,7 +52,7 @@ func (o *ORM) GetByFieldLike(fieldName string, pattern string) *QueryResult {
 	// Get the column name
 	columnName, err := o.resolveColumn(fieldName)
 	if err != nil {
-		return &QueryResult{nil, err, "", nil}
+		return &QueryResult{nil, err, "", nil, nil, o}
 	}
 
 	// Construct query with LIKE clause
@@ -67,7 +67,7 @@ func (o *ORM) GetByFieldEquals(fieldName string, value any) *QueryResult {
 	// Get the column name
 	columnName, err := o.resolveColumn(fieldName)
 	if err != nil {
-		return &QueryResult{nil, err, "", nil}
+		return &QueryResult{nil, err, "", nil, nil, o}
 	}
 
 	// Construct query
@@ -92,7 +92,7 @@ func (o *ORM) GetByFieldsEquals(fieldValueMap map[string]any) *QueryResult {
 		// Get the column name
 		columnName, err := o.resolveColumn(fieldName)
 		if err != nil {
-			return &QueryResult{nil, err, "", nil}
+			return &QueryResult{nil, err, "", nil, nil, o}
 		}
 
 		if paramCount > 1 {
@@ -135,13 +135,13 @@ func (o *ORM) GetByFieldCompare(fieldName string, operator string, value any) *Q
 	// Get the column name
 	columnName, err := o.resolveColumn(fieldName)
 	if err != nil {
-		return &QueryResult{nil, err, "", nil}
+		return &QueryResult{nil, err, "", nil, nil, o}
 	}
 
 	// Validate operator
 	validOperators := map[string]bool{">": true, "<": true, ">=": true, "<=": true, "=": true, "!=": true, "<>": true}
 	if !validOperators[operator] {
-		return &QueryResult{nil, fmt.Errorf("invalid operator: %s", operator), "", nil}
+		return &QueryResult{nil, fmt.Errorf("invalid operator: %s", operator), "", nil, nil, o}
 	}
 
 	// Construct query
@@ -235,7 +235,7 @@ func (o *ORM) GetByFieldIsNull(fieldName string) *QueryResult {
 	// Get the column name
 	columnName, err := o.resolveColumn(fieldName)
 	if err != nil {
-		return &QueryResult{nil, err, "", nil}
+		return &QueryResult{nil, err, "", nil, nil, o}
 	}
 
 	// Construct query
@@ -250,7 +250,7 @@ func (o *ORM) GetByFieldIsNotNull(fieldName string) *QueryResult {
 	// Get the column name
 	columnName, err := o.resolveColumn(fieldName)
 	if err != nil {
-		return &QueryResult{nil, err, "", nil}
+		return &QueryResult{nil, err, "", nil, nil, o}
 	}
 
 	// Construct query
@@ -265,7 +265,7 @@ func (o *ORM) GetByFieldBetween(fieldName string, start any, end any) *QueryResu
 	// Get the column name
 	columnName, err := o.resolveColumn(fieldName)
 	if err != nil {
-		return &QueryResult{nil, err, "", nil}
+		return &QueryResult{nil, err, "", nil, nil, o}
 	}
 
 	// Construct query
@@ -284,7 +284,7 @@ func (qr *QueryResult) Limit(limit int) *QueryResult {
 	// Assuming qr.Rows is a sql.Rows type
 	// This would need to be implemented based on your database driver
 	// This is a placeholder implementation
-	return &QueryResult{qr.rows, fmt.Errorf("Limit not implemented yet"), "", nil}
+	return &QueryResult{qr.rows, fmt.Errorf("Limit not implemented yet"), "", nil, nil, qr.orm}
 }
 
 type OrderDirection string
@@ -299,7 +299,7 @@ func (o *ORM) OrderBy(fieldName string, direction OrderDirection) *QueryResult {
 	// Get the column name
 	columnName, err := o.resolveColumn(fieldName)
 	if err != nil {
-		return &QueryResult{nil, err, "", nil}
+		return &QueryResult{nil, err, "", nil, nil, o}
 	}
 
 	// Construct query

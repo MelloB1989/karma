@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/MelloB1989/karma/v2/orm"
 )
@@ -89,6 +90,36 @@ func TestORMV2() {
 	// }
 	res := packagesORM.JoinOnFields(orm.LeftJoin, "packages_groups", "id", "package_id").Execute() //.Scan(&result)
 	fmt.Println(res)
+}
+
+func TestORMCaching() {
+	type Users struct {
+		TableName    struct{}          `karma_table:"users"`
+		Id           string            `json:"id" karma:"primary"`
+		Username     string            `json:"username"`
+		Email        string            `json:"email"`
+		Name         string            `json:"name"`
+		Phone        string            `json:"phone"`
+		Bio          string            `json:"bio"`
+		ProfileImage string            `json:"profile_image"`
+		Socials      map[string]string `json:"socials" db:"socials"`
+		DateOfBirth  time.Time         `json:"date_of_birth"`
+		Gender       string            `json:"gender"`
+		CreatedAt    time.Time         `json:"created_at"`
+		DeviceId     string            `json:"device_id"`
+		PasswordHash string            `json:"password_hash"`
+	}
+
+	usersORM := orm.Load(&Users{}, orm.WithCacheOn(true), orm.WithCacheTTL(5*time.Minute), orm.WithCacheKey("storizz:users"))
+	defer usersORM.Close()
+
+	var users []Users
+	err := usersORM.GetByFieldEquals("Id", "user_2uiCd5By9dH12HMlXSzXzLyusAh").Scan(&users)
+	if err != nil {
+		fmt.Println("Error selecting users:", err)
+		return
+	}
+	fmt.Println("Users:", users)
 }
 
 /*

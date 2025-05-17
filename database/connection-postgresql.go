@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -13,7 +12,13 @@ import (
 	_ "github.com/lib/pq"
 )
 
-func PostgresConn(options ...map[string]string) (*sqlx.DB, error) {
+type PostgresConnOptions struct {
+	MaxOpenConns    *int
+	MaxIdleConns    *int
+	ConnMaxLifetime *time.Duration
+}
+
+func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 	env := config.DefaultConfig()
 
 	// Choose URL based on environment
@@ -59,26 +64,15 @@ func PostgresConn(options ...map[string]string) (*sqlx.DB, error) {
 	db.SetConnMaxLifetime(0) // No limit on connection lifetime
 
 	if len(options) > 0 {
-		if maxOpenConns, ok := options[0]["max_open_conns"]; ok {
-			maxOpenConnsInt, err := strconv.Atoi(maxOpenConns)
-			if err != nil {
-				log.Fatal(err)
-			}
-			db.SetMaxOpenConns(maxOpenConnsInt)
+		opt := options[0]
+		if opt.MaxOpenConns != nil {
+			db.SetMaxOpenConns(*opt.MaxOpenConns)
 		}
-		if maxIdleConns, ok := options[0]["max_idle_conns"]; ok {
-			maxIdleConnsInt, err := strconv.Atoi(maxIdleConns)
-			if err != nil {
-				log.Fatal(err)
-			}
-			db.SetMaxIdleConns(maxIdleConnsInt)
+		if opt.MaxIdleConns != nil {
+			db.SetMaxIdleConns(*opt.MaxIdleConns)
 		}
-		if connMaxLifetime, ok := options[0]["conn_max_lifetime"]; ok {
-			connMaxLifetimeInt, err := strconv.Atoi(connMaxLifetime)
-			if err != nil {
-				log.Fatal(err)
-			}
-			db.SetConnMaxLifetime(time.Duration(connMaxLifetimeInt) * time.Second)
+		if opt.ConnMaxLifetime != nil {
+			db.SetConnMaxLifetime(time.Duration(*opt.ConnMaxLifetime) * time.Second)
 		}
 	}
 

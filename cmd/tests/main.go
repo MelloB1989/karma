@@ -22,10 +22,10 @@ func main() {
 	// tests.TestAmplifyFuncs()
 	// tests.TestECSIntegration()
 	// tests.TestDBConnection()
-	tests.TestKarmaParser()
+	// tests.TestKarmaParser()
 	// tests.TestAICodeParser()
 	// tests.TestS3Upload()
 	// transcribe.StartStream()
-	// tests.TestORMV2()
+	tests.TestORMCaching()
 	// tests.TestAPIGen()
 }

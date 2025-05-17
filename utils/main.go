@@ -305,3 +305,8 @@ func PrintAsJson(v any) {
 	// Print the formatted JSON
 	fmt.Println(string(jsonBytes))
 }
+
+func Sha256Sum(s string) string {
+	hash := sha256.Sum256([]byte(s))
+	return fmt.Sprintf("%x", hash[:])
+}
