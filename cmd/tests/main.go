@@ -1,7 +1,5 @@
 package main
 
-import "github.com/MelloB1989/karma/tests"
-
 func main() {
 	// bedrock.StartChatSession()
 	// err := godotenv.Load()
@@ -26,6 +24,6 @@ func main() {
 	// tests.TestAICodeParser()
 	// tests.TestS3Upload()
 	// transcribe.StartStream()
-	tests.TestORMCaching()
+	// tests.TestORMCaching()
 	// tests.TestAPIGen()
 }

@@ -2,6 +2,7 @@ package tests
 
 import (
 	"fmt"
+	"testing"
 	"time"
 
 	"github.com/MelloB1989/karma/v2/orm"
@@ -71,7 +72,7 @@ type PackageFull struct {
 	} `json:"package_groups"`
 }
 
-func TestORMV2() {
+func TestORMV2(t *testing.T) {
 	// userORM := orm.Load(&User{})
 	// var user []User
 	// // userORM.QueryRaw("SELECT * FROM users WHERE phone = $1", "+917569236628").Scan(&user)
@@ -92,7 +93,8 @@ func TestORMV2() {
 	fmt.Println(res)
 }
 
-func TestORMCaching() {
+func TestORMCachingPerformance(t *testing.T) {
+	// Define test data structure
 	type Users struct {
 		TableName    struct{}          `karma_table:"users"`
 		Id           string            `json:"id" karma:"primary"`
@@ -110,17 +112,203 @@ func TestORMCaching() {
 		PasswordHash string            `json:"password_hash"`
 	}
 
-	usersORM := orm.Load(&Users{}, orm.WithCacheOn(true), orm.WithCacheTTL(5*time.Minute), orm.WithCacheKey("storizz:users"))
+	// Test user ID to query
+	testUserId := "user_2uiCd5By9dH12HMlXSzXzLyusAh"
+
+	// Number of iterations for performance testing
+	iterations := 10
+
+	// First test: ORM with caching disabled
+	t.Run("Without Cache", func(t *testing.T) {
+		// Create ORM with caching disabled
+		uncachedORM := orm.Load(&Users{}, orm.WithCacheOn(false))
+		defer uncachedORM.Close()
+
+		// Clear any existing cache before starting
+		uncachedORM.ClearCache(true)
+
+		// Measure performance
+		startTime := time.Now()
+
+		for i := 0; i < iterations; i++ {
+			var users []Users
+			err := uncachedORM.GetByFieldEquals("Id", testUserId).Scan(&users)
+			if err != nil {
+				t.Fatalf("Error selecting users: %v", err)
+			}
+
+			// Verify we got results
+			if len(users) == 0 {
+				t.Fatalf("No users found with ID: %s", testUserId)
+			}
+
+			// Optional: Add a small delay to simulate real-world usage
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		elapsedTime := time.Since(startTime)
+		avgTime := elapsedTime / time.Duration(iterations)
+
+		t.Logf("Without cache - Total time for %d queries: %v (avg: %v per query)",
+			iterations, elapsedTime, avgTime)
+	})
+
+	// Second test: ORM with caching enabled
+	t.Run("With Cache", func(t *testing.T) {
+		// Create ORM with caching enabled
+		cachedORM := orm.Load(&Users{},
+			orm.WithCacheOn(true),
+			orm.WithCacheTTL(5*time.Minute),
+			orm.WithCacheKey("storizz:users"),
+			orm.WithCacheMethod("memory"))
+		defer cachedORM.Close()
+
+		// Clear any existing cache before starting
+		cachedORM.ClearCache(true)
+
+		// Measure performance
+		startTime := time.Now()
+
+		for i := 0; i < iterations; i++ {
+			var users []Users
+			err := cachedORM.GetByFieldEquals("Id", testUserId).Scan(&users)
+			if err != nil {
+				t.Fatalf("Error selecting users: %v", err)
+			}
+
+			// Verify we got results
+			if len(users) == 0 {
+				t.Fatalf("No users found with ID: %s", testUserId)
+			}
+
+			// Optional: Add a small delay to simulate real-world usage
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		elapsedTime := time.Since(startTime)
+		avgTime := elapsedTime / time.Duration(iterations)
+
+		t.Logf("With cache - Total time for %d queries: %v (avg: %v per query)",
+			iterations, elapsedTime, avgTime)
+	})
+
+	// Third test: Detailed cache performance breakdown
+	t.Run("Cache Performance Breakdown", func(t *testing.T) {
+		// Create ORM with caching enabled
+		cachedORM := orm.Load(&Users{},
+			orm.WithCacheOn(true),
+			orm.WithCacheTTL(5*time.Minute),
+			orm.WithCacheKey("storizz:users"),
+			orm.WithCacheMethod("memory"))
+		defer cachedORM.Close()
+
+		// Clear any existing cache before starting
+		cachedORM.ClearCache(true)
+
+		// First query (cache miss)
+		var firstQueryElapsed time.Duration
+		{
+			startTime := time.Now()
+
+			var users []Users
+			err := cachedORM.GetByFieldEquals("Id", testUserId).Scan(&users)
+			if err != nil {
+				t.Fatalf("Error selecting users: %v", err)
+			}
+
+			firstQueryElapsed = time.Since(startTime)
+			t.Logf("First query (cache miss): %v", firstQueryElapsed)
+		}
+
+		// Subsequent queries (cache hits)
+		var cacheMissTotal, cacheHitTotal time.Duration
+
+		// Reset for accurate measurement
+		cacheMissTotal = firstQueryElapsed
+
+		for i := 0; i < iterations; i++ {
+			startTime := time.Now()
+
+			var users []Users
+			err := cachedORM.GetByFieldEquals("Id", testUserId).Scan(&users)
+			if err != nil {
+				t.Fatalf("Error selecting users: %v", err)
+			}
+
+			queryTime := time.Since(startTime)
+			cacheHitTotal += queryTime
+		}
+
+		// Calculate average times
+		avgCacheMiss := cacheMissTotal
+		avgCacheHit := cacheHitTotal / time.Duration(iterations)
+
+		// Calculate performance improvement
+		improvement := float64(avgCacheMiss) / float64(avgCacheHit)
+
+		t.Logf("Cache miss avg: %v", avgCacheMiss)
+		t.Logf("Cache hit avg: %v", avgCacheHit)
+		t.Logf("Performance improvement: %.2fx faster with cache", improvement)
+	})
+}
+
+// Example manual test with output printing
+func TestORMCaching(t *testing.T) {
+	type Users struct {
+		TableName    struct{}          `karma_table:"users"`
+		Id           string            `json:"id" karma:"primary"`
+		Username     string            `json:"username"`
+		Email        string            `json:"email"`
+		Name         string            `json:"name"`
+		Phone        string            `json:"phone"`
+		Bio          string            `json:"bio"`
+		ProfileImage string            `json:"profile_image"`
+		Socials      map[string]string `json:"socials" db:"socials"`
+		DateOfBirth  time.Time         `json:"date_of_birth"`
+		Gender       string            `json:"gender"`
+		CreatedAt    time.Time         `json:"created_at"`
+		DeviceId     string            `json:"device_id"`
+		PasswordHash string            `json:"password_hash"`
+	}
+
+	// Test with caching enabled
+	fmt.Println("===== Testing with cache enabled =====")
+	usersORM := orm.Load(&Users{},
+		orm.WithCacheOn(true),
+		orm.WithCacheTTL(5*time.Minute),
+		orm.WithCacheKey("storizz:users"),
+		orm.WithCacheMethod("memory"))
 	defer usersORM.Close()
 
+	fmt.Println("First query (cache miss):")
+	start := time.Now()
 	var users []Users
 	err := usersORM.GetByFieldEquals("Id", "user_2uiCd5By9dH12HMlXSzXzLyusAh").Scan(&users)
 	if err != nil {
 		fmt.Println("Error selecting users:", err)
 		return
 	}
-	fmt.Println("Users:", users)
+	fmt.Printf("Query time: %v\n", time.Since(start))
+	fmt.Printf("Found %d users\n", len(users))
+	fmt.Println("User details:", users[0])
 }
+
+/*
+// Initialize ORM with in-memory caching only
+orm := Load(&MyEntity{},
+    WithCacheOn(true),
+    WithCacheMethod("memory"),
+    WithCacheTTL(10 * time.Minute))
+
+// Or use both Redis and in-memory caching (default)
+orm := Load(&MyEntity{},
+    WithCacheOn(true),
+    WithCacheMethod("both"))
+
+// Clear cached data when needed
+orm.InvalidateCache("SELECT * FROM users WHERE id = $1", userId)
+orm.ClearCache(true) // Clear both memory and Redis caches
+*/
 
 /*
  // Start a transaction

@@ -3,35 +3,100 @@ package orm
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/database"
 	"github.com/MelloB1989/karma/utils"
 	"github.com/jmoiron/sqlx"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/redis/go-redis/v9"
 )
 
-var ctx = context.Background()
+var (
+	ctx         = context.Background()
+	json        = jsoniter.ConfigFastest
+	memoryCache = newMemoryCache()
+)
+
+// MemoryCache provides in-memory caching capabilities
+type MemoryCache struct {
+	data  map[string][]byte
+	ttl   map[string]time.Time
+	mutex sync.RWMutex
+}
+
+// newMemoryCache initializes a new in-memory cache
+func newMemoryCache() *MemoryCache {
+	return &MemoryCache{
+		data:  make(map[string][]byte),
+		ttl:   make(map[string]time.Time),
+		mutex: sync.RWMutex{},
+	}
+}
+
+// Get retrieves an item from the memory cache
+func (m *MemoryCache) Get(key string) ([]byte, bool) {
+	m.mutex.RLock()
+	defer m.mutex.RUnlock()
+
+	expireTime, exists := m.ttl[key]
+	if !exists {
+		return nil, false
+	}
+
+	if time.Now().After(expireTime) {
+		// Use a goroutine to clean up expired key to avoid blocking
+		go func(key string) {
+			m.mutex.Lock()
+			delete(m.data, key)
+			delete(m.ttl, key)
+			m.mutex.Unlock()
+		}(key)
+		return nil, false
+	}
+
+	data, exists := m.data[key]
+	return data, exists
+}
+
+// Set stores an item in the memory cache
+func (m *MemoryCache) Set(key string, data []byte, ttl time.Duration) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	m.data[key] = data
+	m.ttl[key] = time.Now().Add(ttl)
+}
+
+// Delete removes an item from the memory cache
+func (m *MemoryCache) Delete(key string) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	delete(m.data, key)
+	delete(m.ttl, key)
+}
 
 // ORM struct encapsulates the metadata and methods for a table.
 type ORM struct {
-	tableName   string
-	structType  reflect.Type
-	fieldMap    map[string]string
-	tx          *sqlx.Tx
-	db          *sqlx.DB
-	CacheOn     *bool
-	CacheMethod *string
-	CacheKey    *string
-	CacheTTL    *time.Duration
-	RedisClient *redis.Client
+	tableName    string
+	structType   reflect.Type
+	fieldMap     map[string]string
+	tx           *sqlx.Tx
+	db           *sqlx.DB
+	CacheOn      *bool
+	CacheMethod  *string // "redis", "memory", or "both"
+	CacheKey     *string
+	CacheTTL     *time.Duration
+	RedisClient  *redis.Client
+	serializeMux sync.Mutex
 }
 
 type QueryResult struct {
@@ -43,7 +108,7 @@ type QueryResult struct {
 	orm        any
 }
 
-// encodeArgs serializes query arguments to create a unique cache key
+// encodeArgs serializes query arguments to create a unique cache key using the faster jsoniter
 func encodeArgs(args []any) string {
 	if len(args) == 0 {
 		return ""
@@ -58,7 +123,7 @@ func encodeArgs(args []any) string {
 	return string(encoded)
 }
 
-// generateCacheKey creates a unique key for Redis based on the query and arguments
+// generateCacheKey creates a unique key for caching based on the query and arguments
 func (o *ORM) generateCacheKey(query string, args []any) string {
 	prefix := ""
 	if o.CacheKey != nil {
@@ -120,12 +185,6 @@ func Load(entity any, opts ...Options) *ORM {
 		}
 	}
 
-	// db, err := database.PostgresConn()
-	// if err != nil {
-	// 	log.Printf("Database connection error: %v", err)
-	// 	return nil
-	// }
-
 	orm := &ORM{
 		tableName:  tableName,
 		structType: t,
@@ -151,6 +210,10 @@ func WithCacheOn(cacheOn bool) Options {
 		client := redis.NewClient(opt)
 		o.CacheOn = &cacheOn
 		o.RedisClient = client
+
+		// Default to both memory and Redis caching
+		cacheMethod := "both"
+		o.CacheMethod = &cacheMethod
 	}
 }
 
@@ -207,7 +270,6 @@ func (qr *QueryResult) Scan(dest any) error {
 		defer qr.rows.Close()
 
 		// Keep a reference to the ORM that created this QueryResult
-		// This needs to be added to your QueryResult struct during creation
 		orm, ok := qr.orm.(*ORM)
 
 		err := database.ParseRows(qr.rows, dest)
@@ -217,28 +279,48 @@ func (qr *QueryResult) Scan(dest any) error {
 		}
 
 		// If caching is enabled, cache the results
-		if ok && orm != nil && orm.CacheOn != nil && *orm.CacheOn && orm.RedisClient != nil {
-			// Serialize the results
-			data, err := json.Marshal(dest)
-			if err != nil {
-				log.Printf("Failed to marshal result for caching: %v", err)
-				return nil // Don't return an error as we successfully scanned the results
-			}
+		if ok && orm != nil && orm.CacheOn != nil && *orm.CacheOn {
+			// Use a goroutine to handle caching in the background to not block
+			go func(orm *ORM, dest any, query string, args []any) {
+				// Prevent concurrent access to serialization
+				orm.serializeMux.Lock()
+				defer orm.serializeMux.Unlock()
 
-			// Store in cache
-			cacheKey := orm.generateCacheKey(qr.query, qr.args)
-			ttl := 5 * time.Minute // Default TTL
-			if orm.CacheTTL != nil {
-				ttl = *orm.CacheTTL
-			}
+				// Serialize the results with the faster jsoniter
+				data, err := json.Marshal(dest)
+				if err != nil {
+					log.Printf("Failed to marshal result for caching: %v", err)
+					return
+				}
 
-			ctx := context.Background()
-			err = orm.RedisClient.Set(ctx, cacheKey, data, ttl).Err()
-			if err != nil {
-				log.Printf("Failed to cache query results: %v", err)
-			} else {
-				log.Printf("Cached query results with key: %s", cacheKey)
-			}
+				cacheKey := orm.generateCacheKey(query, args)
+				ttl := 5 * time.Minute // Default TTL
+				if orm.CacheTTL != nil {
+					ttl = *orm.CacheTTL
+				}
+
+				cacheMethod := "both"
+				if orm.CacheMethod != nil {
+					cacheMethod = *orm.CacheMethod
+				}
+
+				// Cache in memory if requested
+				if cacheMethod == "memory" || cacheMethod == "both" {
+					memoryCache.Set(cacheKey, data, ttl)
+					log.Printf("Cached query results in memory with key: %s", cacheKey)
+				}
+
+				// Cache in Redis if requested
+				if (cacheMethod == "redis" || cacheMethod == "both") && orm.RedisClient != nil {
+					ctx := context.Background()
+					err = orm.RedisClient.Set(ctx, cacheKey, data, ttl).Err()
+					if err != nil {
+						log.Printf("Failed to cache query results in Redis: %v", err)
+					} else {
+						log.Printf("Cached query results in Redis with key: %s", cacheKey)
+					}
+				}
+			}(orm, dest, qr.query, qr.args)
 		}
 
 		return nil
@@ -249,7 +331,7 @@ func (qr *QueryResult) Scan(dest any) error {
 
 func (o *ORM) QueryRaw(query string, args ...any) *QueryResult {
 	// If caching is disabled, go straight to the database
-	if o.CacheOn == nil || !*o.CacheOn || o.RedisClient == nil {
+	if o.CacheOn == nil || !*o.CacheOn {
 		result := o.executeQuery(query, args...)
 		result.orm = o // Set the reference to the ORM
 		return result
@@ -257,25 +339,59 @@ func (o *ORM) QueryRaw(query string, args ...any) *QueryResult {
 
 	// Generate cache key
 	cacheKey := o.generateCacheKey(query, args)
+	cacheMethod := "both"
+	if o.CacheMethod != nil {
+		cacheMethod = *o.CacheMethod
+	}
 
-	// Try to get from cache first
-	ctx := context.Background()
-	cachedData, err := o.RedisClient.Get(ctx, cacheKey).Bytes()
-
-	if err == nil {
-		// Cache hit - return cached data
-		log.Printf("Cache hit for query: %s", query)
-		return &QueryResult{
-			rows:       nil,
-			err:        nil,
-			query:      query,
-			args:       args,
-			cachedData: cachedData,
-			orm:        o,
+	// Try to get from memory cache first (fastest)
+	if cacheMethod == "memory" || cacheMethod == "both" {
+		if cachedData, found := memoryCache.Get(cacheKey); found {
+			log.Printf("Memory cache hit for query: %s", query)
+			return &QueryResult{
+				rows:       nil,
+				err:        nil,
+				query:      query,
+				args:       args,
+				cachedData: cachedData,
+				orm:        o,
+			}
 		}
-	} else if err != redis.Nil {
-		// Log any Redis errors that aren't just "key not found"
-		log.Printf("Redis error when getting key %s: %v", cacheKey, err)
+	}
+
+	// Try to get from Redis if using Redis caching
+	if (cacheMethod == "redis" || cacheMethod == "both") && o.RedisClient != nil {
+		// Create a context with timeout for Redis operations
+		redisCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cancel()
+
+		cachedData, err := o.RedisClient.Get(redisCtx, cacheKey).Bytes()
+
+		if err == nil {
+			// Cache hit - return cached data
+			log.Printf("Redis cache hit for query: %s", query)
+
+			// Store in memory cache as well for faster subsequent access if using both
+			if cacheMethod == "both" {
+				ttl := 5 * time.Minute
+				if o.CacheTTL != nil {
+					ttl = *o.CacheTTL
+				}
+				memoryCache.Set(cacheKey, cachedData, ttl)
+			}
+
+			return &QueryResult{
+				rows:       nil,
+				err:        nil,
+				query:      query,
+				args:       args,
+				cachedData: cachedData,
+				orm:        o,
+			}
+		} else if err != redis.Nil {
+			// Log any Redis errors that aren't just "key not found"
+			log.Printf("Redis error when getting key %s: %v", cacheKey, err)
+		}
 	}
 
 	// Cache miss - execute the query
@@ -329,6 +445,11 @@ func (o *ORM) Close() {
 		err := o.db.Close()
 		if err != nil {
 			log.Println("Failed to close database connection:", err)
+		}
+	} else if o.RedisClient != nil {
+		err := o.RedisClient.Close()
+		if err != nil {
+			log.Println("Failed to close Redis connection:", err)
 		}
 	}
 }
@@ -404,4 +525,60 @@ func (qr *QueryResult) GetQuery() string {
 // GetArgs returns the arguments used in the query
 func (qr *QueryResult) GetArgs() []any {
 	return qr.args
+}
+
+// Invalidate removes an item from both memory and Redis caches
+func (o *ORM) InvalidateCache(query string, args ...any) error {
+	cacheKey := o.generateCacheKey(query, args)
+
+	// Remove from memory cache
+	memoryCache.Delete(cacheKey)
+
+	// Remove from Redis if using Redis
+	if o.RedisClient != nil {
+		err := o.RedisClient.Del(ctx, cacheKey).Err()
+		if err != nil && err != redis.Nil {
+			return fmt.Errorf("failed to invalidate Redis cache: %v", err)
+		}
+	}
+
+	return nil
+}
+
+// ClearCache removes all items from the memory cache and optionally Redis
+func (o *ORM) ClearCache(clearRedis bool) error {
+	// Reset memory cache with a new one
+	memoryCache = newMemoryCache()
+
+	// Clear Redis cache if requested and available
+	if clearRedis && o.RedisClient != nil {
+		// This is a potentially dangerous operation as it clears ALL Redis keys
+		// Consider using a prefix pattern for more targeted clearing
+		if o.CacheKey != nil {
+			pattern := *o.CacheKey + ":*"
+			var cursor uint64
+			var keys []string
+			var err error
+
+			for {
+				keys, cursor, err = o.RedisClient.Scan(ctx, cursor, pattern, 100).Result()
+				if err != nil {
+					return fmt.Errorf("failed to scan Redis keys: %v", err)
+				}
+
+				if len(keys) > 0 {
+					err = o.RedisClient.Del(ctx, keys...).Err()
+					if err != nil {
+						return fmt.Errorf("failed to delete Redis keys: %v", err)
+					}
+				}
+
+				if cursor == 0 {
+					break
+				}
+			}
+		}
+	}
+
+	return nil
 }
