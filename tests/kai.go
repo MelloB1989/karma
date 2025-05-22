@@ -105,9 +105,10 @@ You are a helpful assistant<|eot_id|><|start_header_id|>user<|end_header_id|>
 		if !strings.HasPrefix(response, "Assistant:") {
 			response = "Assistant: " + response
 		}
-
+		formatted := strings.Join(strings.Fields(string(part.Generation)), "KARMASPACE")
+		formatted = strings.ReplaceAll(formatted, "\n", "KARMANEWLINE")
 		// Stream the response to the client
-		fmt.Fprintf(w, "data: %s\n\n", strings.ReplaceAll(strings.ReplaceAll(string(part.Generation), " ", "KARMASPACE"), "\n", "KARMANEWLINE"))
+		fmt.Fprintf(w, "data: %s\n\n", formatted)
 		flusher.Flush()
 		return nil
 	})
