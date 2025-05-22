@@ -99,6 +99,7 @@ You are a helpful assistant<|eot_id|><|start_header_id|>user<|end_header_id|>
 	_, err = bedrock.ProcessStreamingOutput(stream, func(ctx context.Context, part bedrock.Generation) error {
 		// Append the generated text to the response
 		response += strings.ReplaceAll(string(part.Generation), "\n", "KARMANEWLINE")
+		response += strings.ReplaceAll(string(part.Generation), " ", "KARMASPACE")
 
 		// Check if the response contains text that should not be there
 		if !strings.HasPrefix(response, "Assistant:") {
@@ -106,7 +107,7 @@ You are a helpful assistant<|eot_id|><|start_header_id|>user<|end_header_id|>
 		}
 
 		// Stream the response to the client
-		fmt.Fprintf(w, "data: %s\n\n", strings.ReplaceAll(string(part.Generation), "\n", "KARMANEWLINE"))
+		fmt.Fprintf(w, "data: %s\n\n", strings.ReplaceAll(strings.ReplaceAll(string(part.Generation), " ", "KARMASPACE"), "\n", "KARMANEWLINE"))
 		flusher.Flush()
 		return nil
 	})
