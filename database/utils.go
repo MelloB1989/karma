@@ -40,7 +40,6 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 	if destValue.Kind() != reflect.Ptr || destValue.Elem().Kind() != reflect.Slice {
 		return errors.New("destination must be a pointer to a slice")
 	}
-
 	sliceValue := destValue.Elem()
 	elemType := sliceValue.Type().Elem()
 
@@ -96,56 +95,84 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 			}
 
 			field := elem.FieldByName(fieldInfo.Name)
-			if field.IsValid() && field.CanSet() {
-				val := reflect.ValueOf(columnValues[i])
+			if !field.IsValid() || !field.CanSet() {
+				continue
+			}
 
-				// Handle fields with 'db' tag
-				if fieldInfo.Tag.Get("db") != "" {
-					// Obtain the data as []byte
-					var data []byte
-					switch v := val.Interface().(type) {
-					case []byte:
-						data = v
-					case string:
-						data = []byte(v)
-					default:
-						log.Println("Unsupported type for field with 'db' tag:", fieldInfo.Name)
-						continue
-					}
+			// Check if columnValues[i] is nil
+			if columnValues[i] == nil {
+				// Handle nil values - set zero value for the field type
+				if field.CanSet() {
+					field.Set(reflect.Zero(field.Type()))
+				}
+				continue
+			}
 
-					// Unmarshal the JSON into the field
-					if err := json.Unmarshal(data, field.Addr().Interface()); err != nil {
-						// If unmarshal fails, try to handle the case where we have a string that needs to be converted
-						var jsonStr string
-						if err := json.Unmarshal(data, &jsonStr); err == nil {
-							// If the field is a float32
-							if field.Kind() == reflect.Float32 {
-								if f, err := stringToFloat32(jsonStr); err == nil {
-									field.SetFloat(float64(f))
-									continue
-								}
+			val := reflect.ValueOf(columnValues[i])
+
+			// Add check for zero value before calling val.Type()
+			if !val.IsValid() {
+				log.Printf("Invalid value for field %s, skipping", fieldInfo.Name)
+				continue
+			}
+
+			// Handle fields with 'db' tag
+			if fieldInfo.Tag.Get("db") != "" {
+				// Obtain the data as []byte
+				var data []byte
+				switch v := val.Interface().(type) {
+				case []byte:
+					data = v
+				case string:
+					data = []byte(v)
+				default:
+					log.Printf("Unsupported type for field with 'db' tag: %s, got type: %v", fieldInfo.Name, val.Type())
+					continue
+				}
+
+				// Unmarshal the JSON into the field
+				if err := json.Unmarshal(data, field.Addr().Interface()); err != nil {
+					// If unmarshal fails, try to handle the case where we have a string that needs to be converted
+					var jsonStr string
+					if err := json.Unmarshal(data, &jsonStr); err == nil {
+						// If the field is a float32
+						if field.Kind() == reflect.Float32 {
+							if f, err := stringToFloat32(jsonStr); err == nil {
+								field.SetFloat(float64(f))
+								continue
 							}
-							// TODO: Add more type conversions here
 						}
+						// TODO: Add more type conversions here
+					}
+					log.Printf("Failed to unmarshal JSON for field %s: %v (data: %s)", fieldInfo.Name, err, string(data))
+					continue
+				}
+			} else {
+				// Standard processing for other fields
+				if val.Kind() == reflect.Ptr && !val.IsNil() {
+					val = val.Elem()
+				}
+				if val.Kind() == reflect.Interface && !val.IsNil() {
+					val = val.Elem()
+				}
 
-						log.Printf("Failed to unmarshal JSON for field %s: %v (data: %s)", fieldInfo.Name, err, string(data))
-						continue
-					}
+				// Additional check after dereferencing
+				if !val.IsValid() {
+					log.Printf("Invalid value after dereferencing for field %s, skipping", fieldInfo.Name)
+					continue
+				}
+
+				if val.Type().ConvertibleTo(field.Type()) {
+					field.Set(val.Convert(field.Type()))
+				} else if val.Kind() == reflect.Slice && val.Type().Elem().Kind() == reflect.Uint8 && field.Kind() == reflect.String {
+					// Convert []byte to string
+					field.SetString(string(val.Interface().([]byte)))
 				} else {
-					// Standard processing for other fields
-					if val.Kind() == reflect.Ptr && !val.IsNil() {
-						val = val.Elem()
-					}
-					if val.Kind() == reflect.Interface && !val.IsNil() {
-						val = val.Elem()
-					}
-					if val.Type().ConvertibleTo(field.Type()) {
-						field.Set(val.Convert(field.Type()))
-					} else if val.Kind() == reflect.Slice && val.Type().Elem().Kind() == reflect.Uint8 && field.Kind() == reflect.String {
-						// Convert []byte to string
-						field.SetString(string(val.Interface().([]byte)))
+					// Safe check before calling val.Type()
+					if val.IsValid() {
+						log.Printf("Cannot set field %s with value of type %v", fieldInfo.Name, val.Type())
 					} else {
-						log.Println("Cannot set field", fieldInfo.Name, "with value of type", val.Type())
+						log.Printf("Cannot set field %s with invalid value", fieldInfo.Name)
 					}
 				}
 			}
