@@ -24,6 +24,10 @@ var (
 	memoryCache = newMemoryCache()
 )
 
+const (
+	InfiniteTTL = time.Duration(-1)
+)
+
 // MemoryCache provides in-memory caching capabilities
 type MemoryCache struct {
 	data  map[string][]byte
@@ -50,7 +54,8 @@ func (m *MemoryCache) Get(key string) ([]byte, bool) {
 		return nil, false
 	}
 
-	if time.Now().After(expireTime) {
+	// Check if this is an infinite TTL entry (zero time means infinite)
+	if !expireTime.IsZero() && time.Now().After(expireTime) {
 		// Use a goroutine to clean up expired key to avoid blocking
 		go func(key string) {
 			m.mutex.Lock()
@@ -65,13 +70,20 @@ func (m *MemoryCache) Get(key string) ([]byte, bool) {
 	return data, exists
 }
 
-// Set stores an item in the memory cache
+// Set stores an item in the memory cache with the specified TTL.
+// If ttl is InfiniteTTL or negative, the item will never expire automatically.
 func (m *MemoryCache) Set(key string, data []byte, ttl time.Duration) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
 	m.data[key] = data
-	m.ttl[key] = time.Now().Add(ttl)
+
+	// Handle infinite TTL by storing zero time
+	if IsInfiniteTTL(ttl) {
+		m.ttl[key] = time.Time{} // Zero time indicates infinite TTL
+	} else {
+		m.ttl[key] = time.Now().Add(ttl)
+	}
 }
 
 // Delete removes an item from the memory cache
@@ -81,6 +93,16 @@ func (m *MemoryCache) Delete(key string) {
 
 	delete(m.data, key)
 	delete(m.ttl, key)
+}
+
+// IsInfiniteTTL checks if the given duration represents an infinite TTL
+func IsInfiniteTTL(ttl time.Duration) bool {
+	return ttl == InfiniteTTL || ttl < 0
+}
+
+// HasInfiniteTTL returns true if the ORM is configured to use infinite cache TTL
+func (o *ORM) HasInfiniteTTL() bool {
+	return o.CacheTTL != nil && IsInfiniteTTL(*o.CacheTTL)
 }
 
 // ORM struct encapsulates the metadata and methods for a table.
@@ -223,9 +245,21 @@ func WithCacheKey(cacheKey string) Options {
 	}
 }
 
+// WithCacheTTL sets the cache time-to-live duration for cached query results.
+// Use InfiniteTTL or any negative duration for items that never expire.
 func WithCacheTTL(cacheTTL time.Duration) Options {
 	return func(o *ORM) {
 		o.CacheTTL = &cacheTTL
+	}
+}
+
+// WithInfiniteCacheTTL configures the ORM to cache query results indefinitely.
+// Cached items will never expire automatically and must be manually invalidated
+// using InvalidateCache, InvalidateCacheByPrefix, or ClearCache methods.
+func WithInfiniteCacheTTL() Options {
+	return func(o *ORM) {
+		infiniteTTL := InfiniteTTL
+		o.CacheTTL = &infiniteTTL
 	}
 }
 
@@ -301,17 +335,34 @@ func (qr *QueryResult) Scan(dest any) error {
 				// Cache in memory if requested
 				if cacheMethod == "memory" || cacheMethod == "both" {
 					memoryCache.Set(cacheKey, data, ttl)
-					log.Printf("Cached query results in memory with key: %s", cacheKey)
+					if IsInfiniteTTL(ttl) {
+						log.Printf("Cached query results in memory with infinite TTL and key: %s", cacheKey)
+					} else {
+						log.Printf("Cached query results in memory with key: %s (TTL: %s)", cacheKey, ttl)
+					}
 				}
 
 				// Cache in Redis if requested
 				if (cacheMethod == "redis" || cacheMethod == "both") && orm.RedisClient != nil {
 					ctx := context.Background()
-					err = orm.RedisClient.Set(ctx, cacheKey, data, ttl).Err()
+					var redisTTL time.Duration
+
+					// Handle infinite TTL for Redis (0 means no expiration)
+					if IsInfiniteTTL(ttl) {
+						redisTTL = 0
+					} else {
+						redisTTL = ttl
+					}
+
+					err = orm.RedisClient.Set(ctx, cacheKey, data, redisTTL).Err()
 					if err != nil {
 						log.Printf("Failed to cache query results in Redis: %v", err)
 					} else {
-						log.Printf("Cached query results in Redis with key: %s", cacheKey)
+						if redisTTL == 0 {
+							log.Printf("Cached query results in Redis with infinite TTL and key: %s", cacheKey)
+						} else {
+							log.Printf("Cached query results in Redis with key: %s (TTL: %s)", cacheKey, redisTTL)
+						}
 					}
 				}
 			}(orm, dest, qr.query, qr.args)
