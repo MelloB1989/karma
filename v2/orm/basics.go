@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/database"
 	"github.com/MelloB1989/karma/utils"
 	"github.com/jmoiron/sqlx"
@@ -202,12 +201,7 @@ func Load(entity any, opts ...Options) *ORM {
 
 func WithCacheOn(cacheOn bool) Options {
 	return func(o *ORM) {
-		opt, err := redis.ParseURL(config.DefaultConfig().RedisURL)
-		if err != nil {
-			log.Println("Error parsing Redis URL:", err)
-			panic(err)
-		}
-		client := redis.NewClient(opt)
+		client := utils.RedisConnect()
 		o.CacheOn = &cacheOn
 		o.RedisClient = client
 
@@ -539,6 +533,50 @@ func (o *ORM) InvalidateCache(query string, args ...any) error {
 		err := o.RedisClient.Del(ctx, cacheKey).Err()
 		if err != nil && err != redis.Nil {
 			return fmt.Errorf("failed to invalidate Redis cache: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func (o *ORM) InvalidateCacheByPrefix(prefix string) error {
+	// Clear memory cache keys with the given prefix
+	prefixPattern := prefix + ":"
+	memoryCache.mutex.Lock()
+	for key := range memoryCache.data {
+		if strings.HasPrefix(key, prefixPattern) {
+			delete(memoryCache.data, key)
+			delete(memoryCache.ttl, key)
+		}
+	}
+	memoryCache.mutex.Unlock()
+
+	// Skip Redis invalidation if client is not initialized
+	if o.RedisClient == nil {
+		return nil
+	}
+
+	// Create a pattern to match keys with the given prefix
+	pattern := prefix + ":*"
+	var cursor uint64
+	var keys []string
+	var err error
+
+	for {
+		keys, cursor, err = o.RedisClient.Scan(ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return fmt.Errorf("failed to scan Redis keys: %v", err)
+		}
+
+		if len(keys) > 0 {
+			err = o.RedisClient.Del(ctx, keys...).Err()
+			if err != nil {
+				return fmt.Errorf("failed to delete Redis keys: %v", err)
+			}
+		}
+
+		if cursor == 0 {
+			break
 		}
 	}
 

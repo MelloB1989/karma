@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/MelloB1989/karma/config"
 	"github.com/golang-jwt/jwt"
 	gonanoid "github.com/matoous/go-nanoid/v2"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -309,4 +311,25 @@ func PrintAsJson(v any) {
 func Sha256Sum(s string) string {
 	hash := sha256.Sum256([]byte(s))
 	return fmt.Sprintf("%x", hash[:])
+}
+
+func RedisConnect() *redis.Client {
+	var redisURL string
+	env := config.DefaultConfig()
+	if env.Environment == "" {
+		redisURL = env.RedisURL
+	} else {
+		redisURL, _ = config.GetEnv(env.Environment + "_REDIS_URL")
+	}
+	opt, err := redis.ParseURL(redisURL)
+	if err != nil {
+		log.Println("Error parsing Redis URL:", err)
+		panic(err)
+	}
+	client := redis.NewClient(opt)
+	if err := client.Ping(context.Background()).Err(); err != nil {
+		log.Println("Error connecting to Redis:", err)
+		panic(err)
+	}
+	return client
 }
