@@ -602,9 +602,8 @@ func (o *ORM) InvalidateCacheByPrefix(prefix string) error {
 	}
 	memoryCache.mutex.Unlock()
 
-	// Skip Redis invalidation if client is not initialized
 	if o.RedisClient == nil {
-		return nil
+		o.RedisClient = utils.RedisConnect()
 	}
 
 	// Create a pattern to match keys with the given prefix
