@@ -381,7 +381,7 @@ func (p *Parser) ParseStream(prompt string, context string, output any, progress
 	var fullResponse strings.Builder
 
 	// Define the chunk handler for OpenAI-compatible ChatCompletionChunk
-	chunkHandler := func(chunk ai.StreamedResponse) error {
+	chunkHandler := func(chunk models.StreamedResponse) error {
 		// Extract content from the chunk
 		fullResponse.WriteString(chunk.AIResponse)
 		if progressCallback != nil {

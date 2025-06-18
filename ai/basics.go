@@ -1,6 +1,10 @@
 package ai
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/anthropics/anthropic-sdk-go"
+)
 
 type Models string
 
@@ -44,7 +48,7 @@ const (
 	ChatModelGPT3_5Turbo0125                 Models = "gpt-3.5-turbo-0125"
 	ChatModelGPT3_5Turbo16k0613              Models = "gpt-3.5-turbo-16k-0613"
 
-	// Anthropic Models
+	// Anthropic Models For BEDROCK
 	ClaudeInstantV1_2_100K        Models = "anthropic.claude-instant-v1:2:100k"
 	ClaudeInstantV1               Models = "anthropic.claude-instant-v1"
 	ClaudeV2_0_18K                Models = "anthropic.claude-v2:0:18k"
@@ -131,45 +135,35 @@ const (
 	GeminiEmbedding                Models = "gemini-embedding-exp"
 	Gemini20FlashLive              Models = "gemini-2.0-flash-live-001"
 
-	// Imagen Model
-	Imagen3 Models = "imagen-3.0-generate-002"
-
-	// Veo Model
-	Veo2 Models = "veo-2.0-generate-001"
-
-	// Cohere Models
-	Command        Models = "command"
-	CommandLight   Models = "command-light"
-	CommandNightly Models = "command-nightly"
-
-	// Open Source Models
-	Falcon40B Models = "falcon-40b"
-	MPT7B     Models = "mpt-7b"
-	StableLM  Models = "stablelm-base-7b"
-	Dolly12B  Models = "dolly-v2-12b"
-	BLOOMZ    Models = "bloomz-7b1"
-
-	// Undefined Model
-	J2GrandeInstruct         Models = "ai21.j2-grande-instruct"
-	J2JumboInstruct          Models = "ai21.j2-jumbo-instruct"
-	J2Mid                    Models = "ai21.j2-mid"
-	J2MidV1                  Models = "ai21.j2-mid-v1"
-	J2Ultra                  Models = "ai21.j2-ultra"
-	J2UltraV1_8K             Models = "ai21.j2-ultra-v1:0:8k"
-	J2UltraV1                Models = "ai21.j2-ultra-v1"
-	JambaInstructV1          Models = "ai21.jamba-instruct-v1:0"
-	Jamba1_5LargeV1          Models = "ai21.jamba-1-5-large-v1:0"
-	Jamba1_5MiniV1           Models = "ai21.jamba-1-5-mini-v1:0"
-	CommandTextV14_7_4K      Models = "cohere.command-text-v14:7:4k"
-	CommandTextV14           Models = "cohere.command-text-v14"
-	CommandRV1               Models = "cohere.command-r-v1:0"
-	CommandRPlusV1           Models = "cohere.command-r-plus-v1:0"
-	CommandLightTextV14_7_4K Models = "cohere.command-light-text-v14:7:4k"
-	CommandLightTextV14      Models = "cohere.command-light-text-v14"
-	EmbedEnglishV3_512       Models = "cohere.embed-english-v3:0:512"
-	EmbedEnglishV3           Models = "cohere.embed-english-v3"
-	EmbedMultilingualV3_512  Models = "cohere.embed-multilingual-v3:0:512"
-	EmbedMultilingualV3      Models = "cohere.embed-multilingual-v3"
+	// Anthropic Models without BEDROCK
+	ModelClaude3_7SonnetLatest      Models = "claude-3-7-sonnet-latest"
+	ModelClaude3_7Sonnet20250219    Models = "claude-3-7-sonnet-20250219"
+	ModelClaude3_5HaikuLatest       Models = "claude-3-5-haiku-latest"
+	ModelClaude3_5Haiku20241022     Models = "claude-3-5-haiku-20241022"
+	ModelClaudeSonnet4_20250514     Models = "claude-sonnet-4-20250514"
+	ModelClaudeSonnet4_0            Models = "claude-sonnet-4-0"
+	ModelClaude4Sonnet20250514      Models = "claude-4-sonnet-20250514"
+	ModelClaude3_5SonnetLatest      Models = "claude-3-5-sonnet-latest"
+	ModelClaude3_5Sonnet20241022    Models = "claude-3-5-sonnet-20241022"
+	ModelClaude_3_5_Sonnet_20240620 Models = "claude-3-5-sonnet-20240620"
+	ModelClaudeOpus4_0              Models = "claude-opus-4-0"
+	ModelClaudeOpus4_20250514       Models = "claude-opus-4-20250514"
+	ModelClaude4Opus20250514        Models = "claude-4-opus-20250514"
+	ModelClaude3OpusLatest          Models = "claude-3-opus-latest"
+	ModelClaude_3_Opus_20240229     Models = "claude-3-opus-20240229"
+	// Deprecated: Will reach end-of-life on July 21st, 2025. Please migrate to a newer
+	// model. Visit https://docs.anthropic.com/en/docs/resources/model-deprecations for
+	// more information.
+	ModelClaude_3_Sonnet_20240229 Models = "claude-3-sonnet-20240229"
+	ModelClaude_3_Haiku_20240307  Models = "claude-3-haiku-20240307"
+	// Deprecated: Will reach end-of-life on July 21st, 2025. Please migrate to a newer
+	// model. Visit https://docs.anthropic.com/en/docs/resources/model-deprecations for
+	// more information.
+	ModelClaude_2_1 Models = "claude-2.1"
+	// Deprecated: Will reach end-of-life on July 21st, 2025. Please migrate to a newer
+	// model. Visit https://docs.anthropic.com/en/docs/resources/model-deprecations for
+	// more information.
+	ModelClaude_2_0 Models = "claude-2.0"
 )
 
 type ModelProviders string
@@ -205,7 +199,7 @@ func (m Models) IsMetaModel() bool {
 }
 
 func (m Models) IsAnthropicModel() bool {
-	return strings.HasPrefix(string(m), "anthropic.claude") || strings.HasPrefix(string(m), "claude-") || strings.HasPrefix(string(m), "us.anthropic.claude")
+	return strings.HasPrefix(string(m), "claude-")
 }
 
 func (m Models) IsAmazonModel() bool {
@@ -230,6 +224,10 @@ func (m Models) IsAI21Model() bool {
 
 func (m Models) IsGoogleModel() bool {
 	return strings.HasPrefix(string(m), "palm-") || strings.HasPrefix(string(m), "gemini-")
+}
+
+func (m Models) ToClaudeModel() anthropic.Model {
+	return anthropic.Model(string(m))
 }
 
 func (m Models) IsBedrockModel() bool {
@@ -270,12 +268,6 @@ type KarmaAI struct {
 	TopK          float64
 	MaxTokens     int64
 	ResponseType  string // `text/plain`, `application/json`, `application/xml`, `application/yaml` and `text/x.enum`
-}
-
-type StreamedResponse struct {
-	AIResponse string `json:"text"`
-	TokenUsed  int    `json:"token_used"`
-	TimeTaken  int    `json:"time_taken"`
 }
 
 // Option is a function type that modifies KarmaAI
@@ -344,6 +336,9 @@ func NewKarmaAI(model any, opts ...Option) *KarmaAI {
 	}
 	karma := &KarmaAI{
 		Model: modelVal,
+	}
+	if karma.MaxTokens == 0 {
+		karma.MaxTokens = 500
 	}
 
 	// Apply all provided options

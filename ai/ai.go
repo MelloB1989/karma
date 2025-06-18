@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/MelloB1989/karma/apis/aws/bedrock"
+	"github.com/MelloB1989/karma/apis/claude"
 	"github.com/MelloB1989/karma/apis/gemini"
 	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/internal/openai"
@@ -37,6 +38,15 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 			AIResponse: response.Output.Message.Content[0].Text,
 			Tokens:     response.Usage.TotalTokens,
 			TimeTaken:  0,
+		}, nil
+	} else if kai.Model.IsAnthropicModel() {
+		cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
+		response, err := cc.ClaudeChatCompletion(messages)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get response from Claude: %w", err)
+		}
+		return &models.AIChatResponse{
+			AIResponse: response,
 		}, nil
 	} else {
 		return nil, errors.New("This model is not supported yet.")
@@ -82,12 +92,12 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 		var response *genai.GenerateContentResponse
 		var err error
 		if kai.ResponseType != "" {
-			response, err = gemini.RunGemini(prompt, string(kai.Model), kai.SystemMessage, kai.Temperature, kai.TopP, kai.TopK, kai.MaxTokens, kai.ResponseType)
+			response, err = gemini.RunGemini(kai.UserPrePrompt+" "+prompt, string(kai.Model), kai.SystemMessage, kai.Temperature, kai.TopP, kai.TopK, kai.MaxTokens, kai.ResponseType)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get response from Gemini: %w", err)
 			}
 		} else {
-			response, err = gemini.RunGemini(prompt, string(kai.Model), kai.SystemMessage, kai.Temperature, kai.TopP, kai.TopK, kai.MaxTokens)
+			response, err = gemini.RunGemini(kai.UserPrePrompt+" "+prompt, string(kai.Model), kai.SystemMessage, kai.Temperature, kai.TopP, kai.TopK, kai.MaxTokens)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get response from Gemini: %w", err)
 			}
@@ -97,6 +107,15 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 			AIResponse: response.Text(),
 			Tokens:     int(response.UsageMetadata.TotalTokenCount),
 			TimeTaken:  int(time.Since(response.CreateTime).Milliseconds()),
+		}, nil
+	} else if kai.Model.IsAnthropicModel() {
+		cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
+		response, err := cc.ClaudeSinglePrompt(kai.UserPrePrompt + " " + prompt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get response from Claude: %w", err)
+		}
+		return &models.AIChatResponse{
+			AIResponse: response,
 		}, nil
 	} else {
 		return nil, errors.New("This model is not supported yet.")
@@ -143,12 +162,12 @@ func (kai *KarmaAI) GenerateFromSinglePromptWithStream(prompt string) (*models.A
 	}
 }
 
-func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback func(chunck StreamedResponse) error) (*models.AIChatResponse, error) {
+func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback func(chunck models.StreamedResponse) error) (*models.AIChatResponse, error) {
 	//Check if model is OpenAI
 	if kai.Model.IsOpenAIModel() {
 		o := openai.NewOpenAI(string(kai.Model), kai.Temperature, kai.MaxTokens)
 		chunkHandler := func(chuck oai.ChatCompletionChunk) {
-			callback(StreamedResponse{
+			callback(models.StreamedResponse{
 				AIResponse: chuck.Choices[0].Delta.Content,
 				TokenUsed:  int(chuck.Usage.TotalTokens),
 				TimeTaken:  int(chuck.Created),
@@ -174,7 +193,7 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 		chunkHandler := func(ctx context.Context, part bedrock.Generation) error {
 			response += string(part.Generation)
 			totalTokens += part.GenerationTokenCount
-			return callback(StreamedResponse{
+			return callback(models.StreamedResponse{
 				AIResponse: part.Generation,
 				TokenUsed:  part.GenerationTokenCount,
 				TimeTaken:  -1,
@@ -189,6 +208,15 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 			AIResponse: response,
 			Tokens:     totalTokens,
 			TimeTaken:  int(time.Since(generationStart).Milliseconds()),
+		}, nil
+	} else if kai.Model.IsAnthropicModel() {
+		cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
+		response, err := cc.ClaudeStreamCompletion(messages, callback)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get response from Claude: %w", err)
+		}
+		return &models.AIChatResponse{
+			AIResponse: response,
 		}, nil
 	} else {
 		return nil, errors.New("This model is not supported yet.")

@@ -58,6 +58,12 @@ type AIChatResponse struct {
 	TimeTaken  int    `json:"time_taken"`
 }
 
+type StreamedResponse struct {
+	AIResponse string `json:"text"`
+	TokenUsed  int    `json:"token_used"`
+	TimeTaken  int    `json:"time_taken"`
+}
+
 type GoogleConfig struct {
 	CookieExpiration time.Duration
 	CookieDomain     string
