@@ -94,7 +94,7 @@ func (cc *ClaudeClient) SetMCPServer(serverURL, authToken string) {
 
 // AddMCPTool adds an MCP tool that Claude can use
 func (cc *ClaudeClient) AddMCPTool(name, description, mcpToolName string, inputSchema any) error {
-	schema, err := cc.generateSchema(inputSchema)
+	schema, err := cc.GenerateSchema(inputSchema)
 	if err != nil {
 		return fmt.Errorf("failed to generate schema for tool %s: %w", name, err)
 	}
@@ -111,7 +111,7 @@ func (cc *ClaudeClient) AddMCPTool(name, description, mcpToolName string, inputS
 }
 
 // generateSchema generates JSON schema from a Go struct
-func (cc *ClaudeClient) generateSchema(inputStruct any) (anthropic.ToolInputSchemaParam, error) {
+func (cc *ClaudeClient) GenerateSchema(inputStruct any) (anthropic.ToolInputSchemaParam, error) {
 	reflector := jsonschema.Reflector{
 		AllowAdditionalProperties: false,
 		DoNotReference:            true,
@@ -318,6 +318,7 @@ func (cc *ClaudeClient) ClaudeChatCompletionWithTools(messages models.AIChatHist
 
 					result, err := cc.callMCPTool(block.Name, arguments)
 					if err != nil {
+						fmt.Println(err)
 						toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID,
 							fmt.Sprintf("Error calling tool: %v", err), true))
 					} else {

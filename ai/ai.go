@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/MelloB1989/karma/apis/aws/bedrock"
@@ -41,7 +42,9 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 		}, nil
 	} else if kai.Model.IsAnthropicModel() {
 		cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
-		response, err := cc.ClaudeChatCompletion(messages)
+		kai.configureClaudeClientForMCP(cc)
+		response, err := cc.ClaudeChatCompletionWithTools(messages, len(kai.MCPConfig.MCPTools) > 0)
+		// response, err = cc.ClaudeChatCompletion(messages)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get response from Claude: %w", err)
 		}
@@ -110,6 +113,9 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 		}, nil
 	} else if kai.Model.IsAnthropicModel() {
 		cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
+		if len(kai.MCPConfig.MCPTools) > 0 {
+			log.Println("MCPTools are not supported for Single Prompts, please create a conversation!")
+		}
 		response, err := cc.ClaudeSinglePrompt(kai.UserPrePrompt + " " + prompt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get response from Claude: %w", err)
@@ -211,7 +217,8 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 		}, nil
 	} else if kai.Model.IsAnthropicModel() {
 		cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
-		response, err := cc.ClaudeStreamCompletion(messages, callback)
+		kai.configureClaudeClientForMCP(cc)
+		response, err := cc.ClaudeStreamCompletionWithTools(messages, callback, len(kai.MCPConfig.MCPTools) > 0)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get response from Claude: %w", err)
 		}

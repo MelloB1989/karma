@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"log"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -230,6 +231,10 @@ func (m Models) ToClaudeModel() anthropic.Model {
 	return anthropic.Model(string(m))
 }
 
+func (m Models) SupportsMCP() bool {
+	return m.IsAnthropicModel()
+}
+
 func (m Models) IsBedrockModel() bool {
 	bedrockPrefixes := []string{
 		"meta.", "mistral.", "amazon.", "stability.", "ai21.", "anthropic.", "cohere.", "apac.", "us.anthropic", "us.meta",
@@ -257,6 +262,13 @@ func (m Models) GetModelProvider() ModelProviders {
 	}
 }
 
+type MCPTool struct {
+	FriendlyName string
+	ToolName     string
+	Description  string
+	InputSchema  any
+}
+
 // KarmaAI is a struct that holds the model and configurations for the AI
 type KarmaAI struct {
 	Model         Models
@@ -268,6 +280,11 @@ type KarmaAI struct {
 	TopK          float64
 	MaxTokens     int64
 	ResponseType  string // `text/plain`, `application/json`, `application/xml`, `application/yaml` and `text/x.enum`
+	MCPConfig     struct {
+		MCPUrl    string
+		AuthToken string
+		MCPTools  []MCPTool
+	}
 }
 
 // Option is a function type that modifies KarmaAI
@@ -325,6 +342,33 @@ func WithTopK(topK float64) Option {
 func WithResponseType(responseType string) Option {
 	return func(k *KarmaAI) {
 		k.ResponseType = responseType
+	}
+}
+
+func SetMCPTools(tools ...MCPTool) Option {
+	return func(k *KarmaAI) {
+		if !k.Model.SupportsMCP() {
+			log.Printf("Model %s does not support MCP yet.", string(k.Model))
+		}
+		k.MCPConfig.MCPTools = tools
+	}
+}
+
+func SetMCPUrl(url string) Option {
+	return func(k *KarmaAI) {
+		if !k.Model.SupportsMCP() {
+			log.Printf("Model %s does not support MCP yet.", string(k.Model))
+		}
+		k.MCPConfig.MCPUrl = url
+	}
+}
+
+func SetMCPAuthToken(token string) Option {
+	return func(k *KarmaAI) {
+		if !k.Model.SupportsMCP() {
+			log.Printf("Model %s does not support MCP yet.", string(k.Model))
+		}
+		k.MCPConfig.AuthToken = token
 	}
 }
 

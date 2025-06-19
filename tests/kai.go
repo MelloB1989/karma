@@ -3,11 +3,14 @@ package tests
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/MelloB1989/karma/ai"
 	"github.com/MelloB1989/karma/apis/aws/bedrock"
+	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/models"
 )
@@ -21,7 +24,8 @@ func TestKai() {
 	// testRawApi()
 	// testChatCompletion()
 	// testGenerateFromSinglePrompt()
-	testChatCompletionStream()
+	// testChatCompletionStream()
+	testWithMcpServer()
 	// Set up the HTTP router
 	// router := http.NewServeMux()
 
@@ -38,6 +42,49 @@ func TestKai() {
 	// testCliChatImplentation()
 	// testChatCompletion()
 
+}
+
+type CalculatorInput struct {
+	Operation string  `json:"operation" jsonschema_description:"The arithmetic operation to perform (add, subtract, multiply, divide)"`
+	X         float64 `json:"x" jsonschema_description:"First number"`
+	Y         float64 `json:"y" jsonschema_description:"Second number"`
+}
+
+func testWithMcpServer() {
+	//Start test calculator MCP server
+	go TestMCPServer()
+	kai := ai.NewKarmaAI(ai.ModelClaudeOpus4_0,
+		ai.WithMaxTokens(1000),
+		ai.WithTemperature(0.5),
+		ai.WithTopP(0.9),
+		ai.WithTopK(50),
+		ai.SetMCPUrl("http://localhost:8086/mcp"),
+		ai.SetMCPAuthToken(config.GetEnvRaw("TEST_TOKEN")),
+		ai.SetMCPTools(ai.MCPTool{
+			FriendlyName: "Calculator",
+			ToolName:     "calculate",
+			Description:  "Perform basic arithmetic operations (add, subtract, multiply, divide).",
+			InputSchema:  CalculatorInput{},
+		}),
+	)
+	messages := models.AIChatHistory{
+		Messages: []models.AIMessage{
+			{
+				Message:   "Please calculate 123 + 456",
+				Role:      models.User,
+				Timestamp: time.Now(),
+				UniqueId:  "example-2",
+			},
+		},
+		ChatId:    "example-chat-2",
+		CreatedAt: time.Now(),
+		Title:     "Using MCP Tools",
+	}
+	res, err := kai.ChatCompletion(messages)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(res)
 }
 
 // BedrockRequest represents the request structure for Bedrock API

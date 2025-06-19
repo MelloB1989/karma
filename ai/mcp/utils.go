@@ -1,8 +1,10 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -17,10 +19,24 @@ import (
 func httpContextExtractorWithDebug(ctx context.Context, r *http.Request, debug bool) context.Context {
 	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
 		ctx = context.WithValue(ctx, "Authorization", authHeader)
+		if debug {
+			log.Println("Found auth token: ", authHeader)
+		}
 	}
 
 	if authToken := r.Header.Get("X-Auth-Token"); authToken != "" {
 		ctx = context.WithValue(ctx, "X-Auth-Token", authToken)
+	}
+
+	// Print request body for debugging
+	if debug {
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			log.Printf("[ERROR] Failed to read request body: %v", err)
+		} else {
+			log.Printf("[DEBUG] Request body: %s", string(bodyBytes))
+			r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+		}
 	}
 
 	// Extract client IP with better handling
@@ -262,13 +278,6 @@ func validateJWTWithClaims(tokenString string) (*DefaultClaims, error) {
 	}
 
 	return claims, nil
-}
-
-func getUserFromContext(ctx context.Context) *User {
-	if user, ok := ctx.Value("user").(*User); ok {
-		return user
-	}
-	return nil
 }
 
 func getClientIP(ctx context.Context) string {

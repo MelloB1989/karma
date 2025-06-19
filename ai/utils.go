@@ -2,9 +2,11 @@ package ai
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
+	"github.com/MelloB1989/karma/apis/claude"
 	"github.com/MelloB1989/karma/models"
 )
 
@@ -69,4 +71,16 @@ func (kai *KarmaAI) processMessagesForLlamaBedrockSystemPrompt(chat models.AICha
 	finalPrompt.WriteString(assitant_end)
 
 	return finalPrompt.String()
+}
+
+func (kai *KarmaAI) configureClaudeClientForMCP(cc *claude.ClaudeClient) {
+	if len(kai.MCPConfig.MCPTools) > 0 {
+		cc.SetMCPServer(kai.MCPConfig.MCPUrl, kai.MCPConfig.AuthToken)
+		for _, tool := range kai.MCPConfig.MCPTools {
+			err := cc.AddMCPTool(tool.FriendlyName, tool.Description, tool.ToolName, tool.InputSchema)
+			if err != nil {
+				log.Printf("Failed to add MCP tool: %v", err)
+			}
+		}
+	}
 }

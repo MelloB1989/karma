@@ -13,9 +13,8 @@ func main() {
 	// 	panic(error)
 	// }
 	// fmt.Print(embeddings)
-	// tests.TestKai()
-	// mcp.TestMCP()
-	tests.TestMCPServer()
+	tests.TestKai()
+	// tests.TestMCPServer()
 	// tests.TestSendingSingleMail()
 	// tests.ORMTest()
 	// tests.GoogleAuth()
