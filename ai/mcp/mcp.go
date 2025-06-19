@@ -1,8 +1,10 @@
 package mcp
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"reflect"
 	"sync"
 	"time"
@@ -261,7 +263,14 @@ func (s *MCPServer) createMiddlewareChain() server.ToolHandlerMiddleware {
 		handler := next
 
 		s.MiddlewareConfig.mu.RLock()
-		config := *s.MiddlewareConfig // Copy config to avoid holding lock
+		config := MiddlewareConfig{
+			EnableLogging:   s.MiddlewareConfig.EnableLogging,
+			EnableRateLimit: s.MiddlewareConfig.EnableRateLimit,
+			EnableAuth:      s.MiddlewareConfig.EnableAuth,
+			RateLimit:       s.MiddlewareConfig.RateLimit,
+			Debug:           s.MiddlewareConfig.Debug,
+			JWTConfig:       s.MiddlewareConfig.JWTConfig,
+		}
 		s.MiddlewareConfig.mu.RUnlock()
 
 		// Apply middleware in reverse order (last middleware wraps first)
@@ -277,7 +286,7 @@ func (s *MCPServer) createMiddlewareChain() server.ToolHandlerMiddleware {
 		}
 
 		if config.EnableRateLimit && config.RateLimit != nil {
-			handler = rateLimitingMiddleware(handler, *config.RateLimit)
+			handler = rateLimitingMiddleware(handler, *config.RateLimit, config.Debug)
 			if config.Debug {
 				log.Printf("Rate limiting middleware applied: %d requests per %v",
 					config.RateLimit.Limit, config.RateLimit.Window)
@@ -325,11 +334,16 @@ func (s *MCPServer) Start() error {
 	}
 
 	s.mu.Lock()
+
+	contextExtractor := func(ctx context.Context, r *http.Request) context.Context {
+		return httpContextExtractorWithDebug(ctx, r, debug)
+	}
+
 	s.httpServer = server.NewStreamableHTTPServer(s.Server,
 		server.WithEndpointPath("/"+endpoint),
 		server.WithHeartbeatInterval(30*time.Second),
 		server.WithStateLess(true),
-		server.WithHTTPContextFunc(httpContextExtractor),
+		server.WithHTTPContextFunc(contextExtractor),
 	)
 	s.mu.Unlock()
 
@@ -388,4 +402,21 @@ func (s *MCPServer) SetJWTConfig(jwtConfig *JWTConfig) {
 		}
 		s.recreateServer()
 	}
+}
+
+func (s *MCPServer) GetRateLimitStatus() map[string]any {
+	s.MiddlewareConfig.mu.RLock()
+	if !s.MiddlewareConfig.EnableRateLimit || s.MiddlewareConfig.RateLimit == nil {
+		s.MiddlewareConfig.mu.RUnlock()
+		return map[string]any{
+			"enabled": false,
+		}
+	}
+
+	limit := s.MiddlewareConfig.RateLimit.Limit
+	window := s.MiddlewareConfig.RateLimit.Window
+	s.MiddlewareConfig.mu.RUnlock()
+
+	// Get current request counts from utils.go
+	return getRateLimitStatus(limit, window)
 }

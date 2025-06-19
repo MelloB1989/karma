@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,7 +14,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-func httpContextExtractor(ctx context.Context, r *http.Request) context.Context {
+func httpContextExtractorWithDebug(ctx context.Context, r *http.Request, debug bool) context.Context {
 	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
 		ctx = context.WithValue(ctx, "Authorization", authHeader)
 	}
@@ -22,13 +23,33 @@ func httpContextExtractor(ctx context.Context, r *http.Request) context.Context 
 		ctx = context.WithValue(ctx, "X-Auth-Token", authToken)
 	}
 
+	// Extract client IP with better handling
 	clientIP := r.RemoteAddr
 	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
 		clientIP = realIP
 	} else if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
-		clientIP = forwardedFor
+		// X-Forwarded-For can contain multiple IPs, take the first one
+		if commaIndex := strings.Index(forwardedFor, ","); commaIndex != -1 {
+			clientIP = strings.TrimSpace(forwardedFor[:commaIndex])
+		} else {
+			clientIP = forwardedFor
+		}
 	}
+
+	// Remove port from IP address if present
+	if colonIndex := strings.LastIndex(clientIP, ":"); colonIndex != -1 {
+		// Check if this is IPv6 or IPv4:port
+		if strings.Count(clientIP, ":") == 1 && !strings.Contains(clientIP, "[") {
+			// IPv4:port case
+			clientIP = clientIP[:colonIndex]
+		}
+	}
+
 	ctx = context.WithValue(ctx, "ClientIP", clientIP)
+
+	if debug {
+		log.Printf("[DEBUG] Extracted client IP: %s from RemoteAddr: %s", clientIP, r.RemoteAddr)
+	}
 
 	if requestID := r.Header.Get("X-Request-ID"); requestID != "" {
 		ctx = context.WithValue(ctx, "RequestID", requestID)
@@ -81,34 +102,89 @@ func authenticationMiddlewareWithConfig(next server.ToolHandlerFunc, jwtConfig *
 	}
 }
 
-func rateLimitingMiddleware(next server.ToolHandlerFunc, rl RateLimit) server.ToolHandlerFunc {
-	requestCounts := make(map[string][]time.Time)
-	var mu sync.RWMutex
+// Global rate limiting state
+var (
+	globalRequestCounts = make(map[string][]time.Time)
+	globalRateLimitMu   sync.RWMutex
+	cleanupOnce         sync.Once
+)
+
+func startRateLimitCleanup() {
+	cleanupOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(5 * time.Minute)
+			defer ticker.Stop()
+
+			for range ticker.C {
+				globalRateLimitMu.Lock()
+				now := time.Now()
+				for ip, requests := range globalRequestCounts {
+					var validRequests []time.Time
+					for _, reqTime := range requests {
+						if now.Sub(reqTime) < time.Hour {
+							validRequests = append(validRequests, reqTime)
+						}
+					}
+					if len(validRequests) == 0 {
+						delete(globalRequestCounts, ip)
+					} else {
+						globalRequestCounts[ip] = validRequests
+					}
+				}
+				globalRateLimitMu.Unlock()
+			}
+		}()
+	})
+}
+
+func rateLimitingMiddleware(next server.ToolHandlerFunc, rl RateLimit, debug bool) server.ToolHandlerFunc {
 	maxRequests := rl.Limit
 	timeWindow := rl.Window
+
+	startRateLimitCleanup()
 
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		clientIP := getClientIP(ctx)
 		now := time.Now()
 
-		mu.Lock()
-		defer mu.Unlock()
+		globalRateLimitMu.Lock()
+		defer globalRateLimitMu.Unlock()
 
-		if requests, exists := requestCounts[clientIP]; exists {
+		// Clean up old requests outside the time window
+		if requests, exists := globalRequestCounts[clientIP]; exists {
 			var validRequests []time.Time
 			for _, reqTime := range requests {
 				if now.Sub(reqTime) < timeWindow {
 					validRequests = append(validRequests, reqTime)
 				}
 			}
-			requestCounts[clientIP] = validRequests
+			globalRequestCounts[clientIP] = validRequests
 		}
 
-		if len(requestCounts[clientIP]) >= maxRequests {
+		currentCount := len(globalRequestCounts[clientIP])
+
+		// Debug logging
+		if debug {
+			log.Printf("[RATE LIMIT DEBUG] Client IP: %s, Current requests: %d/%d, Window: %v",
+				clientIP, currentCount, maxRequests, timeWindow)
+		}
+
+		// Check if rate limit is exceeded
+		if currentCount >= maxRequests {
+			if debug {
+				log.Printf("[RATE LIMIT] Rate limit exceeded for IP %s: %d/%d requests",
+					clientIP, currentCount, maxRequests)
+			}
 			return mcp.NewToolResultError(fmt.Sprintf("Rate limit exceeded (%d requests per %v). Please try again later.", maxRequests, timeWindow)), nil
 		}
 
-		requestCounts[clientIP] = append(requestCounts[clientIP], now)
+		// Add current request to the count
+		globalRequestCounts[clientIP] = append(globalRequestCounts[clientIP], now)
+
+		if debug {
+			log.Printf("[RATE LIMIT DEBUG] Request allowed for IP %s, new count: %d/%d",
+				clientIP, currentCount+1, maxRequests)
+		}
 
 		return next(ctx, req)
 	}
@@ -199,5 +275,40 @@ func getClientIP(ctx context.Context) string {
 	if ip, ok := ctx.Value("ClientIP").(string); ok && ip != "" {
 		return ip
 	}
-	return "unknown"
+	return "127.0.0.1" // Default to localhost instead of "unknown"
+}
+
+// getRateLimitStatus returns current rate limit status for all clients
+func getRateLimitStatus(limit int, window time.Duration) map[string]any {
+	globalRateLimitMu.RLock()
+	defer globalRateLimitMu.RUnlock()
+
+	now := time.Now()
+	status := map[string]any{
+		"enabled": true,
+		"limit":   limit,
+		"window":  window.String(),
+		"clients": make(map[string]any),
+	}
+
+	clients := make(map[string]any)
+	for ip, requests := range globalRequestCounts {
+		// Count valid requests within the time window
+		validCount := 0
+		for _, reqTime := range requests {
+			if now.Sub(reqTime) < window {
+				validCount++
+			}
+		}
+
+		clients[ip] = map[string]any{
+			"current_requests": validCount,
+			"limit":            limit,
+			"remaining":        limit - validCount,
+			"reset_in":         window.String(),
+		}
+	}
+
+	status["clients"] = clients
+	return status
 }
