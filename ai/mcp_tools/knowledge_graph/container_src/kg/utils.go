@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"sync"
 
 	"github.com/MelloB1989/karma/config"
+	"github.com/MelloB1989/karma/utils"
 )
 
 var MEMORY_PATH = config.GetEnvRaw("KG_MCP_MEMORY_PATH")
@@ -25,6 +27,7 @@ type Relation struct {
 }
 
 type KnowledgeGraph struct {
+	Name string `json:"name"`
 	// Core data storage
 	entities  map[string]*Entity   `json:"-"`
 	relations map[string]*Relation `json:"-"`
@@ -44,7 +47,9 @@ type KnowledgeGraph struct {
 }
 
 func NewKnowledgeGraph() *KnowledgeGraph {
+	graph_id := utils.GenerateID(6)
 	return &KnowledgeGraph{
+		Name:            graph_id,
 		entities:        make(map[string]*Entity),
 		relations:       make(map[string]*Relation),
 		entitiesByType:  make(map[string][]string),
@@ -58,7 +63,7 @@ func (kg *KnowledgeGraph) LoadGraph() (*KnowledgeGraph, error) {
 	kg.mutex.Lock()
 	defer kg.mutex.Unlock()
 
-	file, err := os.Open(MEMORY_PATH)
+	file, err := os.Open(path.Join(MEMORY_PATH, kg.Name+".json"))
 	if err != nil {
 		log.Printf("Error opening knowledge graph memory file: %v", err)
 		return kg, err
@@ -110,7 +115,7 @@ func (kg *KnowledgeGraph) SaveGraph() error {
 	kg.mutex.RLock()
 	defer kg.mutex.RUnlock()
 
-	file, err := os.Create(MEMORY_PATH)
+	file, err := os.Create(path.Join(MEMORY_PATH, kg.Name+".json"))
 	if err != nil {
 		log.Printf("Error creating knowledge graph memory file: %v", err)
 		return err

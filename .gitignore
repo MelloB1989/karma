@@ -2,3 +2,4 @@
 .env
 docstest
 upcoming
+node_modules/
