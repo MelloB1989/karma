@@ -53,7 +53,7 @@ type CalculatorInput struct {
 func testWithMcpServer() {
 	//Start test calculator MCP server
 	go TestMCPServer()
-	kai := ai.NewKarmaAI(ai.ModelClaudeOpus4_0,
+	kai := ai.NewKarmaAI(ai.ModelClaude4Opus20250514,
 		ai.WithMaxTokens(1000),
 		ai.WithTemperature(0.5),
 		ai.WithTopP(0.9),
