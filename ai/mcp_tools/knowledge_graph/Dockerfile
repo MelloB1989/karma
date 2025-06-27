@@ -6,11 +6,8 @@ FROM golang:1.24-alpine AS build
 WORKDIR /app
 
 # Download any Go modules
-COPY container_src/go.mod ./
+COPY container_src/ ./
 RUN go mod download
-
-# Copy container source code
-COPY container_src/*.go ./
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux go build -o /server
