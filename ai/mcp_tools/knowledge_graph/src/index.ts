@@ -1,5 +1,6 @@
 import { Container, getContainer } from "@cloudflare/containers";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 
 export class MyContainer extends Container {
   // Port the container listens on (default: 8080)
@@ -30,7 +31,22 @@ const app = new Hono<{
   Bindings: { MY_CONTAINER: DurableObjectNamespace<MyContainer> };
 }>();
 
+// Disable CORS
+app.use(
+  "*",
+  cors({
+    origin: "*",
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowHeaders: ["*"],
+  }),
+);
+
 app.post("/mcp", async (c) => {
+  const container = getContainer(c.env.MY_CONTAINER);
+  return await container.fetch(c.req.raw);
+});
+
+app.get("/mcp", async (c) => {
   const container = getContainer(c.env.MY_CONTAINER);
   return await container.fetch(c.req.raw);
 });

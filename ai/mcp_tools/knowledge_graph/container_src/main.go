@@ -20,7 +20,7 @@ func init() {
 func main() {
 	kgMCP := mcp.NewMCPServer("Knowledge Graph", "1.0.0",
 		mcp.WithDebug(true),
-		mcp.WithRateLimit(mcp.RateLimit{Limit: 10, Window: time.Minute * 1}),
+		mcp.WithRateLimit(mcp.RateLimit{Limit: 1000, Window: time.Minute * 1}),
 		mcp.WithAuthentication(false),
 		mcp.WithLogging(true),
 		mcp.WithPort(8080),
