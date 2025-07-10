@@ -154,7 +154,7 @@ func VerifyPaymentAPI() func(c *fiber.Ctx) error {
 			})
 		}
 		client := razorpay.NewClient(id, secret)
-		data := map[string]interface{}{
+		data := map[string]any{
 			"expand[]": "emi",
 		}
 
