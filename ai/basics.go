@@ -48,6 +48,9 @@ const (
 	ChatModelGPT3_5Turbo1106                 Models = "gpt-3.5-turbo-1106"
 	ChatModelGPT3_5Turbo0125                 Models = "gpt-3.5-turbo-0125"
 	ChatModelGPT3_5Turbo16k0613              Models = "gpt-3.5-turbo-16k-0613"
+	ChatModelGPT5                            Models = "gpt-5"
+	ChatModelGPT5_NANO                       Models = "gpt-5-nano"
+	ChatModelGPT5_MINI                       Models = "gpt-5-mini"
 
 	// Anthropic Models For BEDROCK
 	ClaudeInstantV1_2_100K        Models = "anthropic.claude-instant-v1:2:100k"
@@ -165,6 +168,11 @@ const (
 	// model. Visit https://docs.anthropic.com/en/docs/resources/model-deprecations for
 	// more information.
 	ModelClaude_2_0 Models = "claude-2.0"
+
+	// XAI Models
+	GROK_4_0709 Models = "grok-4-0709"
+	GROK_3      Models = "grok-3"
+	GROK_3_MINI Models = "grok-3-mini"
 )
 
 type ModelProviders string
@@ -178,8 +186,11 @@ const (
 	Google     ModelProviders = "Google"
 	Cohere     ModelProviders = "Cohere"
 	OpenSource ModelProviders = "Open Source"
+	XAI        ModelProviders = "XAI"
 	Undefined  ModelProviders = "Undefined"
 )
+
+const XAI_API = "https://api.x.ai/v1/"
 
 // IsOpenAIModel checks if the model is from OpenAI
 func (m Models) IsOpenAIModel() bool {
@@ -227,6 +238,10 @@ func (m Models) IsGoogleModel() bool {
 	return strings.HasPrefix(string(m), "palm-") || strings.HasPrefix(string(m), "gemini-")
 }
 
+func (m Models) IsXAIModel() bool {
+	return strings.HasPrefix(string(m), "grok")
+}
+
 func (m Models) ToClaudeModel() anthropic.Model {
 	return anthropic.Model(string(m))
 }
@@ -257,6 +272,12 @@ func (m Models) GetModelProvider() ModelProviders {
 		return Anthropic
 	case m.IsMetaModel():
 		return Meta
+	case m.IsGeminiModel() || m.IsGoogleModel():
+		return Google
+	case m.IsBedrockModel():
+		return Bedrock
+	case m.IsXAIModel():
+		return XAI
 	default:
 		return Undefined
 	}

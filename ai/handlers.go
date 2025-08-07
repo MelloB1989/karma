@@ -1,0 +1,238 @@
+package ai
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/MelloB1989/karma/apis/aws/bedrock"
+	"github.com/MelloB1989/karma/apis/claude"
+	"github.com/MelloB1989/karma/apis/gemini"
+	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
+	"github.com/MelloB1989/karma/internal/openai"
+	"github.com/MelloB1989/karma/models"
+	oai "github.com/openai/openai-go"
+	"google.golang.org/genai"
+)
+
+func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
+	o := openai.NewOpenAI(string(kai.Model), kai.Temperature, kai.MaxTokens)
+	chat, err := o.CreateChat(messages)
+	if err != nil {
+		return nil, err
+	}
+	if len(chat.Choices) == 0 {
+		return nil, errors.New("No response from OpenAI")
+	}
+	return &models.AIChatResponse{
+		AIResponse: chat.Choices[0].Message.Content,
+		Tokens:     int(chat.Usage.TotalTokens),
+		TimeTaken:  int(chat.Created),
+	}, nil
+}
+
+func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages models.AIChatHistory, base_url string, apikey string) (*models.AIChatResponse, error) {
+	o := openai.NewOpenAICompatible(string(kai.Model), kai.Temperature, kai.MaxTokens, base_url, apikey)
+	chat, err := o.CreateChat(messages)
+	if err != nil {
+		return nil, err
+	}
+	if len(chat.Choices) == 0 {
+		return nil, errors.New("No response from OpenAI")
+	}
+	return &models.AIChatResponse{
+		AIResponse: chat.Choices[0].Message.Content,
+		Tokens:     int(chat.Usage.TotalTokens),
+		TimeTaken:  int(chat.Created),
+	}, nil
+}
+
+func (kai *KarmaAI) handleBedrockChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
+	response, err := bedrock_runtime.InvokeBedrockConverseAPI(
+		string(kai.Model),
+		bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), kai.Temperature, kai.TopP, messages, kai.SystemMessage),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(response.Output.Message.Content) == 0 {
+		return nil, errors.New("No response from Bedrock")
+	}
+	return &models.AIChatResponse{
+		AIResponse: response.Output.Message.Content[0].Text,
+		Tokens:     response.Usage.TotalTokens,
+		TimeTaken:  0,
+	}, nil
+}
+
+func (kai *KarmaAI) handleAnthropicChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
+	cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
+	kai.configureClaudeClientForMCP(cc)
+	response, err := cc.ClaudeChatCompletionWithTools(messages, len(kai.MCPConfig.MCPTools) > 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get response from Claude: %w", err)
+	}
+	return &models.AIChatResponse{
+		AIResponse: response,
+	}, nil
+}
+
+func (kai *KarmaAI) handleBedrockSinglePrompt(messages models.AIChatHistory) (*models.AIChatResponse, error) {
+	response, err := bedrock_runtime.InvokeBedrockConverseAPI(
+		string(kai.Model),
+		bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), kai.Temperature, kai.TopP, messages, kai.SystemMessage),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if len(response.Output.Message.Content) == 0 {
+		return nil, errors.New("No response from Bedrock")
+	}
+	return &models.AIChatResponse{
+		AIResponse: response.Output.Message.Content[0].Text,
+		Tokens:     response.Usage.TotalTokens,
+		TimeTaken:  0,
+	}, nil
+}
+
+func (kai *KarmaAI) handleGeminiSinglePrompt(prompt string) (*models.AIChatResponse, error) {
+	fullPrompt := kai.UserPrePrompt + "\n" + prompt
+	var response *genai.GenerateContentResponse
+	var err error
+
+	if kai.ResponseType != "" {
+		response, err = gemini.RunGemini(fullPrompt, string(kai.Model), kai.SystemMessage, kai.Temperature, kai.TopP, kai.TopK, kai.MaxTokens, kai.ResponseType)
+	} else {
+		response, err = gemini.RunGemini(fullPrompt, string(kai.Model), kai.SystemMessage, kai.Temperature, kai.TopP, kai.TopK, kai.MaxTokens)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get response from Gemini: %w", err)
+	}
+
+	return &models.AIChatResponse{
+		AIResponse: response.Text(),
+		Tokens:     int(response.UsageMetadata.TotalTokenCount),
+		TimeTaken:  int(time.Since(response.CreateTime).Milliseconds()),
+	}, nil
+}
+
+func (kai *KarmaAI) handleAnthropicSinglePrompt(prompt string) (*models.AIChatResponse, error) {
+	cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
+	if len(kai.MCPConfig.MCPTools) > 0 {
+		log.Println("MCPTools are not supported for Single Prompts, please create a conversation!")
+	}
+	response, err := cc.ClaudeSinglePrompt(kai.UserPrePrompt + "\n" + prompt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get response from Claude: %w", err)
+	}
+	return &models.AIChatResponse{
+		AIResponse: response,
+	}, nil
+}
+
+func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
+	o := openai.NewOpenAI(string(kai.Model), kai.Temperature, kai.MaxTokens)
+	chunkHandler := func(chuck oai.ChatCompletionChunk) {
+		if len(chuck.Choices) == 0 {
+			log.Println("No choices in chunk")
+			return
+		}
+		callback(models.StreamedResponse{
+			AIResponse: chuck.Choices[0].Delta.Content,
+			TokenUsed:  int(chuck.Usage.TotalTokens),
+			TimeTaken:  int(chuck.Created),
+		})
+	}
+	chat, err := o.CreateChatStream(messages, chunkHandler)
+	if err != nil {
+		return nil, err
+	}
+	if len(chat.Choices) == 0 {
+		return nil, errors.New("No response from OpenAI")
+	}
+	return &models.AIChatResponse{
+		AIResponse: chat.Choices[0].Message.Content,
+		Tokens:     int(chat.Usage.TotalTokens),
+		TimeTaken:  int(chat.Created),
+	}, nil
+}
+
+func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error, base_url string, apikey string) (*models.AIChatResponse, error) {
+	o := openai.NewOpenAICompatible(string(kai.Model), kai.Temperature, kai.MaxTokens, base_url, apikey)
+	chunkHandler := func(chunk oai.ChatCompletionChunk) {
+		if len(chunk.Choices) == 0 {
+			log.Println("No choices in chunk")
+			return
+		}
+		callback(models.StreamedResponse{
+			AIResponse: chunk.Choices[0].Delta.Content,
+			TokenUsed:  int(chunk.Usage.TotalTokens),
+			TimeTaken:  int(chunk.Created),
+		})
+	}
+	chat, err := o.CreateChatStream(messages, chunkHandler)
+	if err != nil {
+		return nil, err
+	}
+	if len(chat.Choices) == 0 {
+		return nil, errors.New("No response from OpenAI")
+	}
+	return &models.AIChatResponse{
+		AIResponse: chat.Choices[0].Message.Content,
+		Tokens:     int(chat.Usage.TotalTokens),
+		TimeTaken:  int(chat.Created),
+	}, nil
+}
+
+func (kai *KarmaAI) handleBedrockStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
+	stream, err := bedrock.PromptModelStream(
+		kai.processMessagesForLlamaBedrockSystemPrompt(messages),
+		float32(kai.Temperature),
+		float32(kai.TopP),
+		int(kai.MaxTokens),
+		string(kai.Model),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	var response string
+	var totalTokens int
+	generationStart := time.Now()
+
+	chunkHandler := func(ctx context.Context, part bedrock.Generation) error {
+		response += string(part.Generation)
+		totalTokens += part.GenerationTokenCount
+		return callback(models.StreamedResponse{
+			AIResponse: part.Generation,
+			TokenUsed:  part.GenerationTokenCount,
+			TimeTaken:  -1,
+		})
+	}
+
+	_, err = bedrock.ProcessStreamingOutput(stream, chunkHandler)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.AIChatResponse{
+		AIResponse: response,
+		Tokens:     totalTokens,
+		TimeTaken:  int(time.Since(generationStart).Milliseconds()),
+	}, nil
+}
+
+func (kai *KarmaAI) handleAnthropicStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
+	cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
+	kai.configureClaudeClientForMCP(cc)
+	response, err := cc.ClaudeStreamCompletionWithTools(messages, callback, len(kai.MCPConfig.MCPTools) > 0)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get response from Claude: %w", err)
+	}
+	return &models.AIChatResponse{
+		AIResponse: response,
+	}, nil
+}
