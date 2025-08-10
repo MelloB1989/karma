@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/apis/claude"
 	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
@@ -75,7 +76,9 @@ func (kai *KarmaAI) processMessagesForLlamaBedrockSystemPrompt(chat models.AICha
 }
 
 func (kai *KarmaAI) configureClaudeClientForMCP(cc *claude.ClaudeClient) {
-	if len(kai.MCPConfig.MCPTools) > 0 {
+	if len(kai.MCPServers) > 0 {
+		kai.configureMultiMCPForClaude(cc)
+	} else if len(kai.MCPConfig.MCPTools) > 0 {
 		cc.SetMCPServer(kai.MCPConfig.MCPUrl, kai.MCPConfig.AuthToken)
 		for _, tool := range kai.MCPConfig.MCPTools {
 			err := cc.AddMCPTool(tool.FriendlyName, tool.Description, tool.ToolName, tool.InputSchema)
@@ -87,7 +90,9 @@ func (kai *KarmaAI) configureClaudeClientForMCP(cc *claude.ClaudeClient) {
 }
 
 func (kai *KarmaAI) configureOpenaiClientForMCP(o *openai.OpenAI) {
-	if len(kai.MCPConfig.MCPTools) > 0 {
+	if len(kai.MCPServers) > 0 {
+		kai.configureMultiMCPForOpenAI(o)
+	} else if len(kai.MCPConfig.MCPTools) > 0 {
 		o.SetMCPServer(kai.MCPConfig.MCPUrl, kai.MCPConfig.AuthToken)
 		for _, tool := range kai.MCPConfig.MCPTools {
 			err := o.AddMCPTool(tool.FriendlyName, tool.Description, tool.ToolName, tool.InputSchema)
@@ -96,4 +101,40 @@ func (kai *KarmaAI) configureOpenaiClientForMCP(o *openai.OpenAI) {
 			}
 		}
 	}
+}
+
+func (kai *KarmaAI) configureMultiMCPForOpenAI(o *openai.OpenAI) {
+	multiManager := mcp.NewMultiManager()
+
+	for i, server := range kai.MCPServers {
+		serverID := fmt.Sprintf("server_%d", i)
+		multiManager.AddServer(serverID, server.URL, server.AuthToken)
+
+		for _, tool := range server.Tools {
+			err := multiManager.AddToolToServer(serverID, tool.FriendlyName, tool.Description, tool.ToolName, tool.InputSchema)
+			if err != nil {
+				log.Printf("Failed to add MCP tool %s to server %s: %v", tool.FriendlyName, serverID, err)
+			}
+		}
+	}
+
+	o.SetMultiMCPManager(multiManager)
+}
+
+func (kai *KarmaAI) configureMultiMCPForClaude(cc *claude.ClaudeClient) {
+	multiManager := mcp.NewMultiManager()
+
+	for i, server := range kai.MCPServers {
+		serverID := fmt.Sprintf("server_%d", i)
+		multiManager.AddServer(serverID, server.URL, server.AuthToken)
+
+		for _, tool := range server.Tools {
+			err := multiManager.AddToolToServer(serverID, tool.FriendlyName, tool.Description, tool.ToolName, tool.InputSchema)
+			if err != nil {
+				log.Printf("Failed to add MCP tool %s to server %s: %v", tool.FriendlyName, serverID, err)
+			}
+		}
+	}
+
+	cc.SetMultiMCPManager(multiManager)
 }

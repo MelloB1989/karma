@@ -274,6 +274,12 @@ type MCPTool struct {
 	InputSchema  any
 }
 
+type MCPServer struct {
+	URL       string
+	AuthToken string
+	Tools     []MCPTool
+}
+
 // KarmaAI is a struct that holds the model and configurations for the AI
 type KarmaAI struct {
 	Model         Models
@@ -290,6 +296,7 @@ type KarmaAI struct {
 		AuthToken string
 		MCPTools  []MCPTool
 	}
+	MCPServers   []MCPServer
 	ToolsEnabled bool
 }
 
@@ -357,6 +364,35 @@ func SetMCPTools(tools ...MCPTool) Option {
 			log.Printf("Model %s does not support MCP yet.", string(k.Model))
 		}
 		k.MCPConfig.MCPTools = tools
+		k.ToolsEnabled = true
+	}
+}
+
+func SetMCPServers(servers ...MCPServer) Option {
+	return func(k *KarmaAI) {
+		if !k.Model.SupportsMCP() {
+			log.Printf("Model %s does not support MCP yet.", string(k.Model))
+		}
+		k.MCPServers = servers
+		k.ToolsEnabled = true
+	}
+}
+
+func NewMCPServer(url, authToken string, tools ...MCPTool) MCPServer {
+	return MCPServer{
+		URL:       url,
+		AuthToken: authToken,
+		Tools:     tools,
+	}
+}
+
+func AddMCPServer(url, authToken string, tools ...MCPTool) Option {
+	return func(k *KarmaAI) {
+		if !k.Model.SupportsMCP() {
+			log.Printf("Model %s does not support MCP yet.", string(k.Model))
+		}
+		server := NewMCPServer(url, authToken, tools...)
+		k.MCPServers = append(k.MCPServers, server)
 		k.ToolsEnabled = true
 	}
 }

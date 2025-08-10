@@ -12,12 +12,13 @@ import (
 )
 
 type OpenAI struct {
-	Client        openai.Client
-	Model         string
-	Temperature   float64
-	MaxTokens     int64
-	SystemMessage string
-	MCPManager    *mcp.Manager
+	Client          openai.Client
+	Model           string
+	Temperature     float64
+	MaxTokens       int64
+	SystemMessage   string
+	MCPManager      *mcp.Manager
+	MultiMCPManager *mcp.MultiManager
 }
 
 func NewOpenAI(model string, temperature float64, maxTokens int64) *OpenAI {
@@ -48,6 +49,11 @@ func NewOpenAICompatible(model string, temperature float64, maxTokens int64, bas
 func (o *OpenAI) SetMCPServer(serverURL string, authToken string) {
 	mcpClient := mcp.NewClient(serverURL, authToken)
 	o.MCPManager = mcp.NewManager(mcpClient)
+}
+
+// SetMultiMCPManager configures multiple MCP servers
+func (o *OpenAI) SetMultiMCPManager(multiManager *mcp.MultiManager) {
+	o.MultiMCPManager = multiManager
 }
 
 // AddMCPTool adds an MCP tool that Claude can use

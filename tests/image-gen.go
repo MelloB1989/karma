@@ -7,7 +7,7 @@ import (
 )
 
 func TestImageGen() {
-	kimg := ai.NewKarmaImageGen(ai.DALL_E_2, ai.WithNImages(1))
+	kimg := ai.NewKarmaImageGen(ai.GROK_2_IMAGE, ai.WithNImages(1))
 	url, err := kimg.GenerateImages("A cute robot in a forest of trees.")
 	if err != nil {
 		panic(err)

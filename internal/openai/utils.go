@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 
+	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/models"
 	"github.com/openai/openai-go/v2"
@@ -60,6 +61,9 @@ func formatMessages(messages models.AIChatHistory, sysmgs string) []openai.ChatC
 }
 
 func (o *OpenAI) hasMCPTools() bool {
+	if o.MultiMCPManager != nil {
+		return o.MultiMCPManager.Count() > 0
+	}
 	return o.MCPManager != nil && o.MCPManager.Count() > 0
 }
 
@@ -69,7 +73,12 @@ func (o *OpenAI) convertMCPToolsToOpenAI() []openai.ChatCompletionToolUnionParam
 		return nil
 	}
 
-	mcpTools := o.MCPManager.GetAllTools()
+	var mcpTools []*mcp.Tool
+	if o.MultiMCPManager != nil {
+		mcpTools = o.MultiMCPManager.GetAllTools()
+	} else {
+		mcpTools = o.MCPManager.GetAllTools()
+	}
 	tools := make([]openai.ChatCompletionToolUnionParam, len(mcpTools))
 
 	for i, mcpTool := range mcpTools {
@@ -100,17 +109,23 @@ func (o *OpenAI) convertMCPToolsToOpenAI() []openai.ChatCompletionToolUnionParam
 
 // callMCPTool calls an MCP tool and returns the result
 func (o *OpenAI) callMCPTool(ctx context.Context, toolName string, arguments map[string]any) (string, error) {
-	if o.MCPManager == nil {
+	var result *mcp.ToolResult
+	var err error
+
+	if o.MultiMCPManager != nil {
+		result, err = o.MultiMCPManager.CallTool(ctx, toolName, arguments)
+	} else if o.MCPManager != nil {
+		result, err = o.MCPManager.CallTool(ctx, toolName, arguments)
+	} else {
 		return "", fmt.Errorf("MCP server not configured")
 	}
 
-	result, err := o.MCPManager.CallTool(ctx, toolName, arguments)
 	if err != nil {
 		return "", err
 	}
 
 	if result.IsError {
-		return "", fmt.Errorf("MCP tool error (%d): %s", result.ErrorCode, result.Content)
+		return "", fmt.Errorf("MCP tool error %d: %s", result.ErrorCode, result.Content)
 	}
 
 	return result.Content, nil

@@ -4,12 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/models"
 	"github.com/anthropics/anthropic-sdk-go"
 )
 
 // hasMCPTools checks if any MCP tools are available
 func (cc *ClaudeClient) hasMCPTools() bool {
+	if cc.MultiMCPManager != nil {
+		return cc.MultiMCPManager.Count() > 0
+	}
 	return cc.MCPManager != nil && cc.MCPManager.Count() > 0
 }
 
@@ -19,7 +23,12 @@ func (cc *ClaudeClient) convertMCPToolsToAnthropic() []anthropic.ToolUnionParam 
 		return nil
 	}
 
-	mcpTools := cc.MCPManager.GetAllTools()
+	var mcpTools []*mcp.Tool
+	if cc.MultiMCPManager != nil {
+		mcpTools = cc.MultiMCPManager.GetAllTools()
+	} else {
+		mcpTools = cc.MCPManager.GetAllTools()
+	}
 	tools := make([]anthropic.ToolUnionParam, len(mcpTools))
 
 	for i, mcpTool := range mcpTools {
@@ -44,11 +53,17 @@ func (cc *ClaudeClient) convertMCPToolsToAnthropic() []anthropic.ToolUnionParam 
 
 // callMCPTool calls an MCP tool and returns the result
 func (cc *ClaudeClient) callMCPTool(ctx context.Context, toolName string, arguments map[string]any) (string, error) {
-	if cc.MCPManager == nil {
+	var result *mcp.ToolResult
+	var err error
+
+	if cc.MultiMCPManager != nil {
+		result, err = cc.MultiMCPManager.CallTool(ctx, toolName, arguments)
+	} else if cc.MCPManager != nil {
+		result, err = cc.MCPManager.CallTool(ctx, toolName, arguments)
+	} else {
 		return "", fmt.Errorf("MCP server not configured")
 	}
 
-	result, err := cc.MCPManager.CallTool(ctx, toolName, arguments)
 	if err != nil {
 		return "", err
 	}

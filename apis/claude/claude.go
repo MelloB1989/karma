@@ -14,14 +14,15 @@ import (
 )
 
 type ClaudeClient struct {
-	Client       *anthropic.Client
-	MaxTokens    int
-	Model        anthropic.Model
-	Temp         float64
-	TopP         float64
-	TopK         int64
-	SystemPrompt string
-	MCPManager   *mcp.Manager
+	Client          *anthropic.Client
+	MaxTokens       int
+	Model           anthropic.Model
+	Temp            float64
+	TopP            float64
+	TopK            int64
+	SystemPrompt    string
+	MCPManager      *mcp.Manager
+	MultiMCPManager *mcp.MultiManager
 }
 
 func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP float64, topK float64, systemPrompt string) *ClaudeClient {
@@ -44,6 +45,11 @@ func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP fl
 func (cc *ClaudeClient) SetMCPServer(serverURL, authToken string) {
 	mcpClient := mcp.NewClient(serverURL, authToken)
 	cc.MCPManager = mcp.NewManager(mcpClient)
+}
+
+// SetMultiMCPManager configures multiple MCP servers
+func (cc *ClaudeClient) SetMultiMCPManager(multiManager *mcp.MultiManager) {
+	cc.MultiMCPManager = multiManager
 }
 
 // AddMCPTool adds an MCP tool that Claude can use

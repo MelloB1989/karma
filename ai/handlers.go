@@ -233,7 +233,7 @@ func (kai *KarmaAI) handleBedrockStreamCompletion(messages models.AIChatHistory,
 func (kai *KarmaAI) handleAnthropicStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
 	cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
 	kai.configureClaudeClientForMCP(cc)
-	response, err := cc.ClaudeStreamCompletionWithTools(messages, callback, len(kai.MCPConfig.MCPTools) > 0)
+	response, err := cc.ClaudeStreamCompletionWithTools(messages, callback, kai.ToolsEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get response from Claude: %w", err)
 	}
