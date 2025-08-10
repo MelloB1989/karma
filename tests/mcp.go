@@ -39,16 +39,16 @@ func (c *MyClaims) IsExpired() bool {
 	return c.ExpiresAt < time.Now().Unix()
 }
 
-func TestMCPServer() {
+func TestMCPServer(auth bool) {
 	myMcp := mcp.NewMCPServer("Complex Server", "1.0.0",
 		mcp.WithDebug(true),
 		mcp.WithRateLimit(mcp.RateLimit{Limit: 10, Window: time.Minute * 1}),
-		mcp.WithAuthentication(true),
+		mcp.WithAuthentication(auth),
 		mcp.WithLogging(true), // Explicitly enable logging
 		mcp.WithPort(8086),
 		mcp.WithEndpoint("mcp"),
 		mcp.WithTools(exampleCalcTool()),
-		mcp.WithCustomJWT(MyClaims{}),
+		// mcp.WithCustomJWT(MyClaims{}),
 	)
 	myMcp.Start()
 }

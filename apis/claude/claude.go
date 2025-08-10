@@ -1,21 +1,16 @@
 package claude
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"reflect"
-	"time"
 
+	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/models"
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
-	"github.com/invopop/jsonschema"
 )
 
 type ClaudeClient struct {
@@ -26,46 +21,7 @@ type ClaudeClient struct {
 	TopP         float64
 	TopK         int64
 	SystemPrompt string
-	MCPTools     []MCPTool
-	MCPServerURL string
-	AuthToken    string
-}
-
-// MCPTool represents an MCP tool that can be called
-type MCPTool struct {
-	Name        string                         `json:"name"`
-	Description string                         `json:"description"`
-	InputSchema anthropic.ToolInputSchemaParam `json:"inputSchema"`
-	MCPToolName string                         `json:"mcpToolName"` // The actual tool name in MCP server
-}
-
-// MCPRequest represents an MCP JSON-RPC request
-type MCPRequest struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      int    `json:"id"`
-	Method  string `json:"method"`
-	Params  any    `json:"params,omitempty"`
-}
-
-// MCPResponse represents an MCP JSON-RPC response
-type MCPResponse struct {
-	JSONRPC string    `json:"jsonrpc"`
-	ID      int       `json:"id"`
-	Result  any       `json:"result,omitempty"`
-	Error   *MCPError `json:"error,omitempty"`
-}
-
-// MCPError represents an MCP error
-type MCPError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Data    any    `json:"data,omitempty"`
-}
-
-// CallToolParams represents MCP tool call parameters
-type CallToolParams struct {
-	Name      string         `json:"name"`
-	Arguments map[string]any `json:"arguments,omitempty"`
+	MCPManager   *mcp.Manager
 }
 
 func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP float64, topK float64, systemPrompt string) *ClaudeClient {
@@ -80,144 +36,27 @@ func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP fl
 		TopP:         topP,
 		TopK:         int64(topK),
 		SystemPrompt: systemPrompt,
-		MCPTools:     []MCPTool{},
-		MCPServerURL: "",
-		AuthToken:    "",
+		MCPManager:   nil,
 	}
 }
 
-// SetMCPServer configures the MCP server URL and authentication
+// SetMCPServer configures the MCP server and creates a tool manager
 func (cc *ClaudeClient) SetMCPServer(serverURL, authToken string) {
-	cc.MCPServerURL = serverURL
-	cc.AuthToken = authToken
+	mcpClient := mcp.NewClient(serverURL, authToken)
+	cc.MCPManager = mcp.NewManager(mcpClient)
 }
 
 // AddMCPTool adds an MCP tool that Claude can use
 func (cc *ClaudeClient) AddMCPTool(name, description, mcpToolName string, inputSchema any) error {
-	schema, err := cc.GenerateSchema(inputSchema)
-	if err != nil {
-		return fmt.Errorf("failed to generate schema for tool %s: %w", name, err)
+	if cc.MCPManager == nil {
+		return fmt.Errorf("MCP server not configured. Call SetMCPServer first")
 	}
-
-	tool := MCPTool{
-		Name:        name,
-		Description: description,
-		InputSchema: schema,
-		MCPToolName: mcpToolName,
-	}
-
-	cc.MCPTools = append(cc.MCPTools, tool)
-	return nil
+	return cc.MCPManager.AddToolFromSchema(name, description, mcpToolName, inputSchema)
 }
 
-// generateSchema generates JSON schema from a Go struct
-func (cc *ClaudeClient) GenerateSchema(inputStruct any) (anthropic.ToolInputSchemaParam, error) {
-	reflector := jsonschema.Reflector{
-		AllowAdditionalProperties: false,
-		DoNotReference:            true,
-	}
-
-	var schema *jsonschema.Schema
-	if reflect.TypeOf(inputStruct).Kind() == reflect.Ptr {
-		schema = reflector.Reflect(inputStruct)
-	} else {
-		schema = reflector.ReflectFromType(reflect.TypeOf(inputStruct))
-	}
-
-	return anthropic.ToolInputSchemaParam{
-		Properties: schema.Properties,
-	}, nil
-}
-
-// callMCPTool calls an MCP tool and returns the result
-func (cc *ClaudeClient) callMCPTool(toolName string, arguments map[string]any) (string, error) {
-	if cc.MCPServerURL == "" {
-		return "", fmt.Errorf("MCP server URL not configured")
-	}
-
-	// Find the MCP tool name
-	var mcpToolName string
-	for _, tool := range cc.MCPTools {
-		if tool.Name == toolName {
-			mcpToolName = tool.MCPToolName
-			break
-		}
-	}
-	if mcpToolName == "" {
-		return "", fmt.Errorf("MCP tool not found: %s", toolName)
-	}
-
-	// Create MCP request
-	request := MCPRequest{
-		JSONRPC: "2.0",
-		ID:      int(time.Now().Unix()),
-		Method:  "tools/call",
-		Params: CallToolParams{
-			Name:      mcpToolName,
-			Arguments: arguments,
-		},
-	}
-
-	// Send request to MCP server
-	jsonData, err := json.Marshal(request)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal MCP request: %w", err)
-	}
-
-	req, err := http.NewRequest("POST", cc.MCPServerURL, bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	if cc.AuthToken != "" {
-		req.Header.Set("Authorization", "Bearer "+cc.AuthToken)
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send MCP request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read MCP response: %w", err)
-	}
-
-	var mcpResp MCPResponse
-	err = json.Unmarshal(body, &mcpResp)
-	if err != nil {
-		return "", fmt.Errorf("failed to unmarshal MCP response: %w", err)
-	}
-
-	if mcpResp.Error != nil {
-		return "", fmt.Errorf("MCP error %d: %s", mcpResp.Error.Code, mcpResp.Error.Message)
-	}
-
-	// Extract text from MCP response
-	resultMap, ok := mcpResp.Result.(map[string]any)
-	if !ok {
-		return fmt.Sprintf("%v", mcpResp.Result), nil
-	}
-
-	content, ok := resultMap["content"].([]any)
-	if !ok || len(content) == 0 {
-		return fmt.Sprintf("%v", mcpResp.Result), nil
-	}
-
-	textContent, ok := content[0].(map[string]any)
-	if !ok {
-		return fmt.Sprintf("%v", content[0]), nil
-	}
-
-	text, ok := textContent["text"].(string)
-	if !ok {
-		return fmt.Sprintf("%v", textContent), nil
-	}
-
-	return text, nil
+// GetMCPManager returns the MCP manager for advanced tool management
+func (cc *ClaudeClient) GetMCPManager() *mcp.Manager {
+	return cc.MCPManager
 }
 
 func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (string, error) {
@@ -276,21 +115,13 @@ func (cc *ClaudeClient) ClaudeChatCompletionWithTools(messages models.AIChatHist
 	}
 
 	// Add MCP tools if enabled and available
-	if enableTools && len(cc.MCPTools) > 0 {
-		tools := make([]anthropic.ToolUnionParam, len(cc.MCPTools))
-		for i, mcpTool := range cc.MCPTools {
-			toolParam := anthropic.ToolParam{
-				Name:        mcpTool.Name,
-				Description: anthropic.String(mcpTool.Description),
-				InputSchema: mcpTool.InputSchema,
-			}
-			tools[i] = anthropic.ToolUnionParam{OfTool: &toolParam}
-		}
-		mgsParam.Tools = tools
+	if enableTools && cc.hasMCPTools() {
+		mgsParam.Tools = cc.convertMCPToolsToAnthropic()
 	}
 
+	ctx := context.TODO()
 	for {
-		message, err := cc.Client.Messages.New(context.TODO(), mgsParam)
+		message, err := cc.Client.Messages.New(ctx, mgsParam)
 		if err != nil {
 			return "", err
 		}
@@ -316,9 +147,9 @@ func (cc *ClaudeClient) ClaudeChatCompletionWithTools(messages models.AIChatHist
 						continue
 					}
 
-					result, err := cc.callMCPTool(block.Name, arguments)
+					result, err := cc.callMCPTool(ctx, block.Name, arguments)
 					if err != nil {
-						fmt.Println(err)
+						fmt.Printf("MCP tool error: %v\n", err)
 						toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID,
 							fmt.Sprintf("Error calling tool: %v", err), true))
 					} else {
@@ -367,20 +198,12 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 	}
 
 	// Add MCP tools if enabled and available
-	if enableTools && len(cc.MCPTools) > 0 {
-		tools := make([]anthropic.ToolUnionParam, len(cc.MCPTools))
-		for i, mcpTool := range cc.MCPTools {
-			toolParam := anthropic.ToolParam{
-				Name:        mcpTool.Name,
-				Description: anthropic.String(mcpTool.Description),
-				InputSchema: mcpTool.InputSchema,
-			}
-			tools[i] = anthropic.ToolUnionParam{OfTool: &toolParam}
-		}
-		streamParams.Tools = tools
+	if enableTools && cc.hasMCPTools() {
+		streamParams.Tools = cc.convertMCPToolsToAnthropic()
 	}
 
-	stream := cc.Client.Messages.NewStreaming(context.TODO(), streamParams)
+	ctx := context.TODO()
+	stream := cc.Client.Messages.NewStreaming(ctx, streamParams)
 	message := anthropic.Message{}
 	for stream.Next() {
 		event := stream.Current()
@@ -423,7 +246,7 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 					continue
 				}
 
-				result, err := cc.callMCPTool(block.Name, arguments)
+				result, err := cc.callMCPTool(ctx, block.Name, arguments)
 				if err != nil {
 					toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID,
 						fmt.Sprintf("Error calling tool: %v", err), true))
@@ -450,7 +273,7 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 			followUpParams.Messages = processedMessages
 			followUpParams.Tools = nil // Disable tools for follow-up to avoid loops
 
-			followUpStream := cc.Client.Messages.NewStreaming(context.TODO(), followUpParams)
+			followUpStream := cc.Client.Messages.NewStreaming(ctx, followUpParams)
 			for followUpStream.Next() {
 				event := followUpStream.Current()
 				switch eventVariant := event.AsAny().(type) {

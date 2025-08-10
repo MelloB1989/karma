@@ -17,7 +17,7 @@ import (
 
 func TestKai() {
 	// fmt.Println(bedrock.GetModels())
-	testCliChatImplentation()
+	// testCliChatImplentation()
 	// fmt.Println(ai.ChatModelChatgpt4oLatest.IsBedrockModel())
 	// fmt.Println(ai.Llama3_8B.IsBedrockModel())
 	// fmt.Println(bedrock.GetModels())
@@ -25,7 +25,7 @@ func TestKai() {
 	// testChatCompletion()
 	// testGenerateFromSinglePrompt()
 	// testChatCompletionStream()
-	// testWithMcpServer()
+	testWithMcpServer()
 	// Set up the HTTP router
 	// router := http.NewServeMux()
 
@@ -52,7 +52,7 @@ type CalculatorInput struct {
 
 func testWithMcpServer() {
 	//Start test calculator MCP server
-	go TestMCPServer()
+	go TestMCPServer(false)
 	kai := ai.NewKarmaAI(ai.ModelClaude4Opus20250514,
 		ai.WithMaxTokens(1000),
 		ai.WithTemperature(0.5),
