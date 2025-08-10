@@ -26,10 +26,30 @@ func createClient(opts ...compatibleOptions) openai.Client {
 func formatMessages(messages models.AIChatHistory, sysmgs string) []openai.ChatCompletionMessageParamUnion {
 	mgs := []openai.ChatCompletionMessageParamUnion{}
 	mgs = append(mgs, openai.SystemMessage(sysmgs))
+
 	for _, message := range messages.Messages {
 		switch message.Role {
 		case "user":
-			mgs = append(mgs, openai.UserMessage(message.Message))
+			if len(message.Images) > 0 {
+				// Create content parts for text and images
+				content := []openai.ChatCompletionContentPartUnionParam{
+					openai.TextContentPart(message.Message),
+				}
+
+				// Add image content parts
+				for _, image := range message.Images {
+					imageContent := openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
+						URL: image,
+					})
+					content = append(content, imageContent)
+				}
+
+				// Create user message with mixed content
+				mgs = append(mgs, openai.UserMessage(content))
+			} else {
+				// Simple text-only user message
+				mgs = append(mgs, openai.UserMessage(message.Message))
+			}
 		case "assistant":
 			mgs = append(mgs, openai.AssistantMessage(message.Message))
 		case "system":

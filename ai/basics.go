@@ -99,8 +99,6 @@ const (
 
 	// Titan Models
 	TitanTG1Large         Models = "amazon.titan-tg1-large"
-	TitanImageGeneratorV1 Models = "amazon.titan-image-generator-v1:0"
-	TitanImageGeneratorV2 Models = "amazon.titan-image-generator-v2:0"
 	TitanTextPremierV1    Models = "amazon.titan-text-premier-v1:0"
 	TitanEmbedG1Text02    Models = "amazon.titan-embed-g1-text-02"
 	TitanTextLiteV1_4K    Models = "amazon.titan-text-lite-v1:0:4k"
@@ -123,15 +121,11 @@ const (
 	NovaMicroV1_128K Models = "amazon.nova-micro-v1:0:128k"
 	NovaMicroV1      Models = "amazon.nova-micro-v1:0"
 
-	// Stable Diffusion Model
-	StableDiffusionXLV1 Models = "stability.stable-diffusion-xl-v1:0"
-
 	// Google Models
 	PaLM2                          Models = "palm-2"
 	Gemini_2_5_Flash_Preview_04_17 Models = "gemini-2.5-flash-preview-04-17"
 	Gemini25ProPreview             Models = "gemini-2.5-pro-preview-05-06"
 	Gemini20Flash                  Models = "gemini-2.0-flash"
-	Gemini20FlashPreviewImageGen   Models = "gemini-2.0-flash-preview-image-generation"
 	Gemini20FlashLite              Models = "gemini-2.0-flash-lite"
 	Gemini15Flash                  Models = "gemini-1.5-flash"
 	Gemini15Flash8B                Models = "gemini-1.5-flash-8b"
@@ -154,25 +148,25 @@ const (
 	ModelClaudeOpus4_20250514       Models = "claude-opus-4-20250514"
 	ModelClaude4Opus20250514        Models = "claude-4-opus-20250514"
 	ModelClaude3OpusLatest          Models = "claude-3-opus-latest"
-	ModelClaude_3_Opus_20240229     Models = "claude-3-opus-20240229"
-	// Deprecated: Will reach end-of-life on July 21st, 2025. Please migrate to a newer
-	// model. Visit https://docs.anthropic.com/en/docs/resources/model-deprecations for
-	// more information.
-	ModelClaude_3_Sonnet_20240229 Models = "claude-3-sonnet-20240229"
-	ModelClaude_3_Haiku_20240307  Models = "claude-3-haiku-20240307"
-	// Deprecated: Will reach end-of-life on July 21st, 2025. Please migrate to a newer
-	// model. Visit https://docs.anthropic.com/en/docs/resources/model-deprecations for
-	// more information.
-	ModelClaude_2_1 Models = "claude-2.1"
-	// Deprecated: Will reach end-of-life on July 21st, 2025. Please migrate to a newer
-	// model. Visit https://docs.anthropic.com/en/docs/resources/model-deprecations for
-	// more information.
-	ModelClaude_2_0 Models = "claude-2.0"
 
 	// XAI Models
 	GROK_4_0709 Models = "grok-4-0709"
 	GROK_3      Models = "grok-3"
 	GROK_3_MINI Models = "grok-3-mini"
+)
+
+// Image Models
+
+type ImageModels string
+
+const (
+	GROK_2_IMAGE                 ImageModels = "grok-2-image"
+	GPT_1_IMAGE                  ImageModels = "gpt-image-1"
+	DALL_E_3                     ImageModels = "dall-e-3"
+	Gemini20FlashPreviewImageGen ImageModels = "gemini-2.0-flash-preview-image-generation"
+	StableDiffusionXLV1          ImageModels = "stability.stable-diffusion-xl-v1:0"
+	TitanImageGeneratorV1        ImageModels = "amazon.titan-image-generator-v1:0"
+	TitanImageGeneratorV2        ImageModels = "amazon.titan-image-generator-v2:0"
 )
 
 type ModelProviders string

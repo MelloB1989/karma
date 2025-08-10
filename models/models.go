@@ -36,6 +36,8 @@ const (
 )
 
 type AIMessage struct {
+	Images    []string  `json:"images"` //Image URLs or Base64 image data URLs
+	Files     []string  `json:"files"`  //File URLs or Base64 file data URLs
 	Message   string    `json:"message"`
 	Role      AIRoles   `json:"role"`
 	Timestamp time.Time `json:"timestamp"`

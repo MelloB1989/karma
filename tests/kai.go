@@ -22,10 +22,10 @@ func TestKai() {
 	// fmt.Println(ai.Llama3_8B.IsBedrockModel())
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
-	// testChatCompletion()
+	testChatCompletion()
 	// testGenerateFromSinglePrompt()
 	// testChatCompletionStream()
-	testWithMcpServer()
+	// testWithMcpServer()
 	// Set up the HTTP router
 	// router := http.NewServeMux()
 
@@ -198,16 +198,19 @@ func testCliChatImplentation() {
 }
 
 func testChatCompletion() {
-	kai := ai.NewKarmaAI(ai.GROK_3,
-		ai.WithSystemMessage("I am Kartik Deshmukh. "),
-		ai.WithTemperature(0.5),
-		ai.WithMaxTokens(100),
+	kai := ai.NewKarmaAI(ai.ChatModelGPT4oMini,
+		ai.WithSystemMessage("You are a smart AI assistant"),
+		ai.WithTemperature(1),
+		ai.WithMaxTokens(200),
 		ai.WithTopP(0.9))
 	response, err := kai.ChatCompletion(models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
-				Message: "Hello",
+				Message: "Please describe this image for me",
 				Role:    models.User,
+				Images: []string{
+					"https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Googleplex_HQ_%28cropped%29.jpg/960px-Googleplex_HQ_%28cropped%29.jpg",
+				},
 			},
 		},
 	})
