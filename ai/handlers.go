@@ -36,6 +36,7 @@ func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*
 
 func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages models.AIChatHistory, base_url string, apikey string) (*models.AIChatResponse, error) {
 	o := openai.NewOpenAICompatible(string(kai.Model), kai.Temperature, kai.MaxTokens, base_url, apikey)
+	kai.configureOpenaiClientForMCP(o)
 	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
 	if err != nil {
 		return nil, err
@@ -136,6 +137,8 @@ func (kai *KarmaAI) handleAnthropicSinglePrompt(prompt string) (*models.AIChatRe
 
 func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
 	o := openai.NewOpenAI(string(kai.Model), kai.Temperature, kai.MaxTokens)
+	kai.configureOpenaiClientForMCP(o)
+
 	chunkHandler := func(chuck oai.ChatCompletionChunk) {
 		if len(chuck.Choices) == 0 {
 			log.Println("No choices in chunk")
@@ -163,6 +166,7 @@ func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, 
 
 func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error, base_url string, apikey string) (*models.AIChatResponse, error) {
 	o := openai.NewOpenAICompatible(string(kai.Model), kai.Temperature, kai.MaxTokens, base_url, apikey)
+	kai.configureOpenaiClientForMCP(o)
 	chunkHandler := func(chunk oai.ChatCompletionChunk) {
 		if len(chunk.Choices) == 0 {
 			log.Println("No choices in chunk")

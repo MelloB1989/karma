@@ -53,7 +53,7 @@ type CalculatorInput struct {
 func testWithMcpServer() {
 	//Start test calculator MCP server
 	go TestMCPServer(false)
-	kai := ai.NewKarmaAI(ai.ChatModelGPT4o,
+	kai := ai.NewKarmaAI(ai.GROK_3_MINI,
 		ai.WithMaxTokens(1000),
 		ai.WithTemperature(1),
 		ai.WithTopP(0.9),
@@ -70,7 +70,7 @@ func testWithMcpServer() {
 	messages := models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
-				Message:   "Please calculate 123 + 456",
+				Message:   "Please calculate 123 + 456. Use the calculator tool provided.",
 				Role:      models.User,
 				Timestamp: time.Now(),
 				UniqueId:  "example-2",
@@ -80,10 +80,11 @@ func testWithMcpServer() {
 		CreatedAt: time.Now(),
 		Title:     "Using MCP Tools",
 	}
-	res, err := kai.ChatCompletionStream(messages, func(chunk models.StreamedResponse) error {
-		fmt.Println(chunk.AIResponse)
-		return nil
-	})
+	// res, err := kai.ChatCompletionStream(messages, func(chunk models.StreamedResponse) error {
+	// 	fmt.Println(chunk.AIResponse)
+	// 	return nil
+	// })
+	res, err := kai.ChatCompletion(messages)
 	if err != nil {
 		log.Fatal(err)
 	}
