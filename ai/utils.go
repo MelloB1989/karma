@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/MelloB1989/karma/apis/claude"
+	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
 )
 
@@ -78,6 +79,18 @@ func (kai *KarmaAI) configureClaudeClientForMCP(cc *claude.ClaudeClient) {
 		cc.SetMCPServer(kai.MCPConfig.MCPUrl, kai.MCPConfig.AuthToken)
 		for _, tool := range kai.MCPConfig.MCPTools {
 			err := cc.AddMCPTool(tool.FriendlyName, tool.Description, tool.ToolName, tool.InputSchema)
+			if err != nil {
+				log.Printf("Failed to add MCP tool: %v", err)
+			}
+		}
+	}
+}
+
+func (kai *KarmaAI) configureOpenaiClientForMCP(o *openai.OpenAI) {
+	if len(kai.MCPConfig.MCPTools) > 0 {
+		o.SetMCPServer(kai.MCPConfig.MCPUrl, kai.MCPConfig.AuthToken)
+		for _, tool := range kai.MCPConfig.MCPTools {
+			err := o.AddMCPTool(tool.FriendlyName, tool.Description, tool.ToolName, tool.InputSchema)
 			if err != nil {
 				log.Printf("Failed to add MCP tool: %v", err)
 			}

@@ -89,12 +89,8 @@ func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (string, error) {
 	return message.Content[0].Text, nil
 }
 
-func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory) (string, error) {
-	return cc.ClaudeChatCompletionWithTools(messages, false)
-}
-
 // ClaudeChatCompletionWithTools handles chat completion with optional MCP tool support
-func (cc *ClaudeClient) ClaudeChatCompletionWithTools(messages models.AIChatHistory, enableTools bool) (string, error) {
+func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enableTools bool) (string, error) {
 	processedMessages := processMessages(messages)
 	mgsParam := anthropic.MessageNewParams{
 		MaxTokens: int64(cc.MaxTokens),

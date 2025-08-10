@@ -13,13 +13,14 @@ import (
 	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
-	oai "github.com/openai/openai-go"
+	oai "github.com/openai/openai-go/v2"
 	"google.golang.org/genai"
 )
 
 func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
 	o := openai.NewOpenAI(string(kai.Model), kai.Temperature, kai.MaxTokens)
-	chat, err := o.CreateChat(messages)
+	kai.configureOpenaiClientForMCP(o)
+	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +36,7 @@ func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*
 
 func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages models.AIChatHistory, base_url string, apikey string) (*models.AIChatResponse, error) {
 	o := openai.NewOpenAICompatible(string(kai.Model), kai.Temperature, kai.MaxTokens, base_url, apikey)
-	chat, err := o.CreateChat(messages)
+	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +71,7 @@ func (kai *KarmaAI) handleBedrockChatCompletion(messages models.AIChatHistory) (
 func (kai *KarmaAI) handleAnthropicChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
 	cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
 	kai.configureClaudeClientForMCP(cc)
-	response, err := cc.ClaudeChatCompletionWithTools(messages, len(kai.MCPConfig.MCPTools) > 0)
+	response, err := cc.ClaudeChatCompletion(messages, kai.ToolsEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get response from Claude: %w", err)
 	}
@@ -146,7 +147,7 @@ func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, 
 			TimeTaken:  int(chuck.Created),
 		})
 	}
-	chat, err := o.CreateChatStream(messages, chunkHandler)
+	chat, err := o.CreateChatStream(messages, chunkHandler, kai.ToolsEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +174,7 @@ func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages models.AICha
 			TimeTaken:  int(chunk.Created),
 		})
 	}
-	chat, err := o.CreateChatStream(messages, chunkHandler)
+	chat, err := o.CreateChatStream(messages, chunkHandler, kai.ToolsEnabled)
 	if err != nil {
 		return nil, err
 	}

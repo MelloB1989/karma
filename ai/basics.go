@@ -200,6 +200,10 @@ func (m Models) IsOpenAIModel() bool {
 		strings.HasPrefix(string(m), "chatgpt-")
 }
 
+func (m Models) IsOpenAICompatibleModel() bool {
+	return m.IsOpenAIModel() || m.IsXAIModel()
+}
+
 // IsGeminiModel checks if the model is from Google
 func (m Models) IsGeminiModel() bool {
 	return strings.HasPrefix(string(m), "gemini-")
@@ -247,7 +251,7 @@ func (m Models) ToClaudeModel() anthropic.Model {
 }
 
 func (m Models) SupportsMCP() bool {
-	return m.IsAnthropicModel()
+	return m.IsAnthropicModel() || m.IsOpenAIModel() || m.IsOpenAICompatibleModel()
 }
 
 func (m Models) IsBedrockModel() bool {
@@ -306,6 +310,7 @@ type KarmaAI struct {
 		AuthToken string
 		MCPTools  []MCPTool
 	}
+	ToolsEnabled bool
 }
 
 // Option is a function type that modifies KarmaAI
@@ -372,6 +377,7 @@ func SetMCPTools(tools ...MCPTool) Option {
 			log.Printf("Model %s does not support MCP yet.", string(k.Model))
 		}
 		k.MCPConfig.MCPTools = tools
+		k.ToolsEnabled = true
 	}
 }
 
@@ -381,6 +387,7 @@ func SetMCPUrl(url string) Option {
 			log.Printf("Model %s does not support MCP yet.", string(k.Model))
 		}
 		k.MCPConfig.MCPUrl = url
+		k.ToolsEnabled = true
 	}
 }
 
@@ -390,7 +397,12 @@ func SetMCPAuthToken(token string) Option {
 			log.Printf("Model %s does not support MCP yet.", string(k.Model))
 		}
 		k.MCPConfig.AuthToken = token
+		k.ToolsEnabled = true
 	}
+}
+
+func (kai *KarmaAI) EnableTools(e bool) {
+	kai.ToolsEnabled = e
 }
 
 // NewKarmaAI creates a new KarmaAI instance with required parameters and optional configurations

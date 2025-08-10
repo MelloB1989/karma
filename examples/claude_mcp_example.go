@@ -1,4 +1,4 @@
-package main
+package examples
 
 import (
 	"fmt"
@@ -87,7 +87,7 @@ func main() {
 		Title:     "Simple Conversation",
 	}
 
-	response, err := claudeClient.ClaudeChatCompletionWithTools(messages, false)
+	response, err := claudeClient.ClaudeChatCompletion(messages, false)
 	if err != nil {
 		log.Printf("Error in simple conversation: %v", err)
 	} else {
@@ -110,7 +110,7 @@ func main() {
 		Title:     "Using MCP Tools",
 	}
 
-	response, err = claudeClient.ClaudeChatCompletionWithTools(messages, true)
+	response, err = claudeClient.ClaudeChatCompletion(messages, true)
 	if err != nil {
 		log.Printf("Error using tools: %v", err)
 	} else {
@@ -134,7 +134,7 @@ func main() {
 	}
 
 	// First turn - authentication
-	response, err = claudeClient.ClaudeChatCompletionWithTools(conversation, true)
+	response, err = claudeClient.ClaudeChatCompletion(conversation, true)
 	if err != nil {
 		log.Printf("Error in multi-turn conversation: %v", err)
 		return
@@ -157,7 +157,7 @@ func main() {
 		UniqueId:  "example-3-3",
 	})
 
-	response, err = claudeClient.ClaudeChatCompletionWithTools(conversation, true)
+	response, err = claudeClient.ClaudeChatCompletion(conversation, true)
 	if err != nil {
 		log.Printf("Error in calculator request: %v", err)
 	} else {
@@ -210,7 +210,7 @@ func main() {
 		Title:     "Error Handling",
 	}
 
-	response, err = claudeClient.ClaudeChatCompletionWithTools(errorMessages, true)
+	response, err = claudeClient.ClaudeChatCompletion(errorMessages, true)
 	if err != nil {
 		log.Printf("Error (expected): %v", err)
 	} else {
@@ -233,7 +233,7 @@ func main() {
 		Title:     "Complex Workflow",
 	}
 
-	response, err = claudeClient.ClaudeChatCompletionWithTools(workflowMessages, true)
+	response, err = claudeClient.ClaudeChatCompletion(workflowMessages, true)
 	if err != nil {
 		log.Printf("Error in workflow: %v", err)
 	} else {

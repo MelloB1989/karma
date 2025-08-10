@@ -2,32 +2,22 @@ package openai
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log"
 
-	"github.com/MelloB1989/karma/config"
+	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/models"
-	"github.com/openai/openai-go"
-	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/v2"
 )
 
-type compatibleOptions struct {
-	BaseURL string
-	API_Key string
-}
-
-func createClient(opts ...compatibleOptions) *openai.Client {
-	if len(opts) > 0 {
-		return openai.NewClient(option.WithAPIKey(opts[0].API_Key), option.WithBaseURL(opts[0].BaseURL))
-	}
-	return openai.NewClient(option.WithAPIKey(config.DefaultConfig().OPENAI_KEY))
-}
-
 type OpenAI struct {
-	Client        *openai.Client
+	Client        openai.Client
 	Model         string
 	Temperature   float64
 	MaxTokens     int64
 	SystemMessage string
+	MCPManager    *mcp.Manager
 }
 
 func NewOpenAI(model string, temperature float64, maxTokens int64) *OpenAI {
@@ -37,6 +27,7 @@ func NewOpenAI(model string, temperature float64, maxTokens int64) *OpenAI {
 		Temperature:   temperature,
 		MaxTokens:     maxTokens,
 		SystemMessage: "",
+		MCPManager:    nil,
 	}
 }
 
@@ -53,28 +44,124 @@ func NewOpenAICompatible(model string, temperature float64, maxTokens int64, bas
 	}
 }
 
-func (o *OpenAI) CreateChat(messages models.AIChatHistory) (*openai.ChatCompletion, error) {
-	mgs := formatMessages(messages)
-	mgs = append(mgs, openai.SystemMessage(o.SystemMessage))
-	chatCompletion, err := o.Client.Chat.Completions.New(context.TODO(), openai.ChatCompletionNewParams{
-		Model:    openai.F(o.Model),
-		Messages: openai.F(mgs),
-	})
-	if err != nil {
-		return nil, err
-	}
-	return chatCompletion, nil
+// SetMCPServer configures the MCP server and creates a tool manager
+func (o *OpenAI) SetMCPServer(serverURL string, authToken string) {
+	mcpClient := mcp.NewClient(serverURL, authToken)
+	o.MCPManager = mcp.NewManager(mcpClient)
 }
 
-func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler func(chuck openai.ChatCompletionChunk)) (*openai.ChatCompletion, error) {
-	mgs := formatMessages(messages)
-	mgs = append(mgs, openai.SystemMessage(o.SystemMessage))
-	stream := o.Client.Chat.Completions.NewStreaming(context.TODO(), openai.ChatCompletionNewParams{
-		Model:    openai.F(o.Model),
-		Messages: openai.F(mgs),
+// AddMCPTool adds an MCP tool that Claude can use
+func (o *OpenAI) AddMCPTool(name, description, mcpToolName string, inputSchema any) error {
+	if o.MCPManager == nil {
+		return fmt.Errorf("MCP server not configured. Call SetMCPServer first")
+	}
+	return o.MCPManager.AddToolFromSchema(name, description, mcpToolName, inputSchema)
+}
+
+// GetMCPManager returns the MCP manager for advanced tool management
+func (o *OpenAI) GetMCPManager() *mcp.Manager {
+	return o.MCPManager
+}
+
+func (o *OpenAI) CreateChat(messages models.AIChatHistory, enableTools bool) (*openai.ChatCompletion, error) {
+	mgs := formatMessages(messages, o.SystemMessage)
+
+	params := openai.ChatCompletionNewParams{
+		Model:    o.Model,
+		Messages: mgs,
 		Seed:     openai.Int(69),
-	})
-	// optionally, an accumulator helper can be used
+	}
+
+	if o.Temperature > 0 {
+		params.Temperature = openai.Float(o.Temperature)
+	}
+	if o.MaxTokens > 0 {
+		params.MaxCompletionTokens = openai.Int(o.MaxTokens)
+	}
+
+	// Add MCP tools if enabled and available
+	if enableTools && o.hasMCPTools() {
+		params.Tools = o.convertMCPToolsToOpenAI()
+	}
+
+	ctx := context.TODO()
+	for {
+		chatCompletion, err := o.Client.Chat.Completions.New(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+
+		// Check if OpenAI wants to use tools
+		if len(chatCompletion.Choices) == 0 || len(chatCompletion.Choices[0].Message.ToolCalls) == 0 {
+			return chatCompletion, nil
+		}
+
+		// Follow v2 API pattern - add assistant message with tool calls
+		params.Messages = append(params.Messages, chatCompletion.Choices[0].Message.ToParam())
+
+		// Create mapping of original to short IDs for tool responses
+		idMapping := make(map[string]string)
+		for _, toolCall := range chatCompletion.Choices[0].Message.ToolCalls {
+			shortID := generateShortToolCallID(toolCall.ID)
+			idMapping[toolCall.ID] = shortID
+		}
+
+		for _, toolCall := range chatCompletion.Choices[0].Message.ToolCalls {
+			if enableTools {
+				shortID := idMapping[toolCall.ID]
+
+				// Parse tool call arguments
+				var arguments map[string]any
+				err := json.Unmarshal([]byte(toolCall.Function.Arguments), &arguments)
+				if err != nil {
+					params.Messages = append(params.Messages, openai.ToolMessage(
+						fmt.Sprintf("Error parsing arguments: %v", err),
+						shortID,
+					))
+					continue
+				}
+
+				// Call the MCP tool
+				result, err := o.callMCPTool(ctx, toolCall.Function.Name, arguments)
+				if err != nil {
+					fmt.Printf("MCP tool error: %v\n", err)
+					params.Messages = append(params.Messages, openai.ToolMessage(
+						fmt.Sprintf("Error calling tool: %v", err),
+						shortID,
+					))
+				} else {
+					params.Messages = append(params.Messages, openai.ToolMessage(result, shortID))
+				}
+			}
+		}
+
+		// Remove tools for the follow-up to avoid loops
+		params.Tools = []openai.ChatCompletionToolUnionParam{}
+	}
+}
+
+func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler func(chuck openai.ChatCompletionChunk), enableTools bool) (*openai.ChatCompletion, error) {
+	mgs := formatMessages(messages, o.SystemMessage)
+
+	params := openai.ChatCompletionNewParams{
+		Model:    o.Model,
+		Messages: mgs,
+	}
+
+	if o.Temperature > 0 {
+		params.Temperature = openai.Float(o.Temperature)
+	}
+	if o.MaxTokens > 0 {
+		params.MaxCompletionTokens = openai.Int(o.MaxTokens)
+	}
+
+	// Add MCP tools if enabled and available
+	if enableTools && o.hasMCPTools() {
+		params.Tools = o.convertMCPToolsToOpenAI()
+	}
+
+	ctx := context.TODO()
+	stream := o.Client.Chat.Completions.NewStreaming(ctx, params)
 	acc := openai.ChatCompletionAccumulator{}
 
 	for stream.Next() {
@@ -85,23 +172,61 @@ func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler fu
 
 	if err := stream.Err(); err != nil {
 		log.Println(err)
+		return nil, err
+	}
+
+	// Handle tool calls if any - follow v2 API pattern
+	if enableTools && len(acc.Choices) > 0 && len(acc.Choices[0].Message.ToolCalls) > 0 {
+		followUpParams := params
+		followUpParams.Messages = append(followUpParams.Messages, acc.Choices[0].Message.ToParam())
+
+		// Create mapping of original to short IDs for tool responses
+		idMapping := make(map[string]string)
+		for _, toolCall := range acc.Choices[0].Message.ToolCalls {
+			shortID := generateShortToolCallID(toolCall.ID)
+			idMapping[toolCall.ID] = shortID
+		}
+
+		for _, toolCall := range acc.Choices[0].Message.ToolCalls {
+			shortID := idMapping[toolCall.ID]
+
+			// Parse tool call arguments
+			var arguments map[string]any
+			err := json.Unmarshal([]byte(toolCall.Function.Arguments), &arguments)
+			if err != nil {
+				followUpParams.Messages = append(followUpParams.Messages, openai.ToolMessage(
+					fmt.Sprintf("Error parsing arguments: %v", err),
+					shortID,
+				))
+				continue
+			}
+
+			// Call the MCP tool
+			result, err := o.callMCPTool(ctx, toolCall.Function.Name, arguments)
+			if err != nil {
+				fmt.Printf("MCP tool error: %v\n", err)
+				followUpParams.Messages = append(followUpParams.Messages, openai.ToolMessage(
+					fmt.Sprintf("Error calling tool: %v", err),
+					shortID,
+				))
+			} else {
+				followUpParams.Messages = append(followUpParams.Messages, openai.ToolMessage(result, shortID))
+			}
+		}
+
+		// Disable tools for follow-up to avoid loops
+		followUpParams.Tools = []openai.ChatCompletionToolUnionParam{}
+
+		followUpStream := o.Client.Chat.Completions.NewStreaming(ctx, followUpParams)
+		for followUpStream.Next() {
+			chunk := followUpStream.Current()
+			chunkHandler(chunk)
+		}
+		if followUpStream.Err() != nil {
+			return nil, followUpStream.Err()
+		}
 	}
 
 	// After the stream is finished, acc can be used like a ChatCompletion
 	return &acc.ChatCompletion, nil
-}
-
-func formatMessages(messages models.AIChatHistory) []openai.ChatCompletionMessageParamUnion {
-	mgs := []openai.ChatCompletionMessageParamUnion{}
-	for _, message := range messages.Messages {
-		switch message.Role {
-		case "user":
-			mgs = append(mgs, openai.UserMessage(message.Message))
-		case "assistant":
-			mgs = append(mgs, openai.AssistantMessage(message.Message))
-		case "system":
-			mgs = append(mgs, openai.SystemMessage(message.Message))
-		}
-	}
-	return mgs
 }
