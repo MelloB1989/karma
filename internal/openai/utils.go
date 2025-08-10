@@ -11,12 +11,12 @@ import (
 	"github.com/openai/openai-go/v2/option"
 )
 
-type compatibleOptions struct {
+type CompatibleOptions struct {
 	BaseURL string
 	API_Key string
 }
 
-func createClient(opts ...compatibleOptions) openai.Client {
+func createClient(opts ...CompatibleOptions) openai.Client {
 	if len(opts) > 0 {
 		return openai.NewClient(option.WithAPIKey(opts[0].API_Key), option.WithBaseURL(opts[0].BaseURL))
 	}

@@ -155,20 +155,6 @@ const (
 	GROK_3_MINI Models = "grok-3-mini"
 )
 
-// Image Models
-
-type ImageModels string
-
-const (
-	GROK_2_IMAGE                 ImageModels = "grok-2-image"
-	GPT_1_IMAGE                  ImageModels = "gpt-image-1"
-	DALL_E_3                     ImageModels = "dall-e-3"
-	Gemini20FlashPreviewImageGen ImageModels = "gemini-2.0-flash-preview-image-generation"
-	StableDiffusionXLV1          ImageModels = "stability.stable-diffusion-xl-v1:0"
-	TitanImageGeneratorV1        ImageModels = "amazon.titan-image-generator-v1:0"
-	TitanImageGeneratorV2        ImageModels = "amazon.titan-image-generator-v2:0"
-)
-
 type ModelProviders string
 
 const (
@@ -400,13 +386,9 @@ func (kai *KarmaAI) EnableTools(e bool) {
 }
 
 // NewKarmaAI creates a new KarmaAI instance with required parameters and optional configurations
-func NewKarmaAI(model any, opts ...Option) *KarmaAI {
-	modelVal, ok := model.(Models)
-	if !ok {
-		panic("model must be of type Models")
-	}
+func NewKarmaAI(model Models, opts ...Option) *KarmaAI {
 	karma := &KarmaAI{
-		Model: modelVal,
+		Model: model,
 	}
 	if karma.MaxTokens == 0 {
 		karma.MaxTokens = 500

@@ -33,7 +33,7 @@ func NewOpenAI(model string, temperature float64, maxTokens int64) *OpenAI {
 
 func NewOpenAICompatible(model string, temperature float64, maxTokens int64, base_url, apikey string) *OpenAI {
 	return &OpenAI{
-		Client: createClient(compatibleOptions{
+		Client: createClient(CompatibleOptions{
 			BaseURL: base_url,
 			API_Key: apikey,
 		}),
