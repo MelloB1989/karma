@@ -55,9 +55,11 @@ type AIChatHistory struct {
 }
 
 type AIChatResponse struct {
-	AIResponse string `json:"ai_response"`
-	Tokens     int    `json:"tokens"`
-	TimeTaken  int    `json:"time_taken"`
+	AIResponse   string `json:"ai_response"`
+	Tokens       int    `json:"tokens"`
+	InputTokens  int    `json:"input_tokens"`
+	OutputTokens int    `json:"output_tokens"`
+	TimeTaken    int    `json:"time_taken"`
 }
 
 type StreamedResponse struct {

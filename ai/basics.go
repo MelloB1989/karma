@@ -3,8 +3,11 @@ package ai
 import (
 	"log"
 	"strings"
+	"sync"
 
+	"github.com/MelloB1989/karma/config"
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/posthog/posthog-go"
 )
 
 type Models string
@@ -280,6 +283,18 @@ type MCPServer struct {
 	Tools     []MCPTool
 }
 
+type Analytics struct {
+	DistinctID         string // Can be user specific (UserID)
+	TraceId            string // The trace ID (a UUID to group AI events) like conversation_id must contain only letters, numbers, and special characters
+	CaptureUserPrompts bool
+	CaptureAIResponses bool
+	CaptureToolCalls   bool
+	on                 bool
+	client             posthog.Client
+	properties         map[string]any
+	mu                 sync.RWMutex // Mutex for thread-safe access to properties map
+}
+
 // KarmaAI is a struct that holds the model and configurations for the AI
 type KarmaAI struct {
 	Model         Models
@@ -298,6 +313,7 @@ type KarmaAI struct {
 	}
 	MCPServers   []MCPServer
 	ToolsEnabled bool
+	Analytics    Analytics
 }
 
 // Option is a function type that modifies KarmaAI
@@ -414,6 +430,25 @@ func SetMCPAuthToken(token string) Option {
 		}
 		k.MCPConfig.AuthToken = token
 		k.ToolsEnabled = true
+	}
+}
+
+func ConfigureAnalytics(did, tid string) Option {
+	return func(k *KarmaAI) {
+		// Capture everything by default
+		k.Analytics.on = true
+		k.Analytics.CaptureAIResponses = true
+		k.Analytics.CaptureToolCalls = true
+		k.Analytics.CaptureUserPrompts = true
+		k.Analytics.DistinctID = did
+		k.Analytics.TraceId = tid
+		client, err := posthog.NewWithConfig(config.GetEnvRaw("POSTHOG_KEY"), posthog.Config{Endpoint: config.GetEnvRaw("POSTHOG_ENDPOINT")})
+		if err != nil {
+			log.Println("Failed to initialize posthog client!")
+		}
+		k.Analytics.client = client
+		k.Analytics.properties = make(map[string]any)
+		k.setBasicProperties()
 	}
 }
 

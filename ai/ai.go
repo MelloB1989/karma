@@ -10,21 +10,38 @@ import (
 )
 
 func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
+	kai.setBasicProperties()
+
+	var response *models.AIChatResponse
+	var err error
+
 	switch kai.Model.GetModelProvider() {
 	case OpenAI:
-		return kai.handleOpenAIChatCompletion(messages)
+		response, err = kai.handleOpenAIChatCompletion(messages)
 	case Bedrock:
-		return kai.handleBedrockChatCompletion(messages)
+		response, err = kai.handleBedrockChatCompletion(messages)
 	case Anthropic:
-		return kai.handleAnthropicChatCompletion(messages)
+		response, err = kai.handleAnthropicChatCompletion(messages)
 	case XAI:
-		return kai.handleOpenAICompatibleChatCompletion(messages, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
+		response, err = kai.handleOpenAICompatibleChatCompletion(messages, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
 	default:
 		return nil, errors.New("this model is not supported yet")
 	}
+
+	// Handle analytics and errors asynchronously after getting the response
+	if response != nil {
+		kai.captureResponse(messages, *response)
+	}
+	if err != nil {
+		kai.SendErrorEvent(err)
+	}
+
+	return response, err
 }
 
 func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatResponse, error) {
+	kai.setBasicProperties()
+
 	singleMessage := models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
@@ -34,35 +51,63 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 		},
 	}
 
+	var response *models.AIChatResponse
+	var err error
+
 	switch kai.Model.GetModelProvider() {
 	case OpenAI:
-		return kai.handleOpenAIChatCompletion(singleMessage)
+		response, err = kai.handleOpenAIChatCompletion(singleMessage)
 	case Bedrock:
-		return kai.handleBedrockSinglePrompt(singleMessage)
+		response, err = kai.handleBedrockSinglePrompt(singleMessage)
 	case Google:
-		return kai.handleGeminiSinglePrompt(prompt)
+		response, err = kai.handleGeminiSinglePrompt(prompt)
 	case Anthropic:
-		return kai.handleAnthropicSinglePrompt(prompt)
+		response, err = kai.handleAnthropicSinglePrompt(prompt)
 	case XAI:
-		return kai.handleOpenAICompatibleChatCompletion(singleMessage, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
+		response, err = kai.handleOpenAICompatibleChatCompletion(singleMessage, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
 	default:
 		return nil, errors.New("this model is not supported yet")
 	}
+
+	// Handle analytics and errors asynchronously after getting the response
+	if response != nil {
+		kai.captureResponse(singleMessage, *response)
+	}
+	if err != nil {
+		kai.SendErrorEvent(err)
+	}
+
+	return response, err
 }
 
 func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
+	kai.setBasicProperties()
+
+	var response *models.AIChatResponse
+	var err error
+
 	switch kai.Model.GetModelProvider() {
 	case OpenAI:
-		return kai.handleOpenAIStreamCompletion(messages, callback)
+		response, err = kai.handleOpenAIStreamCompletion(messages, callback)
 	case Bedrock:
-		return kai.handleBedrockStreamCompletion(messages, callback)
+		response, err = kai.handleBedrockStreamCompletion(messages, callback)
 	case Anthropic:
-		return kai.handleAnthropicStreamCompletion(messages, callback)
+		response, err = kai.handleAnthropicStreamCompletion(messages, callback)
 	case XAI:
-		return kai.handleOpenAICompatibleStreamCompletion(messages, callback, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
+		response, err = kai.handleOpenAICompatibleStreamCompletion(messages, callback, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
 	default:
 		return nil, errors.New("this model is not supported yet")
 	}
+
+	// Handle analytics and errors asynchronously after getting the response
+	if response != nil {
+		kai.captureResponse(messages, *response)
+	}
+	if err != nil {
+		kai.SendErrorEvent(err)
+	}
+
+	return response, err
 }
 
 func (kai *KarmaAI) GetEmbeddings(text string) (*bedrock_runtime.EmbeddingResponse, error) {

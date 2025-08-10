@@ -31,6 +31,7 @@ require (
 	github.com/mark3labs/mcp-go v0.32.0
 	github.com/matoous/go-nanoid/v2 v2.1.0
 	github.com/openai/openai-go/v2 v2.0.2
+	github.com/posthog/posthog-go v1.6.3
 	github.com/razorpay/razorpay-go v1.3.2
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/twilio/twilio-go v1.23.6
@@ -70,6 +71,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/klauspost/compress v1.17.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
@@ -81,7 +83,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect

@@ -18,6 +18,7 @@ import (
 )
 
 func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
+	start := time.Now()
 	o := openai.NewOpenAI(string(kai.Model), kai.Temperature, kai.MaxTokens)
 	kai.configureOpenaiClientForMCP(o)
 	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
@@ -27,14 +28,18 @@ func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*
 	if len(chat.Choices) == 0 {
 		return nil, errors.New("No response from OpenAI")
 	}
-	return &models.AIChatResponse{
-		AIResponse: chat.Choices[0].Message.Content,
-		Tokens:     int(chat.Usage.TotalTokens),
-		TimeTaken:  int(chat.Created),
-	}, nil
+	res := &models.AIChatResponse{
+		AIResponse:   chat.Choices[0].Message.Content,
+		Tokens:       int(chat.Usage.TotalTokens),
+		InputTokens:  int(chat.Usage.PromptTokens),
+		OutputTokens: int(chat.Usage.CompletionTokens),
+		TimeTaken:    int(time.Since(start).Milliseconds()),
+	}
+	return res, nil
 }
 
 func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages models.AIChatHistory, base_url string, apikey string) (*models.AIChatResponse, error) {
+	start := time.Now()
 	o := openai.NewOpenAICompatible(string(kai.Model), kai.Temperature, kai.MaxTokens, base_url, apikey)
 	kai.configureOpenaiClientForMCP(o)
 	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
@@ -45,13 +50,16 @@ func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages models.AIChatH
 		return nil, errors.New("No response from OpenAI")
 	}
 	return &models.AIChatResponse{
-		AIResponse: chat.Choices[0].Message.Content,
-		Tokens:     int(chat.Usage.TotalTokens),
-		TimeTaken:  int(chat.Created),
+		AIResponse:   chat.Choices[0].Message.Content,
+		Tokens:       int(chat.Usage.TotalTokens),
+		InputTokens:  int(chat.Usage.PromptTokens),
+		OutputTokens: int(chat.Usage.CompletionTokens),
+		TimeTaken:    int(time.Since(start).Milliseconds()),
 	}, nil
 }
 
 func (kai *KarmaAI) handleBedrockChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
+	start := time.Now()
 	response, err := bedrock_runtime.InvokeBedrockConverseAPI(
 		string(kai.Model),
 		bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), kai.Temperature, kai.TopP, messages, kai.SystemMessage),
@@ -63,25 +71,28 @@ func (kai *KarmaAI) handleBedrockChatCompletion(messages models.AIChatHistory) (
 		return nil, errors.New("No response from Bedrock")
 	}
 	return &models.AIChatResponse{
-		AIResponse: response.Output.Message.Content[0].Text,
-		Tokens:     response.Usage.TotalTokens,
-		TimeTaken:  0,
+		AIResponse:   response.Output.Message.Content[0].Text,
+		Tokens:       response.Usage.TotalTokens,
+		InputTokens:  response.Usage.InputTokens,
+		OutputTokens: response.Usage.OutputTokens,
+		TimeTaken:    int(time.Since(start).Milliseconds()),
 	}, nil
 }
 
 func (kai *KarmaAI) handleAnthropicChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
 	cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
 	kai.configureClaudeClientForMCP(cc)
+	start := time.Now()
 	response, err := cc.ClaudeChatCompletion(messages, kai.ToolsEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get response from Claude: %w", err)
 	}
-	return &models.AIChatResponse{
-		AIResponse: response,
-	}, nil
+	response.TimeTaken = int(time.Since(start).Milliseconds())
+	return response, nil
 }
 
 func (kai *KarmaAI) handleBedrockSinglePrompt(messages models.AIChatHistory) (*models.AIChatResponse, error) {
+	start := time.Now()
 	response, err := bedrock_runtime.InvokeBedrockConverseAPI(
 		string(kai.Model),
 		bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), kai.Temperature, kai.TopP, messages, kai.SystemMessage),
@@ -93,9 +104,11 @@ func (kai *KarmaAI) handleBedrockSinglePrompt(messages models.AIChatHistory) (*m
 		return nil, errors.New("No response from Bedrock")
 	}
 	return &models.AIChatResponse{
-		AIResponse: response.Output.Message.Content[0].Text,
-		Tokens:     response.Usage.TotalTokens,
-		TimeTaken:  0,
+		AIResponse:   response.Output.Message.Content[0].Text,
+		Tokens:       response.Usage.TotalTokens,
+		InputTokens:  response.Usage.InputTokens,
+		OutputTokens: response.Usage.OutputTokens,
+		TimeTaken:    int(time.Since(start).Milliseconds()),
 	}, nil
 }
 
@@ -115,9 +128,11 @@ func (kai *KarmaAI) handleGeminiSinglePrompt(prompt string) (*models.AIChatRespo
 	}
 
 	return &models.AIChatResponse{
-		AIResponse: response.Text(),
-		Tokens:     int(response.UsageMetadata.TotalTokenCount),
-		TimeTaken:  int(time.Since(response.CreateTime).Milliseconds()),
+		AIResponse:   response.Text(),
+		Tokens:       int(response.UsageMetadata.TotalTokenCount),
+		TimeTaken:    int(time.Since(response.CreateTime).Milliseconds()),
+		InputTokens:  int(response.UsageMetadata.PromptTokenCount),
+		OutputTokens: int(response.UsageMetadata.TotalTokenCount) - int(response.UsageMetadata.PromptTokenCount),
 	}, nil
 }
 
@@ -126,16 +141,17 @@ func (kai *KarmaAI) handleAnthropicSinglePrompt(prompt string) (*models.AIChatRe
 	if len(kai.MCPConfig.MCPTools) > 0 {
 		log.Println("MCPTools are not supported for Single Prompts, please create a conversation!")
 	}
+	start := time.Now()
 	response, err := cc.ClaudeSinglePrompt(kai.UserPrePrompt + "\n" + prompt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get response from Claude: %w", err)
 	}
-	return &models.AIChatResponse{
-		AIResponse: response,
-	}, nil
+	response.TimeTaken = int(time.Since(start).Milliseconds())
+	return response, nil
 }
 
 func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
+	start := time.Now()
 	o := openai.NewOpenAI(string(kai.Model), kai.Temperature, kai.MaxTokens)
 	kai.configureOpenaiClientForMCP(o)
 
@@ -158,13 +174,16 @@ func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, 
 		return nil, errors.New("No response from OpenAI")
 	}
 	return &models.AIChatResponse{
-		AIResponse: chat.Choices[0].Message.Content,
-		Tokens:     int(chat.Usage.TotalTokens),
-		TimeTaken:  int(chat.Created),
+		AIResponse:   chat.Choices[0].Message.Content,
+		Tokens:       int(chat.Usage.TotalTokens),
+		TimeTaken:    int(time.Since(start).Milliseconds()),
+		InputTokens:  int(chat.Usage.PromptTokens),
+		OutputTokens: int(chat.Usage.CompletionTokens),
 	}, nil
 }
 
 func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error, base_url string, apikey string) (*models.AIChatResponse, error) {
+	start := time.Now()
 	o := openai.NewOpenAICompatible(string(kai.Model), kai.Temperature, kai.MaxTokens, base_url, apikey)
 	kai.configureOpenaiClientForMCP(o)
 	chunkHandler := func(chunk oai.ChatCompletionChunk) {
@@ -186,9 +205,11 @@ func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages models.AICha
 		return nil, errors.New("No response from OpenAI")
 	}
 	return &models.AIChatResponse{
-		AIResponse: chat.Choices[0].Message.Content,
-		Tokens:     int(chat.Usage.TotalTokens),
-		TimeTaken:  int(chat.Created),
+		AIResponse:   chat.Choices[0].Message.Content,
+		Tokens:       int(chat.Usage.TotalTokens),
+		TimeTaken:    int(time.Since(start).Milliseconds()),
+		InputTokens:  int(chat.Usage.PromptTokens),
+		OutputTokens: int(chat.Usage.CompletionTokens),
 	}, nil
 }
 
@@ -231,13 +252,13 @@ func (kai *KarmaAI) handleBedrockStreamCompletion(messages models.AIChatHistory,
 }
 
 func (kai *KarmaAI) handleAnthropicStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
+	start := time.Now()
 	cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
 	kai.configureClaudeClientForMCP(cc)
 	response, err := cc.ClaudeStreamCompletionWithTools(messages, callback, kai.ToolsEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get response from Claude: %w", err)
 	}
-	return &models.AIChatResponse{
-		AIResponse: response,
-	}, nil
+	response.TimeTaken = int(time.Since(start).Milliseconds())
+	return response, nil
 }

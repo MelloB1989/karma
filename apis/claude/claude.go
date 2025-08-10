@@ -65,7 +65,7 @@ func (cc *ClaudeClient) GetMCPManager() *mcp.Manager {
 	return cc.MCPManager
 }
 
-func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (string, error) {
+func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (*models.AIChatResponse, error) {
 	mgsParam := anthropic.MessageNewParams{
 		MaxTokens: int64(cc.MaxTokens),
 		Messages: []anthropic.MessageParam{{
@@ -90,13 +90,17 @@ func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (string, error) {
 	}
 	message, err := cc.Client.Messages.New(context.TODO(), mgsParam)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	return message.Content[0].Text, nil
+	return &models.AIChatResponse{
+		AIResponse:   message.Content[0].Text,
+		InputTokens:  int(message.Usage.InputTokens),
+		OutputTokens: int(message.Usage.OutputTokens),
+	}, nil
 }
 
 // ClaudeChatCompletionWithTools handles chat completion with optional MCP tool support
-func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enableTools bool) (string, error) {
+func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enableTools bool) (*models.AIChatResponse, error) {
 	processedMessages := processMessages(messages)
 	mgsParam := anthropic.MessageNewParams{
 		MaxTokens: int64(cc.MaxTokens),
@@ -125,7 +129,7 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 	for {
 		message, err := cc.Client.Messages.New(ctx, mgsParam)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
 		// Check if Claude wants to use tools
@@ -162,7 +166,12 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 		}
 
 		if !hasToolUse || !enableTools {
-			return responseText, nil
+			return &models.AIChatResponse{
+				AIResponse:   responseText,
+				InputTokens:  int(message.Usage.InputTokens),
+				OutputTokens: int(message.Usage.OutputTokens),
+				Tokens:       int(message.Usage.InputTokens) + int(message.Usage.OutputTokens),
+			}, nil
 		}
 
 		// Continue the conversation with tool results
@@ -174,12 +183,12 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 	}
 }
 
-func (cc *ClaudeClient) ClaudeStreamCompletion(messages models.AIChatHistory, callback func(chunck models.StreamedResponse) error) (string, error) {
+func (cc *ClaudeClient) ClaudeStreamCompletion(messages models.AIChatHistory, callback func(chunck models.StreamedResponse) error) (*models.AIChatResponse, error) {
 	return cc.ClaudeStreamCompletionWithTools(messages, callback, false)
 }
 
 // ClaudeStreamCompletionWithTools handles streaming completion with optional MCP tool support
-func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHistory, callback func(chunck models.StreamedResponse) error, enableTools bool) (string, error) {
+func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHistory, callback func(chunck models.StreamedResponse) error, enableTools bool) (*models.AIChatResponse, error) {
 	processedMessages := processMessages(messages)
 	streamParams := anthropic.MessageNewParams{
 		MaxTokens: int64(cc.MaxTokens),
@@ -211,7 +220,7 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 		event := stream.Current()
 		err := message.Accumulate(event)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 
 		switch eventVariant := event.AsAny().(type) {
@@ -222,14 +231,14 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 					AIResponse: deltaVariant.Text,
 				}
 				if err := callback(chunk); err != nil {
-					return "", err
+					return nil, err
 				}
 			}
 		}
 	}
 
 	if stream.Err() != nil {
-		return "", stream.Err()
+		return nil, stream.Err()
 	}
 
 	// Handle tool calls if any
@@ -259,7 +268,7 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 						AIResponse: fmt.Sprintf("\n[Tool Result: %s]", result),
 					}
 					if err := callback(chunk); err != nil {
-						return "", err
+						return nil, err
 					}
 				}
 			}
@@ -286,21 +295,25 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 							AIResponse: deltaVariant.Text,
 						}
 						if err := callback(chunk); err != nil {
-							return "", err
+							return nil, err
 						}
 					}
 				}
 			}
 			if followUpStream.Err() != nil {
-				return "", followUpStream.Err()
+				return nil, followUpStream.Err()
 			}
 		}
 	}
 
 	if len(message.Content) > 0 {
 		if textBlock, ok := message.Content[0].AsAny().(anthropic.TextBlock); ok {
-			return textBlock.Text, nil
+			return &models.AIChatResponse{
+				AIResponse:   textBlock.Text,
+				InputTokens:  int(message.Usage.InputTokens),
+				OutputTokens: int(message.Usage.OutputTokens),
+			}, nil
 		}
 	}
-	return "", nil
+	return nil, nil
 }

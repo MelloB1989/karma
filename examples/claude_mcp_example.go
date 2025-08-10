@@ -141,7 +141,7 @@ func main() {
 	}
 
 	conversation.Messages = append(conversation.Messages, models.AIMessage{
-		Message:   response,
+		Message:   response.AIResponse,
 		Role:      models.Assistant,
 		Timestamp: time.Now(),
 		UniqueId:  "example-3-2",
