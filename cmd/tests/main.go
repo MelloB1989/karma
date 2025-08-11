@@ -1,6 +1,8 @@
 package main
 
-import "github.com/MelloB1989/karma/tests"
+import (
+	"github.com/MelloB1989/karma/tests"
+)
 
 func main() {
 	// bedrock.StartChatSession()

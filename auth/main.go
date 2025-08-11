@@ -1,12 +1,16 @@
 package auth
 
 import (
+	"context"
+	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/MelloB1989/karma/apis/twilio"
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/internal/google"
+	"github.com/MelloB1989/karma/mails"
 	"github.com/MelloB1989/karma/models"
 	"github.com/MelloB1989/karma/utils"
 	"github.com/gofiber/fiber/v2"
@@ -382,6 +386,250 @@ func VerifyPhoneOTPHandler(getUserByPhone func(phone string) (AuthUserPhone, err
 
 		// Respond with the token and account existence status
 		return c.JSON(ResponseHTTP{
+			Success: true,
+			Message: "OTP verified.",
+			Data: map[string]interface{}{
+				"account_exists": accountExists,
+				"token":          tokenString,
+			},
+		})
+	}
+}
+
+// Email OTP request payloads
+type LoginWithEmailOTPRequest struct {
+	Email string `json:"email"`
+}
+
+type VerifyEmailOTPRequest struct {
+	Email string `json:"email"`
+	OTP   string `json:"otp"`
+}
+
+// LoginWithEmailOTPHandler initiates an OTP flow by generating an OTP,
+// storing it in Redis (5 min expiration), and emailing it to the user.
+func LoginWithEmailOTPHandler(getUserByEmail func(email string) (AuthUserEmail, error)) func(c *fiber.Ctx) error {
+	return func(c *fiber.Ctx) error {
+		req := new(LoginWithEmailOTPRequest)
+		if err := c.BodyParser(req); err != nil {
+			log.Printf("Body parsing error (email otp send): %v", err)
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Failed to parse request body.",
+				Data:    nil,
+			})
+		}
+
+		if !utils.IsValidEmail(req.Email) {
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Invalid email format.",
+				Data:    nil,
+			})
+		}
+
+		cfg := config.DefaultConfig()
+		if cfg == nil {
+			log.Println("Configuration is nil (email otp send).")
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Configuration error.",
+				Data:    nil,
+			})
+		}
+
+		// Determine if account exists
+		accountExists := false
+		user, err := getUserByEmail(req.Email)
+		if err == nil && user != nil && user.GetEmail() != "" {
+			accountExists = true
+		} else if err != nil {
+			log.Printf("Error retrieving user by email (%s): %v", req.Email, err)
+		}
+
+		// Generate and store OTP
+		otp := utils.GenerateOTP()
+		key := "email_otp:" + strings.ToLower(req.Email)
+
+		redisClient := utils.RedisConnect()
+		if err := redisClient.Set(context.Background(), key, otp, 5*time.Minute).Err(); err != nil {
+			log.Printf("Failed storing OTP in Redis for email (%s): %v", req.Email, err)
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Failed to process OTP.",
+				Data:    nil,
+			})
+		}
+
+		// Send OTP email
+		mailer := mails.NewKarmaMail("internal@mails.coffeecodes.in", "AWS_SES")
+		htmlBody := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Karma Auth Verification Code</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+body {margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:#f5f7fb;color:#222;}
+.container {max-width:520px;margin:40px auto;background:#ffffff;border-radius:12px;box-shadow:0 4px 18px rgba(0,0,0,0.08);overflow:hidden;}
+.header {background:linear-gradient(135deg,#6a4dfd,#8f73ff);padding:28px 32px;color:#fff;}
+.header h1 {margin:0;font-size:24px;letter-spacing:.5px;}
+.brand-badge {display:inline-block;margin-top:8px;padding:4px 10px;border:1px solid rgba(255,255,255,0.4);border-radius:20px;font-size:12px;letter-spacing:1px;text-transform:uppercase;}
+.content {padding:32px;}
+.code-box {text-align:center;background:#f2f7ff;border:1px dashed #b2c4ff;border-radius:10px;padding:28px 10px;margin:28px 0;}
+.code {font-size:40px;letter-spacing:6px;font-weight:600;font-family:'SFMono-Regular',Menlo,monospace;color:#4b32d3;}
+.meta {font-size:13px;color:#555;}
+.footer {padding:22px 32px;background:#fafbfe;font-size:12px;color:#6b7280;text-align:center;line-height:1.5;}
+a {color:#6a4dfd;text-decoration:none;}
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Karma Auth</h1>
+      <div class="brand-badge">Secure Login</div>
+    </div>
+    <div class="content">
+      <p style="margin-top:0;">Hi,</p>
+      <p>Use the verification code below to complete your sign in. This code is valid for <strong>5 minutes</strong>.</p>
+      <div class="code-box">
+        <div class="code">%s</div>
+      </div>
+      <p class="meta">If you did not request this code you can ignore this email — your account is still safe.</p>
+      <p class="meta">For security reasons, never share this code with anyone.</p>
+    </div>
+    <div class="footer">
+      Sent by Karma Auth • Empowering secure experiences<br/>
+      Need help? <a href="mailto:support@karmaauth.example">Contact Support</a>
+    </div>
+  </div>
+</body>
+</html>`, otp)
+		textBody := "Karma Auth verification code: " + otp + " (valid for 5 minutes). If you did not request this, ignore this email."
+		if err := mailer.SendSingleMail(models.SingleEmailRequest{
+			To: req.Email,
+			Email: models.Email{
+				Subject: "Your Login OTP",
+				Body: models.EmailBody{
+					Text: textBody,
+					HTML: htmlBody,
+				},
+			},
+		}); err != nil {
+			log.Printf("Failed sending OTP email to (%s): %v", req.Email, err)
+			// Clean up Redis key on failure to send
+			_ = redisClient.Del(context.Background(), key).Err()
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Failed to send OTP.",
+				Data:    nil,
+			})
+		}
+
+		return c.Status(fiber.StatusOK).JSON(ResponseHTTP{
+			Success: true,
+			Message: "OTP sent to email.",
+			Data: map[string]bool{
+				"account_exists": accountExists,
+			},
+		})
+	}
+}
+
+// VerifyEmailOTPHandler verifies the OTP sent to email and returns a JWT.
+// If the user exists, user-specific claims are added.
+func VerifyEmailOTPHandler(getUserByEmail func(email string) (AuthUserEmail, error)) func(c *fiber.Ctx) error {
+	return func(c *fiber.Ctx) error {
+		req := new(VerifyEmailOTPRequest)
+		if err := c.BodyParser(req); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Failed to parse request body.",
+				Data:    nil,
+			})
+		}
+
+		if !utils.IsValidEmail(req.Email) {
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Invalid email format.",
+				Data:    nil,
+			})
+		}
+
+		if len(req.OTP) == 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
+				Success: false,
+				Message: "OTP is required.",
+				Data:    nil,
+			})
+		}
+
+		cfg := config.DefaultConfig()
+		if cfg == nil {
+			log.Println("Configuration is nil (email otp verify).")
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Configuration error.",
+				Data:    nil,
+			})
+		}
+
+		key := "email_otp:" + strings.ToLower(req.Email)
+		redisClient := utils.RedisConnect()
+		storedOTP, err := redisClient.Get(context.Background(), key).Result()
+		if err != nil || storedOTP == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Invalid or expired OTP.",
+				Data:    nil,
+			})
+		}
+
+		if storedOTP != req.OTP {
+			return c.Status(fiber.StatusBadRequest).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Invalid OTP.",
+				Data:    nil,
+			})
+		}
+
+		// OTP valid - delete key to enforce one-time use
+		_ = redisClient.Del(context.Background(), key).Err()
+
+		accountExists := false
+		var user AuthUserEmail
+		user, err = getUserByEmail(req.Email)
+		if err == nil && user != nil && user.GetEmail() != "" {
+			accountExists = true
+		}
+
+		claims := jwt.MapClaims{
+			"email": req.Email,
+			"exp":   time.Now().Add(30 * 24 * time.Hour).Unix(),
+		}
+
+		if accountExists && user != nil {
+			claims["uid"] = user.GetID()
+			if claimsProvider, ok := user.(JWTClaimsProvider); ok {
+				for k, v := range claimsProvider.AdditionalClaims() {
+					claims[k] = v
+				}
+			}
+		}
+
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		tokenString, err := token.SignedString([]byte(cfg.JWTSecret))
+		if err != nil {
+			log.Printf("Failed to sign JWT (email otp verify) for email (%s): %v", req.Email, err)
+			return c.Status(fiber.StatusInternalServerError).JSON(ResponseHTTP{
+				Success: false,
+				Message: "Failed to create token.",
+				Data:    nil,
+			})
+		}
+
+		return c.Status(fiber.StatusOK).JSON(ResponseHTTP{
 			Success: true,
 			Message: "OTP verified.",
 			Data: map[string]interface{}{
