@@ -462,7 +462,7 @@ func LoginWithEmailOTPHandler(getUserByEmail func(email string) (AuthUserEmail, 
 		}
 
 		// Send OTP email
-		mailer := mails.NewKarmaMail("internal@mails.coffeecodes.in", "AWS_SES")
+		mailer := mails.NewKarmaMail(config.GetEnvRaw("KARMA_AUTH_MAILER"), "AWS_SES")
 		htmlBody := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
