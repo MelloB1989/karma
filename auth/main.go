@@ -500,11 +500,11 @@ a {color:#6a4dfd;text-decoration:none;}
     </div>
     <div class="footer">
       Sent by Karma Auth • Empowering secure experiences<br/>
-      Need help? <a href="mailto:support@karmaauth.example">Contact Support</a>
+      Need help? <a href="mailto:support@mellob.in">Contact Support</a>
     </div>
   </div>
 </body>
-</html>`, otp)
+</html>`, otp) // TODO: add customization options for email template
 		textBody := "Karma Auth verification code: " + otp + " (valid for 5 minutes). If you did not request this, ignore this email."
 		if err := mailer.SendSingleMail(models.SingleEmailRequest{
 			To: req.Email,

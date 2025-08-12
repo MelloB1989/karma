@@ -100,12 +100,18 @@ func (c *Client) generateSchema(inputStruct any) (map[string]any, error) {
 		DoNotReference:            true,
 	}
 
-	var schema *jsonschema.Schema
-	if reflect.TypeOf(inputStruct).Kind() == reflect.Ptr {
-		schema = reflector.Reflect(inputStruct)
-	} else {
-		schema = reflector.ReflectFromType(reflect.TypeOf(inputStruct))
+	// Handle nil input: return an empty object schema to avoid panic
+	if inputStruct == nil || reflect.TypeOf(inputStruct) == nil {
+		return map[string]any{
+			"type":                 "object",
+			"properties":           map[string]any{},
+			"additionalProperties": false,
+		}, nil
 	}
+
+	var schema *jsonschema.Schema
+	// Reflect from type to avoid nil pointer dereference on typed nils
+	schema = reflector.ReflectFromType(reflect.TypeOf(inputStruct))
 
 	// Convert to map[string]any for easier handling
 	schemaBytes, err := json.Marshal(schema)
