@@ -81,7 +81,7 @@ func (kai *KarmaAI) configureClaudeClientForMCP(cc *claude.ClaudeClient) {
 	} else if len(kai.MCPConfig.MCPTools) > 0 {
 		cc.SetMCPServer(kai.MCPConfig.MCPUrl, kai.MCPConfig.AuthToken)
 		for _, tool := range kai.MCPConfig.MCPTools {
-			err := cc.AddMCPTool(tool.FriendlyName, tool.Description, tool.ToolName, tool.InputSchema)
+			err := cc.AddMCPTool(tool.ToolName, tool.Description, tool.ToolName, tool.InputSchema) // Claude requires tool names to match ^[a-zA-Z0-9_-]{1,128}$ (letters, numbers, underscore, hyphen only)
 			if err != nil {
 				log.Printf("Failed to add MCP tool: %v", err)
 			}
@@ -95,7 +95,7 @@ func (kai *KarmaAI) configureOpenaiClientForMCP(o *openai.OpenAI) {
 	} else if len(kai.MCPConfig.MCPTools) > 0 {
 		o.SetMCPServer(kai.MCPConfig.MCPUrl, kai.MCPConfig.AuthToken)
 		for _, tool := range kai.MCPConfig.MCPTools {
-			err := o.AddMCPTool(tool.FriendlyName, tool.Description, tool.ToolName, tool.InputSchema)
+			err := o.AddMCPTool(tool.ToolName, tool.Description, tool.ToolName, tool.InputSchema) // Claude requires tool names to match ^[a-zA-Z0-9_-]{1,128}$ (letters, numbers, underscore, hyphen only)
 			if err != nil {
 				log.Printf("Failed to add MCP tool: %v", err)
 			}
@@ -111,7 +111,7 @@ func (kai *KarmaAI) configureMultiMCPForOpenAI(o *openai.OpenAI) {
 		multiManager.AddServer(serverID, server.URL, server.AuthToken)
 
 		for _, tool := range server.Tools {
-			err := multiManager.AddToolToServer(serverID, tool.FriendlyName, tool.Description, tool.ToolName, tool.InputSchema)
+			err := multiManager.AddToolToServer(serverID, tool.ToolName, tool.Description, tool.ToolName, tool.InputSchema)
 			if err != nil {
 				log.Printf("Failed to add MCP tool %s to server %s: %v", tool.FriendlyName, serverID, err)
 			}
@@ -129,7 +129,7 @@ func (kai *KarmaAI) configureMultiMCPForClaude(cc *claude.ClaudeClient) {
 		multiManager.AddServer(serverID, server.URL, server.AuthToken)
 
 		for _, tool := range server.Tools {
-			err := multiManager.AddToolToServer(serverID, tool.FriendlyName, tool.Description, tool.ToolName, tool.InputSchema)
+			err := multiManager.AddToolToServer(serverID, tool.ToolName, tool.Description, tool.ToolName, tool.InputSchema)
 			if err != nil {
 				log.Printf("Failed to add MCP tool %s to server %s: %v", tool.FriendlyName, serverID, err)
 			}
