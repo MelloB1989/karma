@@ -288,6 +288,11 @@ func InsertStruct(db *sqlx.DB, tableName string, data any) error {
 			fieldValue = fieldValue.Elem()
 		}
 
+		// Handle interface{} types by getting the underlying value
+		if fieldValue.Kind() == reflect.Interface && !fieldValue.IsNil() {
+			fieldValue = fieldValue.Elem()
+		}
+
 		// Handle special types: Slice, Map, Struct (if dbTag is "json")
 		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || fieldValue.Kind() == reflect.Struct || dbTag == "json" {
 			// Marshal the field to JSON
@@ -386,6 +391,11 @@ func InsertTrxStruct(db *sqlx.Tx, tableName string, data any) error {
 			fieldValue = fieldValue.Elem()
 		}
 
+		// Handle interface{} types by getting the underlying value
+		if fieldValue.Kind() == reflect.Interface && !fieldValue.IsNil() {
+			fieldValue = fieldValue.Elem()
+		}
+
 		// Handle special types: Slice, Map, Struct (if dbTag is "json")
 		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || fieldValue.Kind() == reflect.Struct || dbTag == "json" {
 			// Marshal the field to JSON
@@ -454,6 +464,24 @@ func UpdateStruct(db *sqlx.DB, tableName string, data any, conditionField string
 			continue
 		}
 		fieldValue := val.Field(i)
+
+		// Handle pointer fields: get the actual value or nil
+		if fieldValue.Kind() == reflect.Ptr {
+			if fieldValue.IsNil() {
+				values = append(values, nil)
+				columns = append(columns, fmt.Sprintf("%s = $%d", camelToSnake(column), placeholderIdx))
+				placeholderIdx++
+				continue
+			}
+			// Dereference pointer
+			fieldValue = fieldValue.Elem()
+		}
+
+		// Handle interface{} types by getting the underlying value
+		if fieldValue.Kind() == reflect.Interface && !fieldValue.IsNil() {
+			fieldValue = fieldValue.Elem()
+		}
+
 		// Handle slice, map, struct, or fields marked with `db:"json"`
 		if fieldValue.Kind() == reflect.Slice ||
 			fieldValue.Kind() == reflect.Map ||
@@ -511,6 +539,24 @@ func UpdateTrxStruct(db *sqlx.Tx, tableName string, data any, conditionField str
 			continue
 		}
 		fieldValue := val.Field(i)
+
+		// Handle pointer fields: get the actual value or nil
+		if fieldValue.Kind() == reflect.Ptr {
+			if fieldValue.IsNil() {
+				values = append(values, nil)
+				columns = append(columns, fmt.Sprintf("%s = $%d", camelToSnake(column), placeholderIdx))
+				placeholderIdx++
+				continue
+			}
+			// Dereference pointer
+			fieldValue = fieldValue.Elem()
+		}
+
+		// Handle interface{} types by getting the underlying value
+		if fieldValue.Kind() == reflect.Interface && !fieldValue.IsNil() {
+			fieldValue = fieldValue.Elem()
+		}
+
 		// Handle slice, map, struct, or fields marked with `db:"json"`
 		if fieldValue.Kind() == reflect.Slice ||
 			fieldValue.Kind() == reflect.Map ||
