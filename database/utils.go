@@ -17,7 +17,7 @@ import (
 )
 
 func FetchColumnNames(db *sqlx.DB, tableName string) ([]string, error) {
-	query := fmt.Sprintf("SELECT column_name FROM information_schema.columns WHERE table_name = $1")
+	query := "SELECT column_name FROM information_schema.columns WHERE table_name = $1"
 	rows, err := db.Queryx(query, tableName)
 	if err != nil {
 		return nil, err
@@ -62,11 +62,28 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 	columnToFieldMap := make(map[string]reflect.StructField)
 	for i := 0; i < elemType.NumField(); i++ {
 		field := elemType.Field(i)
+		jsonTag := field.Tag.Get("json")
 		dbTag := field.Tag.Get("db")
-		if dbTag != "" {
-			columnToFieldMap[dbTag] = field
+
+		// Skip fields with json:"-" (like TableName)
+		if jsonTag == "-" {
+			continue
+		}
+
+		var columnName string
+		if jsonTag != "" && jsonTag != "-" {
+			// Remove omitempty and other options from json tag
+			parts := strings.Split(jsonTag, ",")
+			columnName = parts[0]
 		} else {
-			columnToFieldMap[camelToSnake(field.Name)] = field
+			columnName = camelToSnake(field.Name)
+		}
+
+		columnToFieldMap[columnName] = field
+
+		// Also map db tag if it exists for special handling
+		if dbTag != "" && dbTag != "-" {
+			columnToFieldMap[dbTag] = field
 		}
 	}
 
@@ -264,14 +281,19 @@ func InsertStruct(db *sqlx.DB, tableName string, data any) error {
 		jsonTag := field.Tag.Get("json")
 		dbTag := field.Tag.Get("db")
 
-		// Determine the column name
+		// Skip fields with json:"-" (like TableName)
+		if jsonTag == "-" {
+			continue
+		}
+
+		// Determine the column name - prioritize json tag
 		var column string
-		if dbTag != "" && dbTag != "-" {
-			column = dbTag
-		} else if jsonTag != "" && jsonTag != "-" {
-			column = jsonTag
+		if jsonTag != "" && jsonTag != "-" {
+			// Remove omitempty and other options from json tag
+			parts := strings.Split(jsonTag, ",")
+			column = parts[0]
 		} else {
-			// Skip fields without db/json tags or with db:"-"
+			// Skip fields without json tags
 			continue
 		}
 
@@ -293,8 +315,8 @@ func InsertStruct(db *sqlx.DB, tableName string, data any) error {
 			fieldValue = fieldValue.Elem()
 		}
 
-		// Handle special types: Slice, Map, Struct (if dbTag is "json")
-		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || fieldValue.Kind() == reflect.Struct || dbTag == "json" {
+		// Handle special types: Slice, Map, Struct (or if dbTag exists for JSON serialization)
+		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || fieldValue.Kind() == reflect.Struct || dbTag != "" {
 			// Marshal the field to JSON
 			jsonBytes, err := json.Marshal(fieldValue.Interface())
 			if err != nil {
@@ -367,14 +389,19 @@ func InsertTrxStruct(db *sqlx.Tx, tableName string, data any) error {
 		jsonTag := field.Tag.Get("json")
 		dbTag := field.Tag.Get("db")
 
-		// Determine the column name
+		// Skip fields with json:"-" (like TableName)
+		if jsonTag == "-" {
+			continue
+		}
+
+		// Determine the column name - prioritize json tag
 		var column string
-		if dbTag != "" && dbTag != "-" {
-			column = dbTag
-		} else if jsonTag != "" && jsonTag != "-" {
-			column = jsonTag
+		if jsonTag != "" && jsonTag != "-" {
+			// Remove omitempty and other options from json tag
+			parts := strings.Split(jsonTag, ",")
+			column = parts[0]
 		} else {
-			// Skip fields without db/json tags or with db:"-"
+			// Skip fields without json tags
 			continue
 		}
 
@@ -396,8 +423,8 @@ func InsertTrxStruct(db *sqlx.Tx, tableName string, data any) error {
 			fieldValue = fieldValue.Elem()
 		}
 
-		// Handle special types: Slice, Map, Struct (if dbTag is "json")
-		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || fieldValue.Kind() == reflect.Struct || dbTag == "json" {
+		// Handle special types: Slice, Map, Struct (or if dbTag exists for JSON serialization)
+		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || fieldValue.Kind() == reflect.Struct || dbTag != "" {
 			// Marshal the field to JSON
 			jsonBytes, err := json.Marshal(fieldValue.Interface())
 			if err != nil {
@@ -446,24 +473,56 @@ func UpdateStruct(db *sqlx.DB, tableName string, data any, conditionField string
 		}
 		defer db.Close()
 	}
+	// Input validation
+	if data == nil {
+		return fmt.Errorf("data cannot be nil")
+	}
+
+	val := reflect.ValueOf(data)
+	if val.Kind() != reflect.Ptr {
+		return fmt.Errorf("data must be a pointer to a struct, but got %s", val.Kind())
+	}
+
+	// Ensure that the pointer is not nil
+	if val.IsNil() {
+		return fmt.Errorf("data pointer is nil")
+	}
+
+	// Dereference the pointer
+	elem := val.Elem()
+	if elem.Kind() != reflect.Struct {
+		return fmt.Errorf("data must point to a struct, but points to %s", elem.Kind())
+	}
+
 	var columns []string
 	var values []any
-	val := reflect.ValueOf(data).Elem() // Get the value pointed to by data
-	typ := val.Type()
+	typ := elem.Type()
 	placeholderIdx := 1 // Start placeholder index at 1
-	for i := 0; i < val.NumField(); i++ {
+	for i := 0; i < elem.NumField(); i++ {
 		field := typ.Field(i)
-		column := field.Tag.Get("json")
+		jsonTag := field.Tag.Get("json")
 		dbTag := field.Tag.Get("db")
-		// Skip fields not mapped to a database column (e.g., with `db:"-"` tag)
-		if dbTag == "-" || column == "" {
+
+		// Skip fields with json:"-" (like TableName)
+		if jsonTag == "-" {
+			continue
+		}
+
+		// Determine the column name - prioritize json tag
+		var column string
+		if jsonTag != "" && jsonTag != "-" {
+			// Remove omitempty and other options from json tag
+			parts := strings.Split(jsonTag, ",")
+			column = parts[0]
+		} else {
+			// Skip fields without json tags
 			continue
 		}
 		// Skip the condition field to avoid updating it
 		if column == conditionField {
 			continue
 		}
-		fieldValue := val.Field(i)
+		fieldValue := elem.Field(i)
 
 		// Handle pointer fields: get the actual value or nil
 		if fieldValue.Kind() == reflect.Ptr {
@@ -482,11 +541,11 @@ func UpdateStruct(db *sqlx.DB, tableName string, data any, conditionField string
 			fieldValue = fieldValue.Elem()
 		}
 
-		// Handle slice, map, struct, or fields marked with `db:"json"`
+		// Handle slice, map, struct, or fields marked with db tag for JSON serialization
 		if fieldValue.Kind() == reflect.Slice ||
 			fieldValue.Kind() == reflect.Map ||
 			fieldValue.Kind() == reflect.Struct ||
-			dbTag == "json" {
+			dbTag != "" {
 			jsonValue, err := json.Marshal(fieldValue.Interface())
 			if err != nil {
 				log.Printf("Failed to marshal JSON field '%s': %v\n", column, err)
@@ -521,24 +580,56 @@ func UpdateStruct(db *sqlx.DB, tableName string, data any, conditionField string
 }
 
 func UpdateTrxStruct(db *sqlx.Tx, tableName string, data any, conditionField string, conditionValue any) error {
+	// Input validation
+	if data == nil {
+		return fmt.Errorf("data cannot be nil")
+	}
+
+	val := reflect.ValueOf(data)
+	if val.Kind() != reflect.Ptr {
+		return fmt.Errorf("data must be a pointer to a struct, but got %s", val.Kind())
+	}
+
+	// Ensure that the pointer is not nil
+	if val.IsNil() {
+		return fmt.Errorf("data pointer is nil")
+	}
+
+	// Dereference the pointer
+	elem := val.Elem()
+	if elem.Kind() != reflect.Struct {
+		return fmt.Errorf("data must point to a struct, but points to %s", elem.Kind())
+	}
+
 	var columns []string
 	var values []any
-	val := reflect.ValueOf(data).Elem() // Get the value pointed to by data
-	typ := val.Type()
+	typ := elem.Type()
 	placeholderIdx := 1 // Start placeholder index at 1
-	for i := 0; i < val.NumField(); i++ {
+	for i := 0; i < elem.NumField(); i++ {
 		field := typ.Field(i)
-		column := field.Tag.Get("json")
+		jsonTag := field.Tag.Get("json")
 		dbTag := field.Tag.Get("db")
-		// Skip fields not mapped to a database column (e.g., with `db:"-"` tag)
-		if dbTag == "-" || column == "" {
+
+		// Skip fields with json:"-" (like TableName)
+		if jsonTag == "-" {
+			continue
+		}
+
+		// Determine the column name - prioritize json tag
+		var column string
+		if jsonTag != "" && jsonTag != "-" {
+			// Remove omitempty and other options from json tag
+			parts := strings.Split(jsonTag, ",")
+			column = parts[0]
+		} else {
+			// Skip fields without json tags
 			continue
 		}
 		// Skip the condition field to avoid updating it
 		if column == conditionField {
 			continue
 		}
-		fieldValue := val.Field(i)
+		fieldValue := elem.Field(i)
 
 		// Handle pointer fields: get the actual value or nil
 		if fieldValue.Kind() == reflect.Ptr {
@@ -557,11 +648,11 @@ func UpdateTrxStruct(db *sqlx.Tx, tableName string, data any, conditionField str
 			fieldValue = fieldValue.Elem()
 		}
 
-		// Handle slice, map, struct, or fields marked with `db:"json"`
+		// Handle slice, map, struct, or fields marked with db tag for JSON serialization
 		if fieldValue.Kind() == reflect.Slice ||
 			fieldValue.Kind() == reflect.Map ||
 			fieldValue.Kind() == reflect.Struct ||
-			dbTag == "json" {
+			dbTag != "" {
 			jsonValue, err := json.Marshal(fieldValue.Interface())
 			if err != nil {
 				log.Printf("Failed to marshal JSON field '%s': %v\n", column, err)
