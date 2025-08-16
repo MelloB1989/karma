@@ -16,6 +16,46 @@ import (
 	"golang.org/x/text/language"
 )
 
+// TypeRegistry maps interface{} field names to their expected concrete types
+var TypeRegistry = make(map[string]reflect.Type)
+
+// RegisterType registers a concrete type for an interface{} field by name
+func RegisterType(fieldName string, sampleValue interface{}) {
+	TypeRegistry[fieldName] = reflect.TypeOf(sampleValue)
+}
+
+// inferTypeFromJSON tries to determine the appropriate type for interface{} fields
+func inferTypeFromJSON(data []byte, fieldName string) (interface{}, error) {
+	// First check if we have a registered type for this field
+	if registeredType, exists := TypeRegistry[fieldName]; exists {
+		// Create a new instance of the registered type
+		newValue := reflect.New(registeredType).Interface()
+		if err := json.Unmarshal(data, newValue); err == nil {
+			return reflect.ValueOf(newValue).Elem().Interface(), nil
+		}
+	}
+
+	// Fallback to map[string]interface{} for interface{} fields
+	var result map[string]interface{}
+	if err := json.Unmarshal(data, &result); err == nil {
+		return result, nil
+	}
+
+	// Last resort: try as generic interface{}
+	var genericResult interface{}
+	if err := json.Unmarshal(data, &genericResult); err == nil {
+		return genericResult, nil
+	}
+
+	return nil, errors.New("failed to unmarshal JSON data")
+}
+
+func init() {
+	// Register common types - users can add more as needed
+	// Example: RegisterType("Store", Store{})
+	// This can be done in the application's init function
+}
+
 func FetchColumnNames(db *sqlx.DB, tableName string) ([]string, error) {
 	query := "SELECT column_name FROM information_schema.columns WHERE table_name = $1"
 	rows, err := db.Queryx(query, tableName)
@@ -133,7 +173,7 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 				continue
 			}
 
-			// Handle fields with 'db' tag
+			// Handle fields with 'db' tag for JSON unmarshaling
 			if fieldInfo.Tag.Get("db") != "" {
 				// Obtain the data as []byte
 				var data []byte
@@ -147,7 +187,18 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 					continue
 				}
 
-				// Unmarshal the JSON into the field
+				// For interface{} fields, use type inference
+				if field.Kind() == reflect.Interface {
+					result, err := inferTypeFromJSON(data, fieldInfo.Name)
+					if err != nil {
+						log.Printf("Failed to unmarshal JSON for interface field %s: %v (data: %s)", fieldInfo.Name, err, string(data))
+						continue
+					}
+					field.Set(reflect.ValueOf(result))
+					continue
+				}
+
+				// For concrete types, unmarshal directly
 				if err := json.Unmarshal(data, field.Addr().Interface()); err != nil {
 					// If unmarshal fails, try to handle the case where we have a string that needs to be converted
 					var jsonStr string

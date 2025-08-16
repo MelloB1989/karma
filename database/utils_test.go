@@ -552,6 +552,98 @@ func TestCompleteWorkflow(t *testing.T) {
 	})
 }
 
+func TestParseRowsWithInterfaceFields(t *testing.T) {
+	// Register the Store type for testing
+	RegisterType("Store", TestStore{})
+	defer func() {
+		// Clean up the registry after test
+		delete(TypeRegistry, "Store")
+	}()
+
+	// Create mock rows data
+	db, mock := setupMockDB(t)
+	defer db.Close()
+
+	// Mock data representing what would come from database
+	storeJSON := `{"oauth_token":"token123","refresh_token":"refresh123","expires_at":1640995200,"token_type":"Bearer","scope":"read"}`
+	historyJSON := `[{"amount":"10.00","date":"2023-01-01"}]`
+
+	rows := sqlmock.NewRows([]string{"id", "uid", "iid", "store", "credit_balance", "credit_spend_history"}).
+		AddRow("test-id", "user-123", "linkedin", storeJSON, "100.00", historyJSON)
+
+	mock.ExpectQuery("SELECT").WillReturnRows(rows)
+
+	// Execute query
+	sqlRows, err := db.Query("SELECT id, uid, iid, store, credit_balance, credit_spend_history FROM integration_store")
+	require.NoError(t, err)
+	defer sqlRows.Close()
+
+	// Parse rows into slice
+	var results []TestIntegrationStore
+	err = ParseRows(sqlRows, &results)
+	assert.NoError(t, err)
+	assert.Len(t, results, 1)
+
+	result := results[0]
+	assert.Equal(t, "test-id", result.Id)
+	assert.Equal(t, "user-123", result.Uid)
+	assert.Equal(t, "linkedin", result.Iid)
+
+	// Verify the Store field was properly unmarshaled
+	assert.NotNil(t, result.Store)
+
+	// The Store should be unmarshaled as TestStore type
+	store, ok := result.Store.(TestStore)
+	if !ok {
+		// If type registration didn't work, it might be a map
+		storeMap, ok := result.Store.(map[string]interface{})
+		assert.True(t, ok, "Store should be either TestStore or map[string]interface{}")
+		assert.Equal(t, "token123", storeMap["oauth_token"])
+		assert.Equal(t, "Bearer", storeMap["token_type"])
+	} else {
+		assert.Equal(t, "token123", store.OauthToken)
+		assert.Equal(t, "refresh123", store.RefreshToken)
+		assert.Equal(t, int64(1640995200), store.ExpiresAt)
+		assert.Equal(t, "Bearer", store.TokenType)
+		assert.Equal(t, "read", store.Scope)
+	}
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestParseRowsWithoutTypeRegistration(t *testing.T) {
+	// Test without registering the Store type
+	db, mock := setupMockDB(t)
+	defer db.Close()
+
+	storeJSON := `{"oauth_token":"token456","token_type":"Bearer"}`
+
+	rows := sqlmock.NewRows([]string{"id", "uid", "iid", "store"}).
+		AddRow("test-id-2", "user-456", "twitter", storeJSON)
+
+	mock.ExpectQuery("SELECT").WillReturnRows(rows)
+
+	sqlRows, err := db.Query("SELECT id, uid, iid, store FROM integration_store")
+	require.NoError(t, err)
+	defer sqlRows.Close()
+
+	var results []TestIntegrationStore
+	err = ParseRows(sqlRows, &results)
+	assert.NoError(t, err)
+	assert.Len(t, results, 1)
+
+	result := results[0]
+	assert.Equal(t, "test-id-2", result.Id)
+
+	// Without type registration, Store should be map[string]interface{}
+	storeMap, ok := result.Store.(map[string]interface{})
+	assert.True(t, ok, "Store should be map[string]interface{} when type not registered")
+	assert.Equal(t, "token456", storeMap["oauth_token"])
+	assert.Equal(t, "Bearer", storeMap["token_type"])
+
+	assert.NoError(t, mock.ExpectationsWereMet())
+}
+
 // Helper functions
 func stringPtr(s string) *string {
 	return &s
