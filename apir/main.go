@@ -13,6 +13,7 @@ type APIClient struct {
 	BaseURL   string
 	Headers   map[string]string
 	DebugMode bool
+	RawMode   bool
 }
 
 func NewAPIClient(baseURL string, headers map[string]string, debug ...bool) *APIClient {
@@ -29,6 +30,10 @@ func NewAPIClient(baseURL string, headers map[string]string, debug ...bool) *API
 
 func (client *APIClient) SetDebugMode(debug bool) {
 	client.DebugMode = debug
+}
+
+func (client *APIClient) SetRawMode(raw bool) {
+	client.RawMode = raw
 }
 
 func (client *APIClient) sendRequest(method, endpoint string, body any) ([]byte, error) {

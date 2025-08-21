@@ -22,6 +22,13 @@ func (client *APIClient) Get(endpoint string, responseStruct any) error {
 		return err
 	}
 
+	if client.RawMode {
+		if strPtr, ok := responseStruct.(*string); ok {
+			*strPtr = string(respBody)
+			return nil
+		}
+	}
+
 	return json.Unmarshal(respBody, responseStruct)
 }
 
@@ -29,9 +36,16 @@ func (client *APIClient) Post(endpoint string, requestBody, responseStruct any) 
 	respBody, err := client.sendRequest(http.MethodPost, endpoint, requestBody)
 	if err != nil {
 		if client.DebugMode {
-			log.Printf("Error in GET request: %v\n", err)
+			log.Printf("Error in POST request: %v\n", err)
 		}
 		return err
+	}
+
+	if client.RawMode {
+		if strPtr, ok := responseStruct.(*string); ok {
+			*strPtr = string(respBody)
+			return nil
+		}
 	}
 
 	return json.Unmarshal(respBody, responseStruct)
@@ -43,6 +57,13 @@ func (client *APIClient) Put(endpoint string, requestBody, responseStruct any) e
 		return err
 	}
 
+	if client.RawMode {
+		if strPtr, ok := responseStruct.(*string); ok {
+			*strPtr = string(respBody)
+			return nil
+		}
+	}
+
 	return json.Unmarshal(respBody, responseStruct)
 }
 
@@ -50,6 +71,13 @@ func (client *APIClient) Delete(endpoint string, responseStruct any) error {
 	respBody, err := client.sendRequest(http.MethodDelete, endpoint, nil)
 	if err != nil {
 		return err
+	}
+
+	if client.RawMode {
+		if strPtr, ok := responseStruct.(*string); ok {
+			*strPtr = string(respBody)
+			return nil
+		}
 	}
 
 	return json.Unmarshal(respBody, responseStruct)
@@ -61,6 +89,13 @@ func (client *APIClient) Patch(endpoint string, requestBody, responseStruct any)
 		return err
 	}
 
+	if client.RawMode {
+		if strPtr, ok := responseStruct.(*string); ok {
+			*strPtr = string(respBody)
+			return nil
+		}
+	}
+
 	return json.Unmarshal(respBody, responseStruct)
 }
 
@@ -68,6 +103,13 @@ func (client *APIClient) Options(endpoint string, responseStruct any) error {
 	respBody, err := client.sendRequest(http.MethodOptions, endpoint, nil)
 	if err != nil {
 		return err
+	}
+
+	if client.RawMode {
+		if strPtr, ok := responseStruct.(*string); ok {
+			*strPtr = string(respBody)
+			return nil
+		}
 	}
 
 	return json.Unmarshal(respBody, responseStruct)
@@ -79,6 +121,13 @@ func (client *APIClient) Head(endpoint string, responseStruct any) error {
 		return err
 	}
 
+	if client.RawMode {
+		if strPtr, ok := responseStruct.(*string); ok {
+			*strPtr = string(respBody)
+			return nil
+		}
+	}
+
 	return json.Unmarshal(respBody, responseStruct)
 }
 
@@ -88,6 +137,13 @@ func (client *APIClient) Connect(endpoint string, responseStruct any) error {
 		return err
 	}
 
+	if client.RawMode {
+		if strPtr, ok := responseStruct.(*string); ok {
+			*strPtr = string(respBody)
+			return nil
+		}
+	}
+
 	return json.Unmarshal(respBody, responseStruct)
 }
 
@@ -95,6 +151,13 @@ func (client *APIClient) Trace(endpoint string, responseStruct any) error {
 	respBody, err := client.sendRequest(http.MethodTrace, endpoint, nil)
 	if err != nil {
 		return err
+	}
+
+	if client.RawMode {
+		if strPtr, ok := responseStruct.(*string); ok {
+			*strPtr = string(respBody)
+			return nil
+		}
 	}
 
 	return json.Unmarshal(respBody, responseStruct)
@@ -183,6 +246,12 @@ func (client *APIClient) UploadFile(endpoint, fieldName, filePath string, additi
 
 	// Unmarshal response if responseStruct is provided
 	if responseStruct != nil {
+		if client.RawMode {
+			if strPtr, ok := responseStruct.(*string); ok {
+				*strPtr = string(respBody)
+				return nil
+			}
+		}
 		return json.Unmarshal(respBody, responseStruct)
 	}
 
