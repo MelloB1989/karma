@@ -158,7 +158,7 @@ func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler fu
 		params.Temperature = openai.Float(o.Temperature)
 	}
 	if o.MaxTokens > 0 {
-		params.MaxTokens = openai.Int(o.MaxTokens)
+		params.MaxCompletionTokens = openai.Int(o.MaxTokens)
 	}
 
 	// Add MCP tools if enabled and available
