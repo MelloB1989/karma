@@ -63,6 +63,11 @@ type AIChatResponse struct {
 	TimeTaken    int    `json:"time_taken"`
 }
 
+type AIImageResponse struct {
+	ImageHostedUrl string `json:"image_hosted_url"`
+	FilePath       string `json:"file_path"`
+}
+
 type StreamedResponse struct {
 	AIResponse string `json:"text"`
 	TokenUsed  int    `json:"token_used"`

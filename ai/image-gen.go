@@ -5,6 +5,7 @@ import (
 
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/internal/openai"
+	"github.com/MelloB1989/karma/models"
 )
 
 // Image Models
@@ -64,7 +65,7 @@ func WithOutputDirectory(dir string) ImageGenOptions {
 	}
 }
 
-func (ki *KarmaImageGen) GenerateImages(prompt string) (string, error) {
+func (ki *KarmaImageGen) GenerateImages(prompt string) (*models.AIImageResponse, error) {
 	// Set default output directory if not specified
 	outputDir := ki.OutputDirectory
 	if outputDir == "" {
@@ -84,5 +85,5 @@ func (ki *KarmaImageGen) GenerateImages(prompt string) (string, error) {
 			API_Key: config.GetEnvRaw("XAI_API_KEY"),
 		})
 	}
-	return "", errors.New("unsupported model")
+	return nil, errors.New("unsupported model")
 }
