@@ -7,7 +7,7 @@ import (
 )
 
 func GetEmbedding(text string) ([]float32, error) {
-	kai := ai.NewKarmaAI(ai.TitanEmbedTextV2)
+	kai := ai.NewKarmaAI(ai.TitanEmbedText, ai.Bedrock)
 
 	embeddingPrompt := fmt.Sprintf("Generate embedding for: %s", text)
 	embeddingResponse, err := kai.GetEmbeddings(embeddingPrompt)

@@ -17,7 +17,8 @@ import (
 
 // Parser represents the main parser configuration
 type Parser struct {
-	model      ai.Models
+	model      ai.BaseModel
+	provider   ai.Provider
 	options    []ai.Option
 	client     *ai.KarmaAI
 	maxRetries int
@@ -42,9 +43,16 @@ func WithAIClient(client *ai.KarmaAI) ParserOption {
 }
 
 // WithModel sets the AI model to use
-func WithModel(model ai.Models) ParserOption {
+func WithModel(model ai.BaseModel) ParserOption {
 	return func(p *Parser) {
 		p.model = model
+	}
+}
+
+// WithProvider sets the AI provider to use
+func WithProvider(provider ai.Provider) ParserOption {
+	return func(p *Parser) {
+		p.provider = provider
 	}
 }
 
@@ -65,7 +73,7 @@ func WithDebug(debug bool) ParserOption {
 func NewParser(opts ...ParserOption) *Parser {
 	// Default configuration
 	p := &Parser{
-		model:      (ai.ApacClaude3_5Sonnet20240620V1),
+		model:      (ai.Claude4Opus),
 		maxRetries: 3,
 		Debug:      false,
 	}
@@ -77,7 +85,7 @@ func NewParser(opts ...ParserOption) *Parser {
 
 	// Initialize client if not provided
 	if p.client == nil {
-		p.client = ai.NewKarmaAI(p.model, p.options...)
+		p.client = ai.NewKarmaAI(p.model, p.provider, p.options...)
 	}
 
 	return p

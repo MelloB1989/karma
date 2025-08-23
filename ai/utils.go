@@ -78,9 +78,9 @@ func (kai *KarmaAI) processMessagesForLlamaBedrockSystemPrompt(chat models.AICha
 func (kai *KarmaAI) configureClaudeClientForMCP(cc *claude.ClaudeClient) {
 	if len(kai.MCPServers) > 0 {
 		kai.configureMultiMCPForClaude(cc)
-	} else if len(kai.MCPConfig.MCPTools) > 0 {
-		cc.SetMCPServer(kai.MCPConfig.MCPUrl, kai.MCPConfig.AuthToken)
-		for _, tool := range kai.MCPConfig.MCPTools {
+	} else if len(kai.MCPTools) > 0 {
+		cc.SetMCPServer(kai.MCPUrl, kai.AuthToken)
+		for _, tool := range kai.MCPTools {
 			err := cc.AddMCPTool(tool.ToolName, tool.Description, tool.ToolName, tool.InputSchema) // Claude requires tool names to match ^[a-zA-Z0-9_-]{1,128}$ (letters, numbers, underscore, hyphen only)
 			if err != nil {
 				log.Printf("Failed to add MCP tool: %v", err)
@@ -92,9 +92,9 @@ func (kai *KarmaAI) configureClaudeClientForMCP(cc *claude.ClaudeClient) {
 func (kai *KarmaAI) configureOpenaiClientForMCP(o *openai.OpenAI) {
 	if len(kai.MCPServers) > 0 {
 		kai.configureMultiMCPForOpenAI(o)
-	} else if len(kai.MCPConfig.MCPTools) > 0 {
-		o.SetMCPServer(kai.MCPConfig.MCPUrl, kai.MCPConfig.AuthToken)
-		for _, tool := range kai.MCPConfig.MCPTools {
+	} else if len(kai.MCPTools) > 0 {
+		o.SetMCPServer(kai.MCPUrl, kai.AuthToken)
+		for _, tool := range kai.MCPTools {
 			err := o.AddMCPTool(tool.ToolName, tool.Description, tool.ToolName, tool.InputSchema) // Claude requires tool names to match ^[a-zA-Z0-9_-]{1,128}$ (letters, numbers, underscore, hyphen only)
 			if err != nil {
 				log.Printf("Failed to add MCP tool: %v", err)

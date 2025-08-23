@@ -33,8 +33,8 @@ type GitLabIssuesResponse struct {
 func TestKarmaParser() {
 
 	// Example with chat history
-	// chatExample()
-	// productsGeneration()
+	chatExample()
+	productsGeneration()
 	issuesGeneration()
 }
 
@@ -139,9 +139,7 @@ func chatExample() {
 	fmt.Println("\n--- Chat Example ---")
 
 	// Initialize the AI parser
-	p := parser.NewParser(
-		parser.WithModel((ai.ApacClaude3_5Sonnet20240620V1)),
-	)
+	p := parser.NewParser()
 
 	// Create a chat history
 	chatHistory := []models.AIMessage{

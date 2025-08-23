@@ -111,7 +111,7 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 }
 
 func (kai *KarmaAI) GetEmbeddings(text string) (*bedrock_runtime.EmbeddingResponse, error) {
-	embeddings, err := bedrock_runtime.CreateEmbeddings(text, string(kai.Model))
+	embeddings, err := bedrock_runtime.CreateEmbeddings(text, kai.Model.GetModelString())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Bedrock embeddings: %w", err)
 	}

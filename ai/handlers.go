@@ -13,13 +13,14 @@ import (
 	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
+	"github.com/anthropics/anthropic-sdk-go"
 	oai "github.com/openai/openai-go/v2"
 	"google.golang.org/genai"
 )
 
 func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
 	start := time.Now()
-	o := openai.NewOpenAI(string(kai.Model), kai.Temperature, kai.MaxTokens)
+	o := openai.NewOpenAI(kai.Model.GetModelString(), float64(kai.Temperature), int64(kai.MaxTokens))
 	kai.configureOpenaiClientForMCP(o)
 	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
 	if err != nil {
@@ -40,7 +41,7 @@ func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*
 
 func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages models.AIChatHistory, base_url string, apikey string) (*models.AIChatResponse, error) {
 	start := time.Now()
-	o := openai.NewOpenAICompatible(string(kai.Model), kai.Temperature, kai.MaxTokens, base_url, apikey)
+	o := openai.NewOpenAICompatible(kai.Model.GetModelString(), float64(kai.Temperature), int64(kai.MaxTokens), base_url, apikey)
 	kai.configureOpenaiClientForMCP(o)
 	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
 	if err != nil {
@@ -61,8 +62,8 @@ func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages models.AIChatH
 func (kai *KarmaAI) handleBedrockChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
 	start := time.Now()
 	response, err := bedrock_runtime.InvokeBedrockConverseAPI(
-		string(kai.Model),
-		bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), kai.Temperature, kai.TopP, messages, kai.SystemMessage),
+		kai.Model.GetModelString(),
+		bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), float64(kai.Temperature), float64(kai.TopP), messages, kai.SystemMessage),
 	)
 	if err != nil {
 		return nil, err
@@ -80,7 +81,7 @@ func (kai *KarmaAI) handleBedrockChatCompletion(messages models.AIChatHistory) (
 }
 
 func (kai *KarmaAI) handleAnthropicChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
-	cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
+	cc := claude.NewClaudeClient(int(kai.MaxTokens), anthropic.Model(kai.Model.GetModelString()), float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), kai.SystemMessage)
 	kai.configureClaudeClientForMCP(cc)
 	start := time.Now()
 	response, err := cc.ClaudeChatCompletion(messages, kai.ToolsEnabled)
@@ -94,8 +95,8 @@ func (kai *KarmaAI) handleAnthropicChatCompletion(messages models.AIChatHistory)
 func (kai *KarmaAI) handleBedrockSinglePrompt(messages models.AIChatHistory) (*models.AIChatResponse, error) {
 	start := time.Now()
 	response, err := bedrock_runtime.InvokeBedrockConverseAPI(
-		string(kai.Model),
-		bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), kai.Temperature, kai.TopP, messages, kai.SystemMessage),
+		kai.Model.GetModelString(),
+		bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), float64(kai.Temperature), float64(kai.TopP), messages, kai.SystemMessage),
 	)
 	if err != nil {
 		return nil, err
@@ -118,9 +119,9 @@ func (kai *KarmaAI) handleGeminiSinglePrompt(prompt string) (*models.AIChatRespo
 	var err error
 
 	if kai.ResponseType != "" {
-		response, err = gemini.RunGemini(fullPrompt, string(kai.Model), kai.SystemMessage, kai.Temperature, kai.TopP, kai.TopK, kai.MaxTokens, kai.ResponseType)
+		response, err = gemini.RunGemini(fullPrompt, kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), int64(kai.MaxTokens), kai.ResponseType)
 	} else {
-		response, err = gemini.RunGemini(fullPrompt, string(kai.Model), kai.SystemMessage, kai.Temperature, kai.TopP, kai.TopK, kai.MaxTokens)
+		response, err = gemini.RunGemini(fullPrompt, kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), int64(kai.MaxTokens))
 	}
 
 	if err != nil {
@@ -137,8 +138,8 @@ func (kai *KarmaAI) handleGeminiSinglePrompt(prompt string) (*models.AIChatRespo
 }
 
 func (kai *KarmaAI) handleAnthropicSinglePrompt(prompt string) (*models.AIChatResponse, error) {
-	cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
-	if len(kai.MCPConfig.MCPTools) > 0 {
+	cc := claude.NewClaudeClient(int(kai.MaxTokens), anthropic.Model(kai.Model.GetModelString()), float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), kai.SystemMessage)
+	if len(kai.MCPTools) > 0 {
 		log.Println("MCPTools are not supported for Single Prompts, please create a conversation!")
 	}
 	start := time.Now()
@@ -152,7 +153,7 @@ func (kai *KarmaAI) handleAnthropicSinglePrompt(prompt string) (*models.AIChatRe
 
 func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
 	start := time.Now()
-	o := openai.NewOpenAI(string(kai.Model), kai.Temperature, kai.MaxTokens)
+	o := openai.NewOpenAI(kai.Model.GetModelString(), float64(kai.Temperature), int64(kai.MaxTokens))
 	kai.configureOpenaiClientForMCP(o)
 
 	chunkHandler := func(chuck oai.ChatCompletionChunk) {
@@ -184,7 +185,7 @@ func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, 
 
 func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error, base_url string, apikey string) (*models.AIChatResponse, error) {
 	start := time.Now()
-	o := openai.NewOpenAICompatible(string(kai.Model), kai.Temperature, kai.MaxTokens, base_url, apikey)
+	o := openai.NewOpenAICompatible(kai.Model.GetModelString(), float64(kai.Temperature), int64(kai.MaxTokens), base_url, apikey)
 	kai.configureOpenaiClientForMCP(o)
 	chunkHandler := func(chunk oai.ChatCompletionChunk) {
 		if len(chunk.Choices) == 0 {
@@ -219,7 +220,7 @@ func (kai *KarmaAI) handleBedrockStreamCompletion(messages models.AIChatHistory,
 		float32(kai.Temperature),
 		float32(kai.TopP),
 		int(kai.MaxTokens),
-		string(kai.Model),
+		kai.Model.GetModelString(),
 	)
 	if err != nil {
 		return nil, err
@@ -253,7 +254,7 @@ func (kai *KarmaAI) handleBedrockStreamCompletion(messages models.AIChatHistory,
 
 func (kai *KarmaAI) handleAnthropicStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
 	start := time.Now()
-	cc := claude.NewClaudeClient(int(kai.MaxTokens), kai.Model.ToClaudeModel(), kai.Temperature, kai.TopP, kai.TopK, kai.SystemMessage)
+	cc := claude.NewClaudeClient(int(kai.MaxTokens), anthropic.Model(kai.Model.GetModelString()), float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), kai.SystemMessage)
 	kai.configureClaudeClientForMCP(cc)
 	response, err := cc.ClaudeStreamCompletionWithTools(messages, callback, kai.ToolsEnabled)
 	if err != nil {

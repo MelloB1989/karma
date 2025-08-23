@@ -43,7 +43,7 @@ func (kai *KarmaAI) captureResponse(mgs models.AIChatHistory, res models.AIChatR
 	// Run analytics capture in a goroutine to avoid blocking the response
 	go func() {
 		// Check if analytics is enabled
-		if !kai.Analytics.on || kai.Analytics.client == nil {
+		if kai.Analytics == nil || !kai.Analytics.on || kai.Analytics.client == nil {
 			return
 		}
 
@@ -66,7 +66,7 @@ func (kai *KarmaAI) captureResponse(mgs models.AIChatHistory, res models.AIChatR
 
 func (kai *KarmaAI) setBasicProperties() {
 	// Check if analytics is enabled
-	if !kai.Analytics.on || kai.Analytics.client == nil {
+	if kai.Analytics == nil || !kai.Analytics.on || kai.Analytics.client == nil {
 		return
 	}
 
@@ -78,19 +78,22 @@ func (kai *KarmaAI) setBasicProperties() {
 	if kai.ToolsEnabled {
 		kai.SetAnalyticProperty(ToolCallEnabled, strconv.FormatBool(kai.ToolsEnabled))
 		server_urls := []string{}
-		server_urls = append(server_urls, kai.MCPConfig.MCPUrl)
+		server_urls = append(server_urls, kai.MCPUrl)
 		for _, server := range kai.MCPServers {
 			server_urls = append(server_urls, server.URL)
 		}
 		kai.SetAnalyticProperty(McpServerUrls, strings.Join(server_urls, ","))
 	}
-	kai.SetAnalyticProperty(Temperature, strconv.FormatFloat(kai.Temperature, 'f', -1, 64))
-	kai.SetAnalyticProperty(TopP, strconv.FormatFloat(kai.TopP, 'f', -1, 64))
+	kai.SetAnalyticProperty(Temperature, strconv.FormatFloat(float64(kai.Temperature), 'f', -1, 64))
+	kai.SetAnalyticProperty(TopP, strconv.FormatFloat(float64(kai.TopP), 'f', -1, 64))
 	kai.SetAnalyticProperty(TopK, strconv.Itoa(int(kai.TopK)))
 	kai.SetAnalyticProperty(MaxTokens, strconv.Itoa(int(kai.MaxTokens)))
 }
 
 func (kai *KarmaAI) SendEvent() {
+	if kai.Analytics == nil {
+		return
+	}
 	kai.Analytics.mu.RLock()
 	propertiesCopy := make(map[string]any)
 	if kai.Analytics.properties != nil {
@@ -111,7 +114,7 @@ func (kai *KarmaAI) SendErrorEvent(err error) {
 	// Run error event capture in a goroutine to avoid blocking the response
 	go func() {
 		// Check if analytics is enabled
-		if !kai.Analytics.on || kai.Analytics.client == nil {
+		if kai.Analytics == nil || !kai.Analytics.on || kai.Analytics.client == nil {
 			return
 		}
 
@@ -139,6 +142,9 @@ func (kai *KarmaAI) SendErrorEvent(err error) {
 }
 
 func (kai *KarmaAI) SetAnalyticProperty(property AIProperty, val any) {
+	if kai.Analytics == nil {
+		return
+	}
 	kai.Analytics.mu.Lock()
 	defer kai.Analytics.mu.Unlock()
 	if kai.Analytics.properties == nil {

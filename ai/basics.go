@@ -2,399 +2,403 @@ package ai
 
 import (
 	"log"
-	"strings"
 	"sync"
 
 	"github.com/MelloB1989/karma/config"
-	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/posthog/posthog-go"
 )
 
-type Models string
+// BaseModel represents the core model without provider-specific naming
+type BaseModel string
 
+// Provider represents the inference provider
+type Provider string
+
+// Base Models - Core models without provider prefixes
 const (
 	// OpenAI Models
-	ChatModelO1                              Models = "o1"
-	ChatModelO1_2024_12_17                   Models = "o1-2024-12-17"
-	ChatModelO1Preview                       Models = "o1-preview"
-	ChatModelO1Preview2024_09_12             Models = "o1-preview-2024-09-12"
-	ChatModelO1Mini                          Models = "o1-mini"
-	ChatModelO1Mini2024_09_12                Models = "o1-mini-2024-09-12"
-	ChatModelGPT4o                           Models = "gpt-4o"
-	ChatModelGPT4o2024_11_20                 Models = "gpt-4o-2024-11-20"
-	ChatModelGPT4o2024_08_06                 Models = "gpt-4o-2024-08-06"
-	ChatModelGPT4o2024_05_13                 Models = "gpt-4o-2024-05-13"
-	ChatModelGPT4oAudioPreview               Models = "gpt-4o-audio-preview"
-	ChatModelGPT4oAudioPreview2024_10_01     Models = "gpt-4o-audio-preview-2024-10-01"
-	ChatModelGPT4oAudioPreview2024_12_17     Models = "gpt-4o-audio-preview-2024-12-17"
-	ChatModelGPT4oMiniAudioPreview           Models = "gpt-4o-mini-audio-preview"
-	ChatModelGPT4oMiniAudioPreview2024_12_17 Models = "gpt-4o-mini-audio-preview-2024-12-17"
-	ChatModelChatgpt4oLatest                 Models = "chatgpt-4o-latest"
-	ChatModelGPT4oMini                       Models = "gpt-4o-mini"
-	ChatModelGPT4oMini2024_07_18             Models = "gpt-4o-mini-2024-07-18"
-	ChatModelGPT4Turbo                       Models = "gpt-4-turbo"
-	ChatModelGPT4Turbo2024_04_09             Models = "gpt-4-turbo-2024-04-09"
-	ChatModelGPT4_0125Preview                Models = "gpt-4-0125-preview"
-	ChatModelGPT4TurboPreview                Models = "gpt-4-turbo-preview"
-	ChatModelGPT4_1106Preview                Models = "gpt-4-1106-preview"
-	ChatModelGPT4VisionPreview               Models = "gpt-4-vision-preview"
-	ChatModelGPT4                            Models = "gpt-4"
-	ChatModelGPT4_0314                       Models = "gpt-4-0314"
-	ChatModelGPT4_0613                       Models = "gpt-4-0613"
-	ChatModelGPT4_32k                        Models = "gpt-4-32k"
-	ChatModelGPT4_32k0314                    Models = "gpt-4-32k-0314"
-	ChatModelGPT4_32k0613                    Models = "gpt-4-32k-0613"
-	ChatModelGPT3_5Turbo                     Models = "gpt-3.5-turbo"
-	ChatModelGPT3_5Turbo16k                  Models = "gpt-3.5-turbo-16k"
-	ChatModelGPT3_5Turbo0301                 Models = "gpt-3.5-turbo-0301"
-	ChatModelGPT3_5Turbo0613                 Models = "gpt-3.5-turbo-0613"
-	ChatModelGPT3_5Turbo1106                 Models = "gpt-3.5-turbo-1106"
-	ChatModelGPT3_5Turbo0125                 Models = "gpt-3.5-turbo-0125"
-	ChatModelGPT3_5Turbo16k0613              Models = "gpt-3.5-turbo-16k-0613"
-	ChatModelGPT5                            Models = "gpt-5"
-	ChatModelGPT5_NANO                       Models = "gpt-5-nano"
-	ChatModelGPT5_MINI                       Models = "gpt-5-mini"
+	GPT4       BaseModel = "gpt-4"
+	GPT4o      BaseModel = "gpt-4o"
+	GPT4oMini  BaseModel = "gpt-4o-mini"
+	GPT4Turbo  BaseModel = "gpt-4-turbo"
+	GPT35Turbo BaseModel = "gpt-3.5-turbo"
+	GPT5       BaseModel = "gpt-5"
+	GPT5Nano   BaseModel = "gpt-5-nano"
+	GPT5Mini   BaseModel = "gpt-5-mini"
+	O1         BaseModel = "o1"
+	O1Mini     BaseModel = "o1-mini"
+	O1Preview  BaseModel = "o1-preview"
 
-	// Anthropic Models For BEDROCK
-	ClaudeInstantV1_2_100K        Models = "anthropic.claude-instant-v1:2:100k"
-	ClaudeInstantV1               Models = "anthropic.claude-instant-v1"
-	ClaudeV2_0_18K                Models = "anthropic.claude-v2:0:18k"
-	ClaudeV2_0_100K               Models = "anthropic.claude-v2:0:100k"
-	ClaudeV2_1_18K                Models = "anthropic.claude-v2:1:18k"
-	ClaudeV2_1_200K               Models = "anthropic.claude-v2:1:200k"
-	ClaudeV2_1                    Models = "anthropic.claude-v2:1"
-	ClaudeV2                      Models = "anthropic.claude-v2"
-	Claude3Sonnet20240229V1_28K   Models = "anthropic.claude-3-sonnet-20240229-v1:0:28k"
-	Claude3Sonnet20240229V1_200K  Models = "anthropic.claude-3-sonnet-20240229-v1:0:200k"
-	Claude3Sonnet20240229V1       Models = "anthropic.claude-3-sonnet-20240229-v1:0"
-	Claude3Haiku20240307V1_48K    Models = "anthropic.claude-3-haiku-20240307-v1:0:48k"
-	Claude3Haiku20240307V1_200K   Models = "anthropic.claude-3-haiku-20240307-v1:0:200k"
-	Claude3Haiku20240307V1        Models = "anthropic.claude-3-haiku-20240307-v1:0"
-	Claude3Opus20240229V1_12K     Models = "anthropic.claude-3-opus-20240229-v1:0:12k"
-	Claude3Opus20240229V1_28K     Models = "anthropic.claude-3-opus-20240229-v1:0:28k"
-	Claude3Opus20240229V1_200K    Models = "anthropic.claude-3-opus-20240229-v1:0:200k"
-	Claude3Opus20240229V1         Models = "anthropic.claude-3-opus-20240229-v1:0"
-	Claude3_5Sonnet20240620V1     Models = "anthropic.claude-3-5-sonnet-20240620-v1:0"
-	Claude3_5Sonnet20241022V2     Models = "anthropic.claude-3-5-sonnet-20241022-v2:0"
-	Claude3_5Haiku20241022V1      Models = "anthropic.claude-3-5-haiku-20241022-v1:0"
-	Claude3_7Sonnet20250219V1     Models = "us.anthropic.claude-3-7-sonnet-20250219-v1:0"
-	ApacClaude3_5Sonnet20240620V1 Models = "apac.anthropic.claude-3-5-sonnet-20240620-v1:0"
+	// Claude Models
+	Claude35Sonnet BaseModel = "claude-3.5-sonnet"
+	Claude35Haiku  BaseModel = "claude-3.5-haiku"
+	Claude3Sonnet  BaseModel = "claude-3-sonnet"
+	Claude3Haiku   BaseModel = "claude-3-haiku"
+	Claude3Opus    BaseModel = "claude-3-opus"
+	Claude37Sonnet BaseModel = "claude-3.7-sonnet"
+	Claude4Sonnet  BaseModel = "claude-4-sonnet"
+	Claude4Opus    BaseModel = "claude-4-opus"
+	ClaudeInstant  BaseModel = "claude-instant"
+	ClaudeV2       BaseModel = "claude-v2"
 
-	// Meta's LLaMA Models
-	Llama3_8B    Models = "meta.llama3-8b-instruct-v1:0"
-	Llama3_70B   Models = "meta.llama3-70b-instruct-v1:0"
-	Llama3_1_8B  Models = "meta.llama3-1-8b-instruct-v1:0"
-	Llama3_1_70B Models = "meta.llama3-1-70b-instruct-v1:0"
-	Llama3_2_11B Models = "meta.llama3-2-11b-instruct-v1:0"
-	Llama3_2_90B Models = "meta.llama3-2-90b-instruct-v1:0"
-	Llama3_2_1B  Models = "meta.llama3-2-1b-instruct-v1:0"
-	Llama3_2_3B  Models = "meta.llama3-2-3b-instruct-v1:0"
-	Llama3_3_70B Models = "meta.llama3-3-70b-instruct-v1:0"
+	// Llama Models
+	Llama3_8B   BaseModel = "llama-3-8b"
+	Llama3_70B  BaseModel = "llama-3-70b"
+	Llama31_8B  BaseModel = "llama-3.1-8b"
+	Llama31_70B BaseModel = "llama-3.1-70b"
+	Llama32_1B  BaseModel = "llama-3.2-1b"
+	Llama32_3B  BaseModel = "llama-3.2-3b"
+	Llama32_11B BaseModel = "llama-3.2-11b"
+	Llama32_90B BaseModel = "llama-3.2-90b"
+	Llama33_70B BaseModel = "llama-3.3-70b"
 
-	// AWS US LLaMA Models
-	US_Llama3_3_70B Models = "us.meta.llama3-3-70b-instruct-v1:0"
+	// Mistral Models
+	Mistral7B    BaseModel = "mistral-7b"
+	Mixtral8x7B  BaseModel = "mixtral-8x7b"
+	MistralLarge BaseModel = "mistral-large"
+	MistralSmall BaseModel = "mistral-small"
 
-	// Mistral AI Models
-	Mistral7BInstructV0   Models = "mistral.mistral-7b-instruct-v0:2"
-	Mixtral8x7BInstructV0 Models = "mistral.mixtral-8x7b-instruct-v0:1"
-	MistralLarge2402V1    Models = "mistral.mistral-large-2402-v1:0"
-	MistralSmall2402V1    Models = "mistral.mistral-small-2402-v1:0"
+	// Amazon Titan Models
+	TitanTextG1Large BaseModel = "titan-text-g1-large"
+	TitanTextPremier BaseModel = "titan-text-premier"
+	TitanTextLite    BaseModel = "titan-text-lite"
+	TitanTextExpress BaseModel = "titan-text-express"
+	TitanEmbedText   BaseModel = "titan-embed-text"
+	TitanEmbedImage  BaseModel = "titan-embed-image"
 
-	// Titan Models
-	TitanTG1Large         Models = "amazon.titan-tg1-large"
-	TitanTextPremierV1    Models = "amazon.titan-text-premier-v1:0"
-	TitanEmbedG1Text02    Models = "amazon.titan-embed-g1-text-02"
-	TitanTextLiteV1_4K    Models = "amazon.titan-text-lite-v1:0:4k"
-	TitanTextLiteV1       Models = "amazon.titan-text-lite-v1"
-	TitanTextExpressV1_8K Models = "amazon.titan-text-express-v1:0:8k"
-	TitanTextExpressV1    Models = "amazon.titan-text-express-v1"
-	TitanEmbedTextV1_8K   Models = "amazon.titan-embed-text-v1:2:8k"
-	TitanEmbedTextV1      Models = "amazon.titan-embed-text-v1"
-	TitanEmbedTextV2_8K   Models = "amazon.titan-embed-text-v2:0:8k"
-	TitanEmbedTextV2      Models = "amazon.titan-embed-text-v2:0"
-	TitanEmbedImageV1     Models = "amazon.titan-embed-image-v1:0"
-
-	// Nova Models
-	NovaProV1_300K   Models = "amazon.nova-pro-v1:0:300k"
-	NovaProV1        Models = "amazon.nova-pro-v1:0"
-	NovaLiteV1_300K  Models = "amazon.nova-lite-v1:0:300k"
-	NovaLiteV1       Models = "amazon.nova-lite-v1:0"
-	NovaCanvasV1     Models = "amazon.nova-canvas-v1:0"
-	NovaReelV1       Models = "amazon.nova-reel-v1:0"
-	NovaMicroV1_128K Models = "amazon.nova-micro-v1:0:128k"
-	NovaMicroV1      Models = "amazon.nova-micro-v1:0"
+	// Amazon Nova Models
+	NovaPro    BaseModel = "nova-pro"
+	NovaLite   BaseModel = "nova-lite"
+	NovaCanvas BaseModel = "nova-canvas"
+	NovaReel   BaseModel = "nova-reel"
+	NovaMicro  BaseModel = "nova-micro"
 
 	// Google Models
-	PaLM2                          Models = "palm-2"
-	Gemini_2_5_Flash_Preview_04_17 Models = "gemini-2.5-flash-preview-04-17"
-	Gemini25ProPreview             Models = "gemini-2.5-pro-preview-05-06"
-	Gemini20Flash                  Models = "gemini-2.0-flash"
-	Gemini20FlashLite              Models = "gemini-2.0-flash-lite"
-	Gemini15Flash                  Models = "gemini-1.5-flash"
-	Gemini15Flash8B                Models = "gemini-1.5-flash-8b"
-	Gemini15Pro                    Models = "gemini-1.5-pro"
-	GeminiEmbedding                Models = "gemini-embedding-exp"
-	Gemini20FlashLive              Models = "gemini-2.0-flash-live-001"
+	Gemini25Flash     BaseModel = "gemini-2.5-flash"
+	Gemini25Pro       BaseModel = "gemini-2.5-pro"
+	Gemini20Flash     BaseModel = "gemini-2.0-flash"
+	Gemini20FlashLite BaseModel = "gemini-2.0-flash-lite"
+	Gemini15Flash     BaseModel = "gemini-1.5-flash"
+	Gemini15Flash8B   BaseModel = "gemini-1.5-flash-8b"
+	Gemini15Pro       BaseModel = "gemini-1.5-pro"
+	GeminiEmbedding   BaseModel = "gemini-embedding"
+	PaLM2             BaseModel = "palm-2"
 
-	// Anthropic Models without BEDROCK
-	ModelClaude3_7SonnetLatest      Models = "claude-3-7-sonnet-latest"
-	ModelClaude3_7Sonnet20250219    Models = "claude-3-7-sonnet-20250219"
-	ModelClaude3_5HaikuLatest       Models = "claude-3-5-haiku-latest"
-	ModelClaude3_5Haiku20241022     Models = "claude-3-5-haiku-20241022"
-	ModelClaudeSonnet4_20250514     Models = "claude-sonnet-4-20250514"
-	ModelClaudeSonnet4_0            Models = "claude-sonnet-4-0"
-	ModelClaude4Sonnet20250514      Models = "claude-4-sonnet-20250514"
-	ModelClaude3_5SonnetLatest      Models = "claude-3-5-sonnet-latest"
-	ModelClaude3_5Sonnet20241022    Models = "claude-3-5-sonnet-20241022"
-	ModelClaude_3_5_Sonnet_20240620 Models = "claude-3-5-sonnet-20240620"
-	ModelClaudeOpus4_0              Models = "claude-opus-4-0"
-	ModelClaudeOpus4_20250514       Models = "claude-opus-4-20250514"
-	ModelClaude4Opus20250514        Models = "claude-4-opus-20250514"
-	ModelClaude3OpusLatest          Models = "claude-3-opus-latest"
-
-	// XAI Models
-	GROK_4_0709 Models = "grok-4-0709"
-	GROK_3      Models = "grok-3"
-	GROK_3_MINI Models = "grok-3-mini"
+	// xAI Models
+	Grok4     BaseModel = "grok-4"
+	Grok3     BaseModel = "grok-3"
+	Grok3Mini BaseModel = "grok-3-mini"
 )
 
-type ModelProviders string
-
+// Providers
 const (
-	OpenAI     ModelProviders = "OpenAI"
-	Bedrock    ModelProviders = "Bedrock" // Provider for Amazon, Meta, Mistral, Stability, AI21, Cohere
-	Anthropic  ModelProviders = "Anthropic"
-	Meta       ModelProviders = "Meta"
-	MistralAI  ModelProviders = "Mistral AI"
-	Google     ModelProviders = "Google"
-	Cohere     ModelProviders = "Cohere"
-	OpenSource ModelProviders = "Open Source"
-	XAI        ModelProviders = "XAI"
-	Undefined  ModelProviders = "Undefined"
+	OpenAI    Provider = "openai"
+	Anthropic Provider = "anthropic"
+	Bedrock   Provider = "bedrock"
+	Google    Provider = "google"
+	XAI       Provider = "xai"
+	Groq      Provider = "groq"
 )
 
-const XAI_API = "https://api.x.ai/v1/"
+// API URLs for different providers
+const (
+	XAI_API = "https://api.x.ai/v1"
+)
 
-// IsOpenAIModel checks if the model is from OpenAI
-func (m Models) IsOpenAIModel() bool {
-	// Check for GPT prefixes and O1 prefixes
-	return strings.HasPrefix(string(m), "gpt-") ||
-		strings.HasPrefix(string(m), "o1") ||
-		strings.HasPrefix(string(m), "chatgpt-")
+// ModelConfig represents a model with its provider configuration
+type ModelConfig struct {
+	BaseModel         BaseModel
+	Provider          Provider
+	CustomModelString string // Optional: override the provider-specific model string
 }
 
-func (m Models) IsOpenAICompatibleModel() bool {
-	return m.IsOpenAIModel() || m.IsXAIModel()
-}
+type providerMap map[Provider]map[BaseModel]string
 
-// IsGeminiModel checks if the model is from Google
-func (m Models) IsGeminiModel() bool {
-	return strings.HasPrefix(string(m), "gemini-")
-}
+var (
+	ProviderModelMapping providerMap = map[Provider]map[BaseModel]string{
+		OpenAI: {
+			GPT4:       "gpt-4",
+			GPT4o:      "gpt-4o",
+			GPT4oMini:  "gpt-4o-mini",
+			GPT4Turbo:  "gpt-4-turbo",
+			GPT35Turbo: "gpt-3.5-turbo",
+			GPT5:       "gpt-5",
+			GPT5Nano:   "gpt-5-nano",
+			GPT5Mini:   "gpt-5-mini",
+			O1:         "o1",
+			O1Mini:     "o1-mini",
+			O1Preview:  "o1-preview",
+		},
+		Anthropic: {
+			ClaudeInstant:  "claude-instant-v1.2",
+			ClaudeV2:       "claude-v2.1",
+			Claude3Sonnet:  "claude-3-sonnet-20240229",
+			Claude3Haiku:   "claude-3-haiku-20240307",
+			Claude3Opus:    "claude-3-opus-20240229",
+			Claude35Sonnet: "claude-3.5-sonnet-20241022",
+			Claude35Haiku:  "claude-3.5-haiku-20241022",
+			Claude37Sonnet: "claude-3.7-sonnet-20250219",
+			Claude4Sonnet:  "claude-4-sonnet-20250514",
+			Claude4Opus:    "claude-4-opus-20250514",
+		},
+		Bedrock: {
+			// Claude models on Bedrock
+			ClaudeInstant:  "anthropic.claude-instant-v1",
+			ClaudeV2:       "anthropic.claude-v2:1",
+			Claude3Sonnet:  "anthropic.claude-3-sonnet-20240229-v1:0",
+			Claude3Haiku:   "anthropic.claude-3-haiku-20240307-v1:0",
+			Claude3Opus:    "anthropic.claude-3-opus-20240229-v1:0",
+			Claude35Sonnet: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+			Claude35Haiku:  "anthropic.claude-3-5-haiku-20241022-v1:0",
+			Claude37Sonnet: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+			// Llama models on Bedrock
+			Llama3_8B:   "meta.llama3-8b-instruct-v1:0",
+			Llama3_70B:  "meta.llama3-70b-instruct-v1:0",
+			Llama31_8B:  "meta.llama3-1-8b-instruct-v1:0",
+			Llama31_70B: "meta.llama3-1-70b-instruct-v1:0",
+			Llama32_1B:  "meta.llama3-2-1b-instruct-v1:0",
+			Llama32_3B:  "meta.llama3-2-3b-instruct-v1:0",
+			Llama32_11B: "meta.llama3-2-11b-instruct-v1:0",
+			Llama32_90B: "meta.llama3-2-90b-instruct-v1:0",
+			Llama33_70B: "meta.llama3-3-70b-instruct-v1:0",
+			// Mistral models on Bedrock
+			Mistral7B:    "mistral.mistral-7b-instruct-v0:2",
+			Mixtral8x7B:  "mistral.mixtral-8x7b-instruct-v0:1",
+			MistralLarge: "mistral.mistral-large-2402-v1:0",
+			MistralSmall: "mistral.mistral-small-2402-v1:0",
+			// Amazon Titan models
+			TitanTextG1Large: "amazon.titan-tg1-large",
+			TitanTextPremier: "amazon.titan-text-premier-v1:0",
+			TitanTextLite:    "amazon.titan-text-lite-v1:0",
+			TitanTextExpress: "amazon.titan-text-express-v1:0",
+			TitanEmbedText:   "amazon.titan-embed-text-v1:2",
+			TitanEmbedImage:  "amazon.titan-embed-image-v1:0",
+			// Amazon Nova models
+			NovaPro:    "amazon.nova-pro-v1:0",
+			NovaLite:   "amazon.nova-lite-v1:0",
+			NovaCanvas: "amazon.nova-canvas-v1:0",
+			NovaReel:   "amazon.nova-reel-v1:0",
+			NovaMicro:  "amazon.nova-micro-v1:0",
+		},
+		Google: {
+			Gemini25Flash:     "gemini-2.5-flash",
+			Gemini25Pro:       "gemini-2.5-pro",
+			Gemini20Flash:     "gemini-2.0-flash",
+			Gemini20FlashLite: "gemini-2.0-flash-lite",
+			Gemini15Flash:     "gemini-1.5-flash",
+			Gemini15Flash8B:   "gemini-1.5-flash-8b",
+			Gemini15Pro:       "gemini-1.5-pro",
+			GeminiEmbedding:   "text-embedding-004",
+			PaLM2:             "palm-2",
+		},
+		XAI: {
+			Grok4:     "grok-4",
+			Grok3:     "grok-3",
+			Grok3Mini: "grok-3-mini",
+		},
+		Groq: {
+			Llama3_8B:   "llama-3-8b-8192",
+			Llama3_70B:  "llama-3-70b-8192",
+			Llama31_8B:  "llama-3.1-8b-instant",
+			Llama31_70B: "llama-3.1-70b-versatile",
+			Llama32_1B:  "llama-3.2-1b-preview",
+			Llama32_3B:  "llama-3.2-3b-preview",
+			Llama32_11B: "llama-3.2-11b-text-preview",
+			Llama32_90B: "llama-3.2-90b-text-preview",
+			Llama33_70B: "llama-3.3-70b-versatile",
+			Mixtral8x7B: "mixtral-8x7b-32768",
+		},
+	}
+)
 
-// IsMetaModel checks if the model is from Meta
-func (m Models) IsMetaModel() bool {
-	return strings.HasPrefix(string(m), "llama-") || strings.HasPrefix(string(m), "meta.")
-}
-
-func (m Models) IsAnthropicModel() bool {
-	return strings.HasPrefix(string(m), "claude-")
-}
-
-func (m Models) IsAmazonModel() bool {
-	return strings.HasPrefix(string(m), "amazon.")
-}
-
-func (m Models) IsCohereModel() bool {
-	return strings.HasPrefix(string(m), "cohere.")
-}
-
-func (m Models) IsMistralModel() bool {
-	return strings.HasPrefix(string(m), "mistral.")
-}
-
-func (m Models) IsStabilityModel() bool {
-	return strings.HasPrefix(string(m), "stability.")
-}
-
-func (m Models) IsAI21Model() bool {
-	return strings.HasPrefix(string(m), "ai21.")
-}
-
-func (m Models) IsGoogleModel() bool {
-	return strings.HasPrefix(string(m), "palm-") || strings.HasPrefix(string(m), "gemini-")
-}
-
-func (m Models) IsXAIModel() bool {
-	return strings.HasPrefix(string(m), "grok")
-}
-
-func (m Models) ToClaudeModel() anthropic.Model {
-	return anthropic.Model(string(m))
-}
-
-func (m Models) SupportsMCP() bool {
-	return m.IsAnthropicModel() || m.IsOpenAIModel() || m.IsOpenAICompatibleModel()
-}
-
-func (m Models) IsBedrockModel() bool {
-	bedrockPrefixes := []string{
-		"meta.", "mistral.", "amazon.", "stability.", "ai21.", "anthropic.", "cohere.", "apac.", "us.anthropic", "us.meta",
+// GetModelString returns the provider-specific model string for API calls
+func (mc ModelConfig) GetModelString() string {
+	// If custom model string is provided, use it
+	if mc.CustomModelString != "" {
+		return mc.CustomModelString
 	}
 
-	for _, prefix := range bedrockPrefixes {
-		if strings.HasPrefix(string(m), prefix) {
-			return true
+	provider := mc.Provider
+
+	// Use canonical mapping for the provider
+	canonicalModel := getCanonicalModelString(mc.BaseModel, provider)
+	if canonicalModel != "" {
+		return canonicalModel
+	}
+
+	// Fallback to base model string
+	return string(mc.BaseModel)
+}
+
+// GetProvider returns the provider for this model config
+func (mc ModelConfig) GetProvider() Provider {
+	if mc.Provider != "" {
+		return mc.Provider
+	}
+	return ""
+}
+
+// IsOpenAICompatibleModel checks if the model is OpenAI API compatible
+func (mc ModelConfig) IsOpenAICompatibleModel() bool {
+	provider := mc.GetProvider()
+	return provider == OpenAI || provider == XAI || provider == Groq
+}
+
+// SupportsMCP checks if the model supports MCP
+func (mc ModelConfig) SupportsMCP() bool {
+	return mc.Provider == OpenAI || mc.Provider == XAI || mc.Provider == Anthropic
+}
+
+// GetModelProvider returns the provider for a given model config
+func (mc ModelConfig) GetModelProvider() Provider {
+	return mc.GetProvider()
+}
+
+func getCanonicalModelString(baseModel BaseModel, provider Provider) string {
+	if providerMappings, exists := ProviderModelMapping[provider]; exists {
+		if modelString, found := providerMappings[baseModel]; found {
+			return modelString
 		}
 	}
-	return false
+
+	return ""
 }
 
-// GetModelProvider returns the provider of the model
-func (m Models) GetModelProvider() ModelProviders {
-	switch {
-	case m.IsOpenAIModel():
-		return OpenAI
-	case m.IsAnthropicModel():
-		return Anthropic
-	case m.IsMetaModel():
-		return Meta
-	case m.IsGeminiModel() || m.IsGoogleModel():
-		return Google
-	case m.IsBedrockModel():
-		return Bedrock
-	case m.IsXAIModel():
-		return XAI
-	default:
-		return Undefined
-	}
-}
-
+// MCPTool represents an MCP tool configuration
 type MCPTool struct {
-	FriendlyName string
-	ToolName     string
-	Description  string
-	InputSchema  any
+	FriendlyName string `json:"friendly_name"`
+	ToolName     string `json:"tool_name"`
+	Description  string `json:"description"`
+	InputSchema  any    `json:"input_schema"`
 }
 
+// MCPServer represents an MCP server configuration
 type MCPServer struct {
-	URL       string
-	AuthToken string
-	Tools     []MCPTool
+	URL       string    `json:"url"`
+	AuthToken string    `json:"auth_token,omitempty"`
+	Tools     []MCPTool `json:"tools"`
 }
 
+// Analytics represents analytics configuration
 type Analytics struct {
-	DistinctID         string // Can be user specific (UserID)
-	TraceId            string // The trace ID (a UUID to group AI events) like conversation_id must contain only letters, numbers, and special characters
-	CaptureUserPrompts bool
-	CaptureAIResponses bool
-	CaptureToolCalls   bool
-	on                 bool
-	client             posthog.Client
-	properties         map[string]any
-	mu                 sync.RWMutex // Mutex for thread-safe access to properties map
+	DistinctID         string         `json:"distinct_id"`
+	TraceId            string         `json:"trace_id"`
+	CaptureUserPrompts bool           `json:"capture_user_prompts"`
+	CaptureAIResponses bool           `json:"capture_ai_responses"`
+	CaptureToolCalls   bool           `json:"capture_tool_calls"`
+	on                 bool           `json:"-"`
+	client             posthog.Client `json:"-"`
+	properties         map[string]any `json:"-"`
+	mu                 sync.RWMutex   `json:"-"`
 }
 
-// KarmaAI is a struct that holds the model and configurations for the AI
+// KarmaAI represents the main AI configuration
 type KarmaAI struct {
-	Model         Models
-	SystemMessage string
-	Context       string
-	UserPrePrompt string // User pre-prompt is the message that is added before the user's message
-	Temperature   float64
-	TopP          float64
-	TopK          float64
-	MaxTokens     int64
-	ResponseType  string // `text/plain`, `application/json`, `application/xml`, `application/yaml` and `text/x.enum`
-	MCPConfig     struct {
-		MCPUrl    string
-		AuthToken string
-		MCPTools  []MCPTool
-	}
-	MCPServers   []MCPServer
-	ToolsEnabled bool
-	Analytics    Analytics
+	Model         ModelConfig        `json:"model"`
+	SystemMessage string             `json:"system_message"`
+	Context       string             `json:"context"`
+	UserPrePrompt string             `json:"user_pre_prompt"`
+	Temperature   float32            `json:"temperature"`
+	TopP          float32            `json:"top_p"`
+	TopK          int                `json:"top_k"`
+	MaxTokens     int                `json:"max_tokens"`
+	ResponseType  string             `json:"response_type"`
+	MCPConfig     map[string]MCPTool `json:"mcp_config"`
+	MCPUrl        string             `json:"mcp_url"`
+	AuthToken     string             `json:"auth_token"`
+	MCPTools      []MCPTool          `json:"mcp_tools"`
+	// Deprecated: Use MCPServers instead
+	MCPServers   []MCPServer `json:"mcp_servers"`
+	ToolsEnabled bool        `json:"tools_enabled"`
+	Analytics    *Analytics  `json:"analytics"`
 }
 
-// Option is a function type that modifies KarmaAI
+// Option represents a configuration option for KarmaAI
 type Option func(*KarmaAI)
 
 // WithSystemMessage sets the system message
 func WithSystemMessage(message string) Option {
-	return func(k *KarmaAI) {
-		k.SystemMessage = message
+	return func(kai *KarmaAI) {
+		kai.SystemMessage = message
 	}
 }
 
 // WithContext sets the context
 func WithContext(context string) Option {
-	return func(k *KarmaAI) {
-		k.Context = context
+	return func(kai *KarmaAI) {
+		kai.Context = context
 	}
 }
 
 // WithUserPrePrompt sets the user pre-prompt
-func WithUserPrePrompt(prePrompt string) Option {
-	return func(k *KarmaAI) {
-		k.UserPrePrompt = prePrompt
+func WithUserPrePrompt(prompt string) Option {
+	return func(kai *KarmaAI) {
+		kai.UserPrePrompt = prompt
 	}
 }
 
 // WithTemperature sets the temperature
-func WithTemperature(temperature float64) Option {
-	return func(k *KarmaAI) {
-		k.Temperature = temperature
+func WithTemperature(temp float32) Option {
+	return func(kai *KarmaAI) {
+		kai.Temperature = temp
 	}
 }
 
-// WithMaxTokens sets the max tokens
-func WithMaxTokens(maxTokens int64) Option {
-	return func(k *KarmaAI) {
-		k.MaxTokens = maxTokens
+// WithMaxTokens sets the maximum tokens
+func WithMaxTokens(tokens int) Option {
+	return func(kai *KarmaAI) {
+		kai.MaxTokens = tokens
 	}
 }
 
-// WithTopP sets the top p
-func WithTopP(topP float64) Option {
-	return func(k *KarmaAI) {
-		k.TopP = topP
+// WithTopP sets the top-p value
+func WithTopP(topP float32) Option {
+	return func(kai *KarmaAI) {
+		kai.TopP = topP
 	}
 }
 
-// WithTopK sets the top k
-func WithTopK(topK float64) Option {
-	return func(k *KarmaAI) {
-		k.TopK = topK
+// WithTopK sets the top-k value
+func WithTopK(topK int) Option {
+	return func(kai *KarmaAI) {
+		kai.TopK = topK
 	}
 }
 
+// WithResponseType sets the response type
 func WithResponseType(responseType string) Option {
-	return func(k *KarmaAI) {
-		k.ResponseType = responseType
+	return func(kai *KarmaAI) {
+		kai.ResponseType = responseType
 	}
 }
 
-func SetMCPTools(tools ...MCPTool) Option {
-	return func(k *KarmaAI) {
-		if !k.Model.SupportsMCP() {
-			log.Printf("Model %s does not support MCP yet.", string(k.Model))
+// SetMCPTools sets the MCP tools
+func SetMCPTools(tools []MCPTool) Option {
+	return func(kai *KarmaAI) {
+		kai.MCPTools = tools
+		if kai.MCPConfig == nil {
+			kai.MCPConfig = make(map[string]MCPTool)
 		}
-		k.MCPConfig.MCPTools = tools
-		k.ToolsEnabled = true
-	}
-}
-
-func SetMCPServers(servers ...MCPServer) Option {
-	return func(k *KarmaAI) {
-		if !k.Model.SupportsMCP() {
-			log.Printf("Model %s does not support MCP yet.", string(k.Model))
+		for _, tool := range tools {
+			kai.MCPConfig[tool.ToolName] = tool
 		}
-		k.MCPServers = servers
-		k.ToolsEnabled = true
 	}
 }
 
-func NewMCPServer(url, authToken string, tools ...MCPTool) MCPServer {
+// SetMCPServers sets the MCP servers
+func SetMCPServers(servers []MCPServer) Option {
+	return func(kai *KarmaAI) {
+		kai.MCPServers = servers
+		var allTools []MCPTool
+		for _, server := range servers {
+			allTools = append(allTools, server.Tools...)
+		}
+		kai.MCPTools = allTools
+	}
+}
+
+// NewMCPServer creates a new MCP server configuration
+func NewMCPServer(url, authToken string, tools []MCPTool) MCPServer {
 	return MCPServer{
 		URL:       url,
 		AuthToken: authToken,
@@ -402,73 +406,141 @@ func NewMCPServer(url, authToken string, tools ...MCPTool) MCPServer {
 	}
 }
 
-func AddMCPServer(url, authToken string, tools ...MCPTool) Option {
-	return func(k *KarmaAI) {
-		if !k.Model.SupportsMCP() {
-			log.Printf("Model %s does not support MCP yet.", string(k.Model))
+// AddMCPServer adds an MCP server to the configuration
+func AddMCPServer(server MCPServer) Option {
+	return func(kai *KarmaAI) {
+		kai.MCPServers = append(kai.MCPServers, server)
+		kai.MCPTools = append(kai.MCPTools, server.Tools...)
+		if kai.MCPConfig == nil {
+			kai.MCPConfig = make(map[string]MCPTool)
 		}
-		server := NewMCPServer(url, authToken, tools...)
-		k.MCPServers = append(k.MCPServers, server)
-		k.ToolsEnabled = true
+		for _, tool := range server.Tools {
+			kai.MCPConfig[tool.ToolName] = tool
+		}
 	}
 }
 
+// SetMCPUrl sets the MCP URL
 func SetMCPUrl(url string) Option {
-	return func(k *KarmaAI) {
-		if !k.Model.SupportsMCP() {
-			log.Printf("Model %s does not support MCP yet.", string(k.Model))
+	return func(kai *KarmaAI) {
+		kai.MCPUrl = url
+		// If no servers exist, create a default one
+		if len(kai.MCPServers) == 0 {
+			kai.MCPServers = append(kai.MCPServers, MCPServer{URL: url})
 		}
-		k.MCPConfig.MCPUrl = url
-		k.ToolsEnabled = true
 	}
 }
 
+// SetMCPAuthToken sets the MCP auth token
 func SetMCPAuthToken(token string) Option {
-	return func(k *KarmaAI) {
-		if !k.Model.SupportsMCP() {
-			log.Printf("Model %s does not support MCP yet.", string(k.Model))
+	return func(kai *KarmaAI) {
+		kai.AuthToken = token
+		// Update all servers with the auth token
+		for i := range kai.MCPServers {
+			kai.MCPServers[i].AuthToken = token
 		}
-		k.MCPConfig.AuthToken = token
-		k.ToolsEnabled = true
 	}
 }
 
-func ConfigureAnalytics(did, tid string) Option {
-	return func(k *KarmaAI) {
-		// Capture everything by default
-		k.Analytics.on = true
-		k.Analytics.CaptureAIResponses = true
-		k.Analytics.CaptureToolCalls = true
-		k.Analytics.CaptureUserPrompts = true
-		k.Analytics.DistinctID = did
-		k.Analytics.TraceId = tid
+// Use a custom model variant
+func SetCustomModelVariant(m string) Option {
+	return func(kai *KarmaAI) {
+		kai.Model.CustomModelString = m
+	}
+}
+
+// ConfigureAnalytics configures analytics settings
+func ConfigureAnalytics(distinctID, traceID string, capturePrompts, captureResponses, captureToolCalls bool) Option {
+	return func(kai *KarmaAI) {
+		if kai.Analytics == nil {
+			kai.Analytics = &Analytics{
+				properties: make(map[string]any),
+			}
+		}
 		client, err := posthog.NewWithConfig(config.GetEnvRaw("POSTHOG_KEY"), posthog.Config{Endpoint: config.GetEnvRaw("POSTHOG_ENDPOINT")})
 		if err != nil {
 			log.Println("Failed to initialize posthog client!")
 		}
-		k.Analytics.client = client
-		k.Analytics.properties = make(map[string]any)
-		k.setBasicProperties()
+		if client != nil {
+			kai.Analytics.client = client
+		}
+		kai.Analytics.DistinctID = distinctID
+		kai.Analytics.TraceId = traceID
+		kai.Analytics.CaptureUserPrompts = capturePrompts
+		kai.Analytics.CaptureAIResponses = captureResponses
+		kai.Analytics.CaptureToolCalls = captureToolCalls
+		kai.Analytics.on = true
 	}
 }
 
-func (kai *KarmaAI) EnableTools(e bool) {
-	kai.ToolsEnabled = e
+// EnableTools enables tool usage
+func (kai *KarmaAI) EnableTools() {
+	kai.ToolsEnabled = true
 }
 
-// NewKarmaAI creates a new KarmaAI instance with required parameters and optional configurations
-func NewKarmaAI(model Models, opts ...Option) *KarmaAI {
-	karma := &KarmaAI{
-		Model: model,
-	}
-	if karma.MaxTokens == 0 {
-		karma.MaxTokens = 500
+// NewKarmaAI creates a new KarmaAI instance with the specified model and options
+func NewKarmaAI(baseModel BaseModel, provider Provider, options ...Option) *KarmaAI {
+	kai := &KarmaAI{
+		Model: ModelConfig{
+			BaseModel: baseModel,
+			Provider:  provider,
+		},
+		Temperature:  0.7,
+		TopP:         0.9,
+		TopK:         40,
+		MaxTokens:    4096,
+		MCPConfig:    make(map[string]MCPTool),
+		ToolsEnabled: false,
 	}
 
-	// Apply all provided options
-	for _, opt := range opts {
-		opt(karma)
+	for _, option := range options {
+		option(kai)
 	}
 
-	return karma
+	return kai
 }
+
+// Legacy model constants for backward compatibility
+const (
+	// Deprecated: Use BaseModel constants with providers instead
+	ChatModelO1                              = "o1"
+	ChatModelO1_2024_12_17                   = "o1-2024-12-17"
+	ChatModelO1Preview                       = "o1-preview"
+	ChatModelO1Preview2024_09_12             = "o1-preview-2024-09-12"
+	ChatModelO1Mini                          = "o1-mini"
+	ChatModelO1Mini2024_09_12                = "o1-mini-2024-09-12"
+	ChatModelGPT4o                           = "gpt-4o"
+	ChatModelGPT4o2024_11_20                 = "gpt-4o-2024-11-20"
+	ChatModelGPT4o2024_08_06                 = "gpt-4o-2024-08-06"
+	ChatModelGPT4o2024_05_13                 = "gpt-4o-2024-05-13"
+	ChatModelGPT4oAudioPreview               = "gpt-4o-audio-preview"
+	ChatModelGPT4oAudioPreview2024_10_01     = "gpt-4o-audio-preview-2024-10-01"
+	ChatModelGPT4oAudioPreview2024_12_17     = "gpt-4o-audio-preview-2024-12-17"
+	ChatModelGPT4oMiniAudioPreview           = "gpt-4o-mini-audio-preview"
+	ChatModelGPT4oMiniAudioPreview2024_12_17 = "gpt-4o-mini-audio-preview-2024-12-17"
+	ChatModelChatgpt4oLatest                 = "chatgpt-4o-latest"
+	ChatModelGPT4oMini                       = "gpt-4o-mini"
+	ChatModelGPT4oMini2024_07_18             = "gpt-4o-mini-2024-07-18"
+	ChatModelGPT4Turbo                       = "gpt-4-turbo"
+	ChatModelGPT4Turbo2024_04_09             = "gpt-4-turbo-2024-04-09"
+	ChatModelGPT4_0125Preview                = "gpt-4-0125-preview"
+	ChatModelGPT4TurboPreview                = "gpt-4-turbo-preview"
+	ChatModelGPT4_1106Preview                = "gpt-4-1106-preview"
+	ChatModelGPT4VisionPreview               = "gpt-4-vision-preview"
+	ChatModelGPT4                            = "gpt-4"
+	ChatModelGPT4_0314                       = "gpt-4-0314"
+	ChatModelGPT4_0613                       = "gpt-4-0613"
+	ChatModelGPT4_32k                        = "gpt-4-32k"
+	ChatModelGPT4_32k0314                    = "gpt-4-32k-0314"
+	ChatModelGPT4_32k0613                    = "gpt-4-32k-0613"
+	ChatModelGPT3_5Turbo                     = "gpt-3.5-turbo"
+	ChatModelGPT3_5Turbo16k                  = "gpt-3.5-turbo-16k"
+	ChatModelGPT3_5Turbo0301                 = "gpt-3.5-turbo-0301"
+	ChatModelGPT3_5Turbo0613                 = "gpt-3.5-turbo-0613"
+	ChatModelGPT3_5Turbo1106                 = "gpt-3.5-turbo-1106"
+	ChatModelGPT3_5Turbo0125                 = "gpt-3.5-turbo-0125"
+	ChatModelGPT3_5Turbo16k0613              = "gpt-3.5-turbo-16k-0613"
+	ChatModelGPT5                            = "gpt-5"
+	ChatModelGPT5_NANO                       = "gpt-5-nano"
+	ChatModelGPT5_MINI                       = "gpt-5-mini"
+)
