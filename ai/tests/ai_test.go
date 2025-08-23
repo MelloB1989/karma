@@ -620,7 +620,7 @@ func BenchmarkModelConfigGetModelStringAI(b *testing.B) {
 func TestKarmaAI_Analytics(t *testing.T) {
 	t.Run("Analytics configuration", func(t *testing.T) {
 		kai := ai.NewKarmaAI(ai.GPT4o, ai.OpenAI,
-			ai.ConfigureAnalytics("test-user", "test-trace", true, true, true))
+			ai.ConfigureAnalytics("test-user", "test-trace"))
 
 		if kai.Analytics == nil {
 			t.Error("Expected Analytics to be configured")

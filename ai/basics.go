@@ -450,7 +450,7 @@ func SetCustomModelVariant(m string) Option {
 }
 
 // ConfigureAnalytics configures analytics settings
-func ConfigureAnalytics(distinctID, traceID string, capturePrompts, captureResponses, captureToolCalls bool) Option {
+func ConfigureAnalytics(distinctID, traceID string) Option {
 	return func(kai *KarmaAI) {
 		if kai.Analytics == nil {
 			kai.Analytics = &Analytics{
@@ -466,9 +466,9 @@ func ConfigureAnalytics(distinctID, traceID string, capturePrompts, captureRespo
 		}
 		kai.Analytics.DistinctID = distinctID
 		kai.Analytics.TraceId = traceID
-		kai.Analytics.CaptureUserPrompts = capturePrompts
-		kai.Analytics.CaptureAIResponses = captureResponses
-		kai.Analytics.CaptureToolCalls = captureToolCalls
+		kai.Analytics.CaptureUserPrompts = true
+		kai.Analytics.CaptureAIResponses = true
+		kai.Analytics.CaptureToolCalls = true
 		kai.Analytics.on = true
 	}
 }
