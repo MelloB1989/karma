@@ -43,6 +43,7 @@ type RedisOrder struct {
 	OrderCID         string          `json:"order_cid"`
 	PGOrder          json.RawMessage `json:"PGOrder"`
 	Timestamp        string          `json:"timestamp"`
+	redisURL         string
 }
 
 type CreatePaymentOrder struct {
@@ -55,8 +56,14 @@ type CreatePaymentOrder struct {
 	Registration     string `json:"registration"`
 }
 
-func CreateOrder(order CreatePaymentOrder) string {
+func CreateOrder(order CreatePaymentOrder, redis_url ...string) string {
 	oid := utils.GenerateID(25)
+	var rurl string
+	if len(redis_url) > 0 {
+		rurl = redis_url[0]
+	} else {
+		rurl = config.DefaultConfig().RedisURL
+	}
 	var orderData RedisOrder = RedisOrder{
 		OrderID:          oid,
 		OrderStatus:      "PENDING",
@@ -76,6 +83,7 @@ func CreateOrder(order CreatePaymentOrder) string {
 		RedirectURL:      order.RedirectURL,
 		WebhookURL:       fmt.Sprintf("%s&webhook_key=%s&koid=%s", order.WebhookURL, utils.URLEncode(config.DefaultConfig().WebhookSecret), oid),
 		Timestamp:        time.Now().UTC().Format(time.RFC3339),
+		redisURL:         rurl,
 	}
 	PushOrderToRedis(orderData)
 	return oid
@@ -96,7 +104,7 @@ type ResponseHTTP struct {
 	Message string      `json:"message"`
 }
 
-func VerifyPaymentAPI() func(c *fiber.Ctx) error {
+func VerifyPaymentAPI(rurl string) func(c *fiber.Ctx) error {
 	return func(c *fiber.Ctx) error {
 		req := new(VerifyPaymentRequest)
 		if err := c.BodyParser(req); err != nil {
@@ -106,7 +114,7 @@ func VerifyPaymentAPI() func(c *fiber.Ctx) error {
 				Data:    nil,
 			})
 		}
-		order, err := GetOrderFromRedis(req.OID)
+		order, err := GetOrderFromRedis(req.OID, rurl)
 		if err != nil {
 			return c.Status(400).JSON(ResponseHTTP{
 				Success: false,

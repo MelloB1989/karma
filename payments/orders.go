@@ -12,7 +12,7 @@ import (
 var ctx = context.Background()
 
 func PushOrderToRedis(Order RedisOrder) {
-	opt, _ := redis.ParseURL(config.DefaultConfig().RedisURL)
+	opt, _ := redis.ParseURL(Order.redisURL)
 	client := redis.NewClient(opt)
 
 	// Stringify the RedisOrder struct
@@ -25,8 +25,14 @@ func PushOrderToRedis(Order RedisOrder) {
 	client.Set(ctx, Order.OrderID, orderJSON, 0)
 }
 
-func GetOrderFromRedis(OrderID string) (RedisOrder, error) {
-	opt, err := redis.ParseURL(config.DefaultConfig().RedisURL)
+func GetOrderFromRedis(OrderID string, redis_url ...string) (RedisOrder, error) {
+	var url string
+	if len(redis_url) > 0 {
+		url = redis_url[0]
+	} else {
+		url = config.DefaultConfig().RedisURL
+	}
+	opt, err := redis.ParseURL(url)
 	if err != nil {
 		// log.Fatalln("Error parsing Redis URL:", err)
 		log.Println(err)
