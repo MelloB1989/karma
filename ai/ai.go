@@ -24,8 +24,10 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 		response, err = kai.handleAnthropicChatCompletion(messages)
 	case XAI:
 		response, err = kai.handleOpenAICompatibleChatCompletion(messages, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
+	case Groq:
+		response, err = kai.handleOpenAICompatibleChatCompletion(messages, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
 	default:
-		return nil, errors.New("this model is not supported yet")
+		return nil, errors.New("this provider is not supported yet")
 	}
 
 	// Handle analytics and errors asynchronously after getting the response

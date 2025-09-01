@@ -17,17 +17,19 @@ type Provider string
 // Base Models - Core models without provider prefixes
 const (
 	// OpenAI Models
-	GPT4       BaseModel = "gpt-4"
-	GPT4o      BaseModel = "gpt-4o"
-	GPT4oMini  BaseModel = "gpt-4o-mini"
-	GPT4Turbo  BaseModel = "gpt-4-turbo"
-	GPT35Turbo BaseModel = "gpt-3.5-turbo"
-	GPT5       BaseModel = "gpt-5"
-	GPT5Nano   BaseModel = "gpt-5-nano"
-	GPT5Mini   BaseModel = "gpt-5-mini"
-	O1         BaseModel = "o1"
-	O1Mini     BaseModel = "o1-mini"
-	O1Preview  BaseModel = "o1-preview"
+	GPT4        BaseModel = "gpt-4"
+	GPT4o       BaseModel = "gpt-4o"
+	GPT4oMini   BaseModel = "gpt-4o-mini"
+	GPT4Turbo   BaseModel = "gpt-4-turbo"
+	GPT35Turbo  BaseModel = "gpt-3.5-turbo"
+	GPT5        BaseModel = "gpt-5"
+	GPT5Nano    BaseModel = "gpt-5-nano"
+	GPT5Mini    BaseModel = "gpt-5-mini"
+	O1          BaseModel = "o1"
+	O1Mini      BaseModel = "o1-mini"
+	O1Preview   BaseModel = "o1-preview"
+	GPTOSS_20B  BaseModel = "gpt-oss-20b"
+	GPTOSS_120B BaseModel = "gpt-oss-120b"
 
 	// Claude Models
 	Claude35Sonnet BaseModel = "claude-3.5-sonnet"
@@ -42,15 +44,17 @@ const (
 	ClaudeV2       BaseModel = "claude-v2"
 
 	// Llama Models
-	Llama3_8B   BaseModel = "llama-3-8b"
-	Llama3_70B  BaseModel = "llama-3-70b"
-	Llama31_8B  BaseModel = "llama-3.1-8b"
-	Llama31_70B BaseModel = "llama-3.1-70b"
-	Llama32_1B  BaseModel = "llama-3.2-1b"
-	Llama32_3B  BaseModel = "llama-3.2-3b"
-	Llama32_11B BaseModel = "llama-3.2-11b"
-	Llama32_90B BaseModel = "llama-3.2-90b"
-	Llama33_70B BaseModel = "llama-3.3-70b"
+	Llama3_8B        BaseModel = "llama-3-8b"
+	Llama3_70B       BaseModel = "llama-3-70b"
+	Llama31_8B       BaseModel = "llama-3.1-8b"
+	Llama31_70B      BaseModel = "llama-3.1-70b"
+	Llama32_1B       BaseModel = "llama-3.2-1b"
+	Llama32_3B       BaseModel = "llama-3.2-3b"
+	Llama32_11B      BaseModel = "llama-3.2-11b"
+	Llama32_90B      BaseModel = "llama-3.2-90b"
+	Llama33_70B      BaseModel = "llama-3.3-70b"
+	Llama4_Guard_12B BaseModel = "llama-4-guard-12b"
+	Llama4_Scout_17B BaseModel = "llama-4-scout-17b"
 
 	// Mistral Models
 	Mistral7B    BaseModel = "mistral-7b"
@@ -102,7 +106,8 @@ const (
 
 // API URLs for different providers
 const (
-	XAI_API = "https://api.x.ai/v1"
+	XAI_API  = "https://api.x.ai/v1"
+	GROQ_API = "https://api.groq.com/openai/v1"
 )
 
 // ModelConfig represents a model with its provider configuration
@@ -197,16 +202,12 @@ var (
 			Grok3Mini: "grok-3-mini",
 		},
 		Groq: {
-			Llama3_8B:   "llama-3-8b-8192",
-			Llama3_70B:  "llama-3-70b-8192",
-			Llama31_8B:  "llama-3.1-8b-instant",
-			Llama31_70B: "llama-3.1-70b-versatile",
-			Llama32_1B:  "llama-3.2-1b-preview",
-			Llama32_3B:  "llama-3.2-3b-preview",
-			Llama32_11B: "llama-3.2-11b-text-preview",
-			Llama32_90B: "llama-3.2-90b-text-preview",
-			Llama33_70B: "llama-3.3-70b-versatile",
-			Mixtral8x7B: "mixtral-8x7b-32768",
+			Llama31_8B:       "llama-3.1-8b-instant",
+			Llama33_70B:      "llama-3.3-70b-versatile",
+			Llama4_Guard_12B: "meta-llama/llama-guard-4-12b",
+			Llama4_Scout_17B: "meta-llama/llama-4-scout-17b-16e-instruct",
+			GPTOSS_120B:      "openai/gpt-oss-120b",
+			GPTOSS_20B:       "openai/gpt-oss-20b",
 		},
 	}
 )

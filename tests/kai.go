@@ -22,10 +22,10 @@ func TestKai() {
 	// fmt.Println(ai.Llama3_8B.IsBedrockModel())
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
-	// testChatCompletion()
+	testChatCompletion()
 	// testGenerateFromSinglePrompt()
 	// testChatCompletionStream()
-	testWithMcpServer()
+	// testWithMcpServer()
 	// Set up the HTTP router
 	// router := http.NewServeMux()
 
@@ -201,7 +201,7 @@ func testCliChatImplentation() {
 }
 
 func testChatCompletion() {
-	kai := ai.NewKarmaAI(ai.GPT4oMini, ai.OpenAI,
+	kai := ai.NewKarmaAI(ai.Llama4_Scout_17B, ai.Groq,
 		ai.WithSystemMessage("You are a smart AI assistant"),
 		ai.WithTemperature(1),
 		ai.WithMaxTokens(200),
