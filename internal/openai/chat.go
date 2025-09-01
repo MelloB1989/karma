@@ -19,29 +19,32 @@ type OpenAI struct {
 	SystemMessage   string
 	MCPManager      *mcp.Manager
 	MultiMCPManager *mcp.MultiManager
+	SupportsVision  bool
 }
 
-func NewOpenAI(model string, temperature float64, maxTokens int64) *OpenAI {
+func NewOpenAI(model string, temperature float64, maxTokens int64, supportsVision bool) *OpenAI {
 	return &OpenAI{
-		Client:        createClient(),
-		Model:         model,
-		Temperature:   temperature,
-		MaxTokens:     maxTokens,
-		SystemMessage: "",
-		MCPManager:    nil,
+		Client:         createClient(),
+		Model:          model,
+		Temperature:    temperature,
+		MaxTokens:      maxTokens,
+		SystemMessage:  "",
+		MCPManager:     nil,
+		SupportsVision: supportsVision,
 	}
 }
 
-func NewOpenAICompatible(model string, temperature float64, maxTokens int64, base_url, apikey string) *OpenAI {
+func NewOpenAICompatible(model string, temperature float64, maxTokens int64, base_url, apikey string, supportsVision bool) *OpenAI {
 	return &OpenAI{
 		Client: createClient(CompatibleOptions{
 			BaseURL: base_url,
 			API_Key: apikey,
 		}),
-		Model:         model,
-		Temperature:   temperature,
-		MaxTokens:     maxTokens,
-		SystemMessage: "",
+		Model:          model,
+		Temperature:    temperature,
+		MaxTokens:      maxTokens,
+		SystemMessage:  "",
+		SupportsVision: supportsVision,
 	}
 }
 
@@ -70,7 +73,7 @@ func (o *OpenAI) GetMCPManager() *mcp.Manager {
 }
 
 func (o *OpenAI) CreateChat(messages models.AIChatHistory, enableTools bool) (*openai.ChatCompletion, error) {
-	mgs := formatMessages(messages, o.SystemMessage)
+	mgs := formatMessages(messages, o.SystemMessage, o.SupportsVision)
 
 	params := openai.ChatCompletionNewParams{
 		Model:    o.Model,
@@ -147,7 +150,7 @@ func (o *OpenAI) CreateChat(messages models.AIChatHistory, enableTools bool) (*o
 }
 
 func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler func(chuck openai.ChatCompletionChunk), enableTools bool) (*openai.ChatCompletion, error) {
-	mgs := formatMessages(messages, o.SystemMessage)
+	mgs := formatMessages(messages, o.SystemMessage, o.SupportsVision)
 
 	params := openai.ChatCompletionNewParams{
 		Model:    o.Model,

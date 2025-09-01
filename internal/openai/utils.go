@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"log"
 
 	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/config"
@@ -24,7 +25,7 @@ func createClient(opts ...CompatibleOptions) openai.Client {
 	return openai.NewClient(option.WithAPIKey(config.DefaultConfig().OPENAI_KEY))
 }
 
-func formatMessages(messages models.AIChatHistory, sysmgs string) []openai.ChatCompletionMessageParamUnion {
+func formatMessages(messages models.AIChatHistory, sysmgs string, supportsVision bool) []openai.ChatCompletionMessageParamUnion {
 	mgs := []openai.ChatCompletionMessageParamUnion{}
 	mgs = append(mgs, openai.SystemMessage(sysmgs))
 
@@ -32,21 +33,28 @@ func formatMessages(messages models.AIChatHistory, sysmgs string) []openai.ChatC
 		switch message.Role {
 		case "user":
 			if len(message.Images) > 0 {
-				// Create content parts for text and images
-				content := []openai.ChatCompletionContentPartUnionParam{
-					openai.TextContentPart(message.Message),
-				}
+				if supportsVision {
+					// Create content parts for text and images
+					content := []openai.ChatCompletionContentPartUnionParam{
+						openai.TextContentPart(message.Message),
+					}
 
-				// Add image content parts
-				for _, image := range message.Images {
-					imageContent := openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
-						URL: image,
-					})
-					content = append(content, imageContent)
-				}
+					// Add image content parts
+					for _, image := range message.Images {
+						imageContent := openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
+							URL: image,
+						})
+						content = append(content, imageContent)
+					}
 
-				// Create user message with mixed content
-				mgs = append(mgs, openai.UserMessage(content))
+					// Create user message with mixed content
+					mgs = append(mgs, openai.UserMessage(content))
+				} else {
+					// Vision not supported - log warning and ignore images
+					log.Printf("Warning: Model does not support vision capabilities. Ignoring %d image(s) in message.", len(message.Images))
+					// Simple text-only user message
+					mgs = append(mgs, openai.UserMessage(message.Message))
+				}
 			} else {
 				// Simple text-only user message
 				mgs = append(mgs, openai.UserMessage(message.Message))

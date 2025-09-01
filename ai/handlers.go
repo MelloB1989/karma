@@ -20,7 +20,7 @@ import (
 
 func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
 	start := time.Now()
-	o := openai.NewOpenAI(kai.Model.GetModelString(), float64(kai.Temperature), int64(kai.MaxTokens))
+	o := openai.NewOpenAI(kai.Model.GetModelString(), float64(kai.Temperature), int64(kai.MaxTokens), kai.Model.SupportsVision())
 	kai.configureOpenaiClientForMCP(o)
 	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
 	if err != nil {
@@ -41,7 +41,7 @@ func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*
 
 func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages models.AIChatHistory, base_url string, apikey string) (*models.AIChatResponse, error) {
 	start := time.Now()
-	o := openai.NewOpenAICompatible(kai.Model.GetModelString(), float64(kai.Temperature), int64(kai.MaxTokens), base_url, apikey)
+	o := openai.NewOpenAICompatible(kai.Model.GetModelString(), float64(kai.Temperature), int64(kai.MaxTokens), base_url, apikey, kai.Model.SupportsVision())
 	kai.configureOpenaiClientForMCP(o)
 	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
 	if err != nil {
@@ -153,7 +153,7 @@ func (kai *KarmaAI) handleAnthropicSinglePrompt(prompt string) (*models.AIChatRe
 
 func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
 	start := time.Now()
-	o := openai.NewOpenAI(kai.Model.GetModelString(), float64(kai.Temperature), int64(kai.MaxTokens))
+	o := openai.NewOpenAI(kai.Model.GetModelString(), float64(kai.Temperature), int64(kai.MaxTokens), kai.Model.SupportsVision())
 	kai.configureOpenaiClientForMCP(o)
 
 	chunkHandler := func(chuck oai.ChatCompletionChunk) {
@@ -185,7 +185,7 @@ func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, 
 
 func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error, base_url string, apikey string) (*models.AIChatResponse, error) {
 	start := time.Now()
-	o := openai.NewOpenAICompatible(kai.Model.GetModelString(), float64(kai.Temperature), int64(kai.MaxTokens), base_url, apikey)
+	o := openai.NewOpenAICompatible(kai.Model.GetModelString(), float64(kai.Temperature), int64(kai.MaxTokens), base_url, apikey, kai.Model.SupportsVision())
 	kai.configureOpenaiClientForMCP(o)
 	chunkHandler := func(chunk oai.ChatCompletionChunk) {
 		if len(chunk.Choices) == 0 {
