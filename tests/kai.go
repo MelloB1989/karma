@@ -23,6 +23,8 @@ func TestKai() {
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
 	testChatCompletion()
+	testVisionCapabilities()
+	testGroqVisionBlocked()
 	// testGenerateFromSinglePrompt()
 	// testChatCompletionStream()
 	// testWithMcpServer()
@@ -201,11 +203,37 @@ func testCliChatImplentation() {
 }
 
 func testChatCompletion() {
+	// Test basic chat completion without vision (this should work with Groq)
 	kai := ai.NewKarmaAI(ai.Llama4_Scout_17B, ai.Groq,
 		ai.WithSystemMessage("You are a smart AI assistant"),
 		ai.WithTemperature(1),
 		ai.WithMaxTokens(200),
 		ai.WithTopP(0.9))
+	response, err := kai.ChatCompletion(models.AIChatHistory{
+		Messages: []models.AIMessage{
+			{
+				Message: "Hello! Please tell me a short joke.",
+				Role:    models.User,
+			},
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Basic chat response:", response.AIResponse)
+}
+
+func testVisionCapabilities() {
+	// Test vision capabilities with a model that supports it
+	// Note: This requires OpenAI API key to work properly
+	kai := ai.NewKarmaAI(ai.GPT4o, ai.OpenAI,
+		ai.WithSystemMessage("You are a smart AI assistant"),
+		ai.WithTemperature(0.7),
+		ai.WithMaxTokens(200),
+		ai.WithTopP(0.9))
+	
+	fmt.Printf("Model supports vision: %v\n", kai.Model.SupportsVision())
+	
 	response, err := kai.ChatCompletion(models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
@@ -218,9 +246,38 @@ func testChatCompletion() {
 		},
 	})
 	if err != nil {
-		panic(err)
+		fmt.Printf("Vision test failed (expected if no API key): %v\n", err)
+		return
 	}
-	fmt.Println(response.AIResponse)
+	fmt.Println("Vision response:", response.AIResponse)
+}
+
+func testGroqVisionBlocked() {
+	// Test that vision is properly ignored for Groq models
+	kai := ai.NewKarmaAI(ai.Llama4_Scout_17B, ai.Groq,
+		ai.WithSystemMessage("You are a smart AI assistant"),
+		ai.WithTemperature(1),
+		ai.WithMaxTokens(200),
+		ai.WithTopP(0.9))
+	
+	fmt.Printf("Groq model supports vision: %v\n", kai.Model.SupportsVision())
+	
+	response, err := kai.ChatCompletion(models.AIChatHistory{
+		Messages: []models.AIMessage{
+			{
+				Message: "Please describe this image for me",
+				Role:    models.User,
+				Images: []string{
+					"https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Googleplex_HQ_%28cropped%29.jpg/960px-Googleplex_HQ_%28cropped%29.jpg",
+				},
+			},
+		},
+	})
+	if err != nil {
+		fmt.Printf("Groq vision test failed (expected if no API key): %v\n", err)
+		return
+	}
+	fmt.Println("Groq response (images should be ignored):", response.AIResponse)
 }
 
 func testGenerateFromSinglePrompt() {

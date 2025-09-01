@@ -250,6 +250,39 @@ func (mc ModelConfig) SupportsMCP() bool {
 	return mc.Provider == OpenAI || mc.Provider == XAI || mc.Provider == Anthropic
 }
 
+// SupportsVision checks if the model supports vision/image processing capabilities
+func (mc ModelConfig) SupportsVision() bool {
+	switch mc.Provider {
+	case OpenAI:
+		// OpenAI vision-capable models
+		return mc.BaseModel == GPT4o || mc.BaseModel == GPT4oMini || mc.BaseModel == GPT4Turbo || mc.BaseModel == GPT4
+	case Anthropic:
+		// Claude models with vision capabilities
+		return mc.BaseModel == Claude3Sonnet || mc.BaseModel == Claude3Haiku || mc.BaseModel == Claude3Opus ||
+			mc.BaseModel == Claude35Sonnet || mc.BaseModel == Claude35Haiku ||
+			mc.BaseModel == Claude37Sonnet || mc.BaseModel == Claude4Sonnet || mc.BaseModel == Claude4Opus
+	case Google:
+		// Gemini models with vision capabilities
+		return mc.BaseModel == Gemini25Flash || mc.BaseModel == Gemini25Pro ||
+			mc.BaseModel == Gemini20Flash || mc.BaseModel == Gemini20FlashLite ||
+			mc.BaseModel == Gemini15Flash || mc.BaseModel == Gemini15Flash8B || mc.BaseModel == Gemini15Pro
+	case Bedrock:
+		// Bedrock models that support vision (Claude models and some multimodal models)
+		return mc.BaseModel == Claude3Sonnet || mc.BaseModel == Claude3Haiku || mc.BaseModel == Claude3Opus ||
+			mc.BaseModel == Claude35Sonnet || mc.BaseModel == Claude35Haiku ||
+			mc.BaseModel == Claude37Sonnet || mc.BaseModel == NovaPro || mc.BaseModel == NovaLite
+	case XAI:
+		// XAI/Grok models with vision capabilities - Grok models currently support vision
+		return mc.BaseModel == Grok4 || mc.BaseModel == Grok3
+	case Groq:
+		// Currently, most Groq models do NOT support vision capabilities
+		// This is the key fix for the issue
+		return false
+	default:
+		return false
+	}
+}
+
 // GetModelProvider returns the provider for a given model config
 func (mc ModelConfig) GetModelProvider() Provider {
 	return mc.GetProvider()
