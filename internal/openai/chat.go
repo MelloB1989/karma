@@ -148,7 +148,7 @@ func (o *OpenAI) CreateChat(messages models.AIChatHistory, enableTools bool) (*o
 		}
 
 		// Remove tools for the follow-up to avoid loops
-		params.Tools = []openai.ChatCompletionToolUnionParam{}
+		// params.Tools = []openai.ChatCompletionToolUnionParam{}
 	}
 }
 
@@ -227,7 +227,7 @@ func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler fu
 		}
 
 		// Disable tools for follow-up to avoid loops
-		followUpParams.Tools = []openai.ChatCompletionToolUnionParam{}
+		// followUpParams.Tools = []openai.ChatCompletionToolUnionParam{}
 
 		followUpStream := o.Client.Chat.Completions.NewStreaming(ctx, followUpParams)
 		for followUpStream.Next() {

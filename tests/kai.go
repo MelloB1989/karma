@@ -23,9 +23,9 @@ func TestKai() {
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
 	// testChatCompletion()
-	testGenerateFromSinglePrompt()
+	// testGenerateFromSinglePrompt()
 	// testChatCompletionStream()
-	// testWithMcpServer()
+	testWithMcpServer()
 	// Set up the HTTP router
 	// router := http.NewServeMux()
 
@@ -45,15 +45,16 @@ func TestKai() {
 }
 
 type CalculatorInput struct {
-	Operation string  `json:"operation" jsonschema_description:"The arithmetic operation to perform (add, subtract, multiply, divide)"`
-	X         float64 `json:"x" jsonschema_description:"First number"`
-	Y         float64 `json:"y" jsonschema_description:"Second number"`
+	Operation string   `json:"operation" jsonschema_description:"The arithmetic operation to perform (add, subtract, multiply, divide)"`
+	X         float64  `json:"x" jsonschema_description:"First number" required:"true"`
+	Y         float64  `json:"y" jsonschema_description:"Second number" required:"true"`
+	Z         *float64 `json:"z,omitempty" jsonschema_description:"Third number" required:"false"`
 }
 
 func testWithMcpServer() {
 	//Start test calculator MCP server
 	go TestMCPServer(false)
-	kai := ai.NewKarmaAI(ai.Llama4_Scout_17B,
+	kai := ai.NewKarmaAI(ai.GPTOSS_120B,
 		ai.Groq,
 		ai.WithMaxTokens(1000),
 		ai.WithTemperature(1),
@@ -74,7 +75,7 @@ func testWithMcpServer() {
 	messages := models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
-				Message:   "Please calculate 123 + 456. Use the calculator mcp tool provided.",
+				Message:   "Please calculate 123 + 456 and then subtract the result from 1000. Use the calculator mcp tool provided.",
 				Role:      models.User,
 				Timestamp: time.Now(),
 				UniqueId:  "example-2",
