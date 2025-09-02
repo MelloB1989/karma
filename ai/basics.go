@@ -383,6 +383,10 @@ func SetMCPTools(tools []MCPTool) Option {
 		for _, tool := range tools {
 			kai.MCPConfig[tool.ToolName] = tool
 		}
+		// Also populate tools in any existing MCPServers
+		for i := range kai.MCPServers {
+			kai.MCPServers[i].Tools = tools
+		}
 	}
 }
 
@@ -477,6 +481,13 @@ func ConfigureAnalytics(distinctID, traceID string) Option {
 // EnableTools enables tool usage
 func (kai *KarmaAI) EnableTools() {
 	kai.ToolsEnabled = true
+}
+
+// WithToolsEnabled enables MCP tools
+func WithToolsEnabled() Option {
+	return func(kai *KarmaAI) {
+		kai.ToolsEnabled = true
+	}
 }
 
 // NewKarmaAI creates a new KarmaAI instance with the specified model and options

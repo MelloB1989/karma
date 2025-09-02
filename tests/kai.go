@@ -22,10 +22,10 @@ func TestKai() {
 	// fmt.Println(ai.Llama3_8B.IsBedrockModel())
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
-	testChatCompletion()
+	// testChatCompletion()
 	// testGenerateFromSinglePrompt()
 	// testChatCompletionStream()
-	// testWithMcpServer()
+	testWithMcpServer()
 	// Set up the HTTP router
 	// router := http.NewServeMux()
 
@@ -53,7 +53,7 @@ type CalculatorInput struct {
 func testWithMcpServer() {
 	//Start test calculator MCP server
 	go TestMCPServer(false)
-	kai := ai.NewKarmaAI(ai.Grok3Mini,
+	kai := ai.NewKarmaAI(ai.Grok4,
 		ai.XAI,
 		ai.WithMaxTokens(1000),
 		ai.WithTemperature(1),
@@ -69,11 +69,12 @@ func testWithMcpServer() {
 				InputSchema:  CalculatorInput{},
 			},
 		}),
+		ai.WithToolsEnabled(),
 	)
 	messages := models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
-				Message:   "Please calculate 123 + 456. Use the calculator tool provided.",
+				Message:   "Please calculate 123 + 456. Use the calculator mcp tool provided.",
 				Role:      models.User,
 				Timestamp: time.Now(),
 				UniqueId:  "example-2",
@@ -92,6 +93,7 @@ func testWithMcpServer() {
 		log.Fatal(err)
 	}
 	fmt.Println(res)
+	log.Println(res.AIResponse)
 }
 
 // BedrockRequest represents the request structure for Bedrock API
