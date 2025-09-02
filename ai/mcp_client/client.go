@@ -69,7 +69,7 @@ func NewClient(serverURL, authToken string) *Client {
 	return &Client{
 		ServerURL:  serverURL,
 		AuthToken:  authToken,
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient: &http.Client{Timeout: 560 * time.Second},
 	}
 }
 
