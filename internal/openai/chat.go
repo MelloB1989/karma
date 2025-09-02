@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 
 	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/models"
@@ -21,18 +22,18 @@ type OpenAI struct {
 	MultiMCPManager *mcp.MultiManager
 }
 
-func NewOpenAI(model string, temperature float64, maxTokens int64) *OpenAI {
+func NewOpenAI(model, sysmgs string, temperature float64, maxTokens int64) *OpenAI {
 	return &OpenAI{
 		Client:        createClient(),
 		Model:         model,
 		Temperature:   temperature,
 		MaxTokens:     maxTokens,
-		SystemMessage: "",
+		SystemMessage: sysmgs,
 		MCPManager:    nil,
 	}
 }
 
-func NewOpenAICompatible(model string, temperature float64, maxTokens int64, base_url, apikey string) *OpenAI {
+func NewOpenAICompatible(model, sysmgs string, temperature float64, maxTokens int64, base_url, apikey string) *OpenAI {
 	return &OpenAI{
 		Client: createClient(CompatibleOptions{
 			BaseURL: base_url,
@@ -41,7 +42,8 @@ func NewOpenAICompatible(model string, temperature float64, maxTokens int64, bas
 		Model:         model,
 		Temperature:   temperature,
 		MaxTokens:     maxTokens,
-		SystemMessage: "",
+		SystemMessage: sysmgs,
+		MCPManager:    nil,
 	}
 }
 
@@ -82,7 +84,11 @@ func (o *OpenAI) CreateChat(messages models.AIChatHistory, enableTools bool) (*o
 		params.Temperature = openai.Float(o.Temperature)
 	}
 	if o.MaxTokens > 0 {
-		params.MaxCompletionTokens = openai.Int(o.MaxTokens)
+		if strings.Contains(o.Model, "gpt-5") { //Special handling for GPT-5 models
+			params.MaxCompletionTokens = openai.Int(o.MaxTokens)
+		} else {
+			params.MaxTokens = openai.Int(o.MaxTokens)
+		}
 	}
 
 	// Add MCP tools if enabled and available

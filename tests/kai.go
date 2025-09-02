@@ -23,9 +23,9 @@ func TestKai() {
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
 	// testChatCompletion()
-	// testGenerateFromSinglePrompt()
+	testGenerateFromSinglePrompt()
 	// testChatCompletionStream()
-	testWithMcpServer()
+	// testWithMcpServer()
 	// Set up the HTTP router
 	// router := http.NewServeMux()
 
@@ -53,8 +53,8 @@ type CalculatorInput struct {
 func testWithMcpServer() {
 	//Start test calculator MCP server
 	go TestMCPServer(false)
-	kai := ai.NewKarmaAI(ai.Grok4,
-		ai.XAI,
+	kai := ai.NewKarmaAI(ai.Llama4_Scout_17B,
+		ai.Groq,
 		ai.WithMaxTokens(1000),
 		ai.WithTemperature(1),
 		ai.WithTopP(0.9),
@@ -226,7 +226,7 @@ func testChatCompletion() {
 }
 
 func testGenerateFromSinglePrompt() {
-	kai := ai.NewKarmaAI(ai.Gemini20Flash, ai.Google,
+	kai := ai.NewKarmaAI(ai.Llama4_Scout_17B, ai.Groq,
 		ai.WithSystemMessage("Act as a AI assistant, respond in clear text"),
 		ai.WithTemperature(0.5),
 		ai.WithMaxTokens(100),
@@ -243,11 +243,11 @@ func testChatCompletionStream() {
 		fmt.Print(chuck.AIResponse)
 		return nil
 	}
-	kai := ai.NewKarmaAI(ai.Claude37Sonnet, ai.Anthropic, ai.WithUserPrePrompt("I am Kartik Deshmukh. "))
+	kai := ai.NewKarmaAI(ai.GPTOSS_120B, ai.Groq, ai.WithUserPrePrompt("I am Kartik Deshmukh. "), ai.WithSystemMessage("Your name is Linda."))
 	response, err := kai.ChatCompletionStream(models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
-				Message: "Hello, how to create a new file in Go?",
+				Message: "What is your name?",
 				Role:    models.User,
 			},
 		},

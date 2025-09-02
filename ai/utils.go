@@ -54,8 +54,12 @@ const assitant_end = `
 <|start_header_id|>assistant<|end_header_id|>
 `
 
-func (kai *KarmaAI) processMessagesForLlamaBedrockSinglePrompt(prompt string) string {
-	return fmt.Sprintf(llama_single_prompt_format, time.Now().String(), kai.SystemMessage, prompt)
+func (kai *KarmaAI) addUserPreprompt(chat models.AIChatHistory) models.AIChatHistory {
+	if len(chat.Messages) == 0 {
+		return chat
+	}
+	chat.Messages[len(chat.Messages)-1].Message += kai.UserPrePrompt
+	return chat
 }
 
 func (kai *KarmaAI) processMessagesForLlamaBedrockSystemPrompt(chat models.AIChatHistory) string {

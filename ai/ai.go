@@ -11,6 +11,7 @@ import (
 
 func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
 	kai.setBasicProperties()
+	messages = kai.addUserPreprompt(messages)
 
 	var response *models.AIChatResponse
 	var err error
@@ -67,8 +68,10 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 		response, err = kai.handleAnthropicSinglePrompt(prompt)
 	case XAI:
 		response, err = kai.handleOpenAICompatibleChatCompletion(singleMessage, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
+	case Groq:
+		response, err = kai.handleOpenAICompatibleChatCompletion(singleMessage, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
 	default:
-		return nil, errors.New("this model is not supported yet")
+		return nil, errors.New("this provider is not supported yet")
 	}
 
 	// Handle analytics and errors asynchronously after getting the response
@@ -84,6 +87,7 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 
 func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
 	kai.setBasicProperties()
+	messages = kai.addUserPreprompt(messages)
 
 	var response *models.AIChatResponse
 	var err error
@@ -97,8 +101,10 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 		response, err = kai.handleAnthropicStreamCompletion(messages, callback)
 	case XAI:
 		response, err = kai.handleOpenAICompatibleStreamCompletion(messages, callback, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
+	case Groq:
+		response, err = kai.handleOpenAICompatibleStreamCompletion(messages, callback, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
 	default:
-		return nil, errors.New("this model is not supported yet")
+		return nil, errors.New("this provider is not supported yet")
 	}
 
 	// Handle analytics and errors asynchronously after getting the response

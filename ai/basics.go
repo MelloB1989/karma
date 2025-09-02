@@ -497,10 +497,10 @@ func NewKarmaAI(baseModel BaseModel, provider Provider, options ...Option) *Karm
 			BaseModel: baseModel,
 			Provider:  provider,
 		},
-		Temperature:  0.7,
+		Temperature:  1,
 		TopP:         0.9,
 		TopK:         40,
-		MaxTokens:    4096,
+		MaxTokens:    1024,
 		MCPConfig:    make(map[string]MCPTool),
 		ToolsEnabled: false,
 	}
