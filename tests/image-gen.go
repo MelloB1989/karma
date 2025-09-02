@@ -7,10 +7,25 @@ import (
 )
 
 func TestImageGen() {
-	kimg := ai.NewKarmaImageGen(ai.GROK_2_IMAGE, ai.WithNImages(1))
+	kimg := ai.NewKarmaImageGen(ai.SEGMIND_SD, ai.WithNImages(1), ai.WithOutputDirectory("./images"))
 	url, err := kimg.GenerateImages("A cute robot in a forest of trees.")
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println(url)
+}
+
+func TestNanoBananaImageGen() {
+	kimg := ai.NewKarmaImageGen(ai.SEGMIND_NANO_BANANA, ai.WithNImages(1), ai.WithOutputDirectory("./images"))
+
+	// Nano Banana requires input images
+	inputImages := []string{
+		"https://segmind-resources.s3.amazonaws.com/input/09a99645-3171-4742-be08-dfcfe7f0a4b2-1304f734-929b-4047-822d-4f59fca2179a-40457f0b-d422-4525-b3a5-19633a9cdac0.png",
+	}
+
+	url, err := kimg.GenerateImagesWithInputImages("Dancing Banana", inputImages)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Nano Banana result:", url)
 }

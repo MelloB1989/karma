@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/files"
+	"github.com/MelloB1989/karma/utils"
 )
 
 type SegmindModels string
@@ -24,6 +27,11 @@ const (
 	SegmindProtovisAPI    SegmindModels = "https://api.segmind.com/v1/sdxl1.0-protovis-lightning"
 	SegmindSamaritanAPI   SegmindModels = "https://api.segmind.com/v1/sdxl1.0-samaritan-3d"
 	SegmindDreamshaperAPI SegmindModels = "https://api.segmind.com/v1/sdxl1.0-dreamshaper-lightning"
+	SegmindNanoBananaAPI  SegmindModels = "https://api.segmind.com/v1/nano-banana"
+	SegmindFluxAPI        SegmindModels = "https://api.segmind.com/v1/flux-schnell"
+	SegmindMidjourneyAPI  SegmindModels = "https://api.segmind.com/v1/midjourney"
+	SegmindSDXLAPI        SegmindModels = "https://api.segmind.com/v1/sdxl1.0-txt2img"
+	SegmindSD15API        SegmindModels = "https://api.segmind.com/v1/sd1.5-txt2img"
 )
 
 var (
@@ -38,26 +46,30 @@ var (
 )
 
 type Segmind struct {
-	Model     SegmindModels
-	ApiKey    string
-	BatchSize int
-	Width     int
-	Height    int
-	S3Dir     string
+	Model      SegmindModels
+	ApiKey     string
+	BatchSize  int
+	Width      int
+	Height     int
+	OutputDir  string
+	UploadToS3 bool
+	S3Bucket   string
 }
 
 type Options func(*Segmind)
 
 func NewSegmind(model SegmindModels, opts ...Options) *Segmind {
 	r := R1024x1024
-	k, _ := config.GetEnv("SEGMIND_API-KEY")
+	k, _ := config.GetEnv("SEGMIND_API_KEY")
 	return &Segmind{
-		Model:     model,
-		BatchSize: 1,
-		Width:     r.Width,
-		Height:    r.Height,
-		S3Dir:     "",
-		ApiKey:    k,
+		Model:      model,
+		BatchSize:  1,
+		Width:      r.Width,
+		Height:     r.Height,
+		OutputDir:  "./images",
+		UploadToS3: false,
+		S3Bucket:   "",
+		ApiKey:     k,
 	}
 }
 
@@ -74,9 +86,16 @@ func WithResolution(res Resolutions) Options {
 	}
 }
 
-func WithS3Dir(s3dir string) Options {
+func WithOutputDir(outputDir string) Options {
 	return func(s *Segmind) {
-		s.S3Dir = s3dir
+		s.OutputDir = outputDir
+	}
+}
+
+func WithS3Upload(bucket string) Options {
+	return func(s *Segmind) {
+		s.UploadToS3 = true
+		s.S3Bucket = bucket
 	}
 }
 
@@ -87,7 +106,7 @@ func WithApiKey(apiKey string) Options {
 }
 
 func (s *Segmind) RequestCreateImage(prompt string) (*string, error) {
-	data := map[string]interface{}{
+	data := map[string]any{
 		"prompt":          prompt,
 		"negative_prompt": "low quality, blurry",
 		"steps":           25,
@@ -132,57 +151,173 @@ func (s *Segmind) RequestCreateImage(prompt string) (*string, error) {
 		return nil, err
 	}
 
-	// Parse JSON response to get the base64 image data
+	// Check if response is binary data (image) or JSON
+	var imageBytes []byte
+
+	// Try to parse as JSON first
 	var responseData map[string]interface{}
-	err = json.Unmarshal(body, &responseData)
+	if json.Unmarshal(body, &responseData) == nil {
+		// JSON response - extract base64 image
+		if imageData, ok := responseData["image"].(string); ok {
+			// Decode the base64 image data
+			imageBytes, err = base64.StdEncoding.DecodeString(imageData)
+			if err != nil {
+				fmt.Println("Error decoding base64 image data:", err)
+				return nil, err
+			}
+		} else {
+			fmt.Println("No image data found in JSON response")
+			return nil, fmt.Errorf("no image data found in response")
+		}
+	} else {
+		// Binary response - use raw body as image data
+		imageBytes = body
+	}
+
+	// Create output directory if it doesn't exist
+	if err := os.MkdirAll(s.OutputDir, 0755); err != nil {
+		fmt.Printf("Warning: Could not create output directory: %v\n", err)
+	}
+
+	// Generate filename and save locally
+	fileId := utils.GenerateID() + ".jpeg"
+	localFilePath := filepath.Join(s.OutputDir, fileId)
+
+	// Save image locally
+	err = os.WriteFile(localFilePath, imageBytes, 0644)
 	if err != nil {
-		fmt.Println("Error parsing JSON response:", err)
+		fmt.Printf("Error saving image locally: %v\n", err)
 		return nil, err
 	}
 
-	// Get the base64 encoded image string
-	imageData, ok := responseData["image"].(string)
-	if !ok {
-		fmt.Println("No image data found in response")
-		return nil, err
+	fmt.Printf("Image saved locally: %s\n", localFilePath)
+
+	// Try to upload to S3 if enabled
+	if s.UploadToS3 && s.S3Bucket != "" {
+		kf := files.NewKarmaFile(s.S3Bucket, files.S3)
+		image, err := files.BytesToMultipartFileHeader(imageBytes, "Karma Imager")
+		if err != nil {
+			fmt.Printf("Warning: Error converting image bytes to file for S3 upload: %v\n", err)
+			fmt.Printf("Falling back to local file: %s\n", localFilePath)
+			return &localFilePath, nil
+		}
+
+		url, err := kf.HandleSingleFileUpload(image)
+		if err != nil {
+			fmt.Printf("Warning: Error uploading image to S3: %v\n", err)
+			fmt.Printf("Falling back to local file: %s\n", localFilePath)
+			return &localFilePath, nil
+		}
+
+		fmt.Printf("Image uploaded to S3: %s\n", url)
+		return &url, nil
 	}
 
-	// Decode the base64 image data
-	imageBytes, err := base64.StdEncoding.DecodeString(imageData)
+	// Return local file path
+	return &localFilePath, nil
+}
+
+func (s *Segmind) RequestCreateImageWithInputImage(prompt string, imageUrls []string) (*string, error) {
+	// Nano Banana requires at least one input image
+	if s.Model == SegmindNanoBananaAPI && len(imageUrls) == 0 {
+		return nil, fmt.Errorf("nano-banana model requires at least one input image URL")
+	}
+
+	data := map[string]interface{}{
+		"prompt":     prompt,
+		"image_urls": imageUrls,
+	}
+
+	api := string(s.Model)
+
+	jsonPayload, err := json.Marshal(data)
 	if err != nil {
-		fmt.Println("Error decoding base64 image data:", err)
+		fmt.Println("Error converting struct to json:", err)
 		return nil, err
 	}
-
-	// Save the image to a file
-	kf := files.NewKarmaFile(s.S3Dir, files.S3)
-	image, err := files.BytesToMultipartFileHeader(imageBytes, "Karma Imager")
+	req, err := http.NewRequest("POST", api, bytes.NewBuffer(jsonPayload))
 	if err != nil {
-		fmt.Println("Error converting image bytes to file:", err)
+		fmt.Println("Error creating request:", err)
 		return nil, err
 	}
-	url, err := kf.HandleSingleFileUpload(image)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-api-key", s.ApiKey)
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("Error uploading image to S3:", err)
+		fmt.Println("Error sending request:", err)
 		return nil, err
 	}
-	// fileId := utils.GenerateID() + ".jpeg"
-	// fileName := "./tmp/" + fileId
-	// err = os.WriteFile(fileName, imageBytes, 0644)
-	// if err != nil {
-	// 	fmt.Println("Error saving image file:", err)
-	// 	return nil, err
-	// }
+	defer resp.Body.Close()
 
-	// // Upload to S3
-	// err = s3.UploadFile("karmaclips/"+fileId, fileName)
-	// if err != nil {
-	// 	log.Printf("Error uploading image to S3: %v", err)
-	// 	return nil, err
-	// }
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response body:", err)
+		return nil, err
+	}
 
-	// // Clean up local file
-	// os.Remove(fileName)
+	// Check if response is binary data (image) or JSON
+	var imageBytes []byte
 
-	return &url, nil
+	// Try to parse as JSON first
+	var responseData map[string]interface{}
+	if json.Unmarshal(body, &responseData) == nil {
+		// JSON response - extract base64 image
+		if imageData, ok := responseData["image"].(string); ok {
+			// Decode the base64 image data
+			imageBytes, err = base64.StdEncoding.DecodeString(imageData)
+			if err != nil {
+				fmt.Println("Error decoding base64 image data:", err)
+				return nil, err
+			}
+		} else {
+			fmt.Println("No image data found in JSON response")
+			return nil, fmt.Errorf("no image data found in response")
+		}
+	} else {
+		// Binary response - use raw body as image data
+		imageBytes = body
+	}
+
+	// Create output directory if it doesn't exist
+	if err := os.MkdirAll(s.OutputDir, 0755); err != nil {
+		fmt.Printf("Warning: Could not create output directory: %v\n", err)
+	}
+
+	// Generate filename and save locally
+	fileId := utils.GenerateID() + ".jpeg"
+	localFilePath := filepath.Join(s.OutputDir, fileId)
+
+	// Save image locally
+	err = os.WriteFile(localFilePath, imageBytes, 0644)
+	if err != nil {
+		fmt.Printf("Error saving image locally: %v\n", err)
+		return nil, err
+	}
+
+	fmt.Printf("Image saved locally: %s\n", localFilePath)
+
+	// Try to upload to S3 if enabled
+	if s.UploadToS3 && s.S3Bucket != "" {
+		kf := files.NewKarmaFile(s.S3Bucket, files.S3)
+		image, err := files.BytesToMultipartFileHeader(imageBytes, "Karma Imager")
+		if err != nil {
+			fmt.Printf("Warning: Error converting image bytes to file for S3 upload: %v\n", err)
+			fmt.Printf("Falling back to local file: %s\n", localFilePath)
+			return &localFilePath, nil
+		}
+
+		url, err := kf.HandleSingleFileUpload(image)
+		if err != nil {
+			fmt.Printf("Warning: Error uploading image to S3: %v\n", err)
+			fmt.Printf("Falling back to local file: %s\n", localFilePath)
+			return &localFilePath, nil
+		}
+
+		fmt.Printf("Image uploaded to S3: %s\n", url)
+		return &url, nil
+	}
+
+	// Return local file path
+	return &localFilePath, nil
 }
