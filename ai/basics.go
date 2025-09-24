@@ -312,6 +312,11 @@ type KarmaAI struct {
 	MCPServers   []MCPServer `json:"mcp_servers"`
 	ToolsEnabled bool        `json:"tools_enabled"`
 	Analytics    *Analytics  `json:"analytics"`
+	Features     *F          `json:"features"`
+}
+
+type F struct {
+	optionalFields map[string]any
 }
 
 // Option represents a configuration option for KarmaAI

@@ -157,7 +157,6 @@ func (ki *KarmaImageGen) GenerateImages(prompt string) (*models.AIImageResponse,
 		return &models.AIImageResponse{FilePath: *url}, nil
 	case SEGMIND_NANO_BANANA:
 		seg := segmind.NewSegmind(segmind.SegmindNanoBananaAPI, segmind.WithOutputDir(outputDir))
-		// Nano Banana requires image URLs, for now we'll use empty array
 		url, err := seg.RequestCreateImageWithInputImage(ki.UserPrePrompt+" "+prompt, []string{})
 		if err != nil {
 			return nil, err

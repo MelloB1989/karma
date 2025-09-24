@@ -18,6 +18,7 @@ type OpenAI struct {
 	Temperature     float64
 	MaxTokens       int64
 	SystemMessage   string
+	ExtraFields     map[string]any
 	MCPManager      *mcp.Manager
 	MultiMCPManager *mcp.MultiManager
 }
@@ -79,6 +80,8 @@ func (o *OpenAI) CreateChat(messages models.AIChatHistory, enableTools bool) (*o
 		Messages: mgs,
 		Seed:     openai.Int(69),
 	}
+
+	params.SetExtraFields(o.ExtraFields)
 
 	if o.Temperature > 0 {
 		params.Temperature = openai.Float(o.Temperature)
@@ -159,6 +162,8 @@ func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler fu
 		Model:    o.Model,
 		Messages: mgs,
 	}
+
+	params.SetExtraFields(o.ExtraFields)
 
 	if o.Temperature > 0 {
 		params.Temperature = openai.Float(o.Temperature)

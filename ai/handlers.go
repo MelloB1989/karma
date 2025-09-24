@@ -22,6 +22,7 @@ func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*
 	start := time.Now()
 	o := openai.NewOpenAI(kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), int64(kai.MaxTokens))
 	kai.configureOpenaiClientForMCP(o)
+	o.ExtraFields = kai.Features.optionalFields
 	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
 	if err != nil {
 		return nil, err
@@ -43,6 +44,7 @@ func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages models.AIChatH
 	start := time.Now()
 	o := openai.NewOpenAICompatible(kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), int64(kai.MaxTokens), base_url, apikey)
 	kai.configureOpenaiClientForMCP(o)
+	o.ExtraFields = kai.Features.optionalFields
 	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
 	if err != nil {
 		return nil, err
@@ -155,6 +157,7 @@ func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, 
 	start := time.Now()
 	o := openai.NewOpenAI(kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), int64(kai.MaxTokens))
 	kai.configureOpenaiClientForMCP(o)
+	o.ExtraFields = kai.Features.optionalFields
 
 	chunkHandler := func(chuck oai.ChatCompletionChunk) {
 		if len(chuck.Choices) == 0 {
@@ -187,6 +190,7 @@ func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages models.AICha
 	start := time.Now()
 	o := openai.NewOpenAICompatible(kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), int64(kai.MaxTokens), base_url, apikey)
 	kai.configureOpenaiClientForMCP(o)
+	o.ExtraFields = kai.Features.optionalFields
 	chunkHandler := func(chunk oai.ChatCompletionChunk) {
 		if len(chunk.Choices) == 0 {
 			log.Println("No choices in chunk")
