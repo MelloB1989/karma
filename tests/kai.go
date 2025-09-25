@@ -22,10 +22,10 @@ func TestKai() {
 	// fmt.Println(ai.Llama3_8B.IsBedrockModel())
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
-	// testChatCompletion()
+	testChatCompletion()
 	// testGenerateFromSinglePrompt()
 	// testChatCompletionStream()
-	testWithMcpServer()
+	// testWithMcpServer()
 	// Set up the HTTP router
 	// router := http.NewServeMux()
 
@@ -204,19 +204,31 @@ func testCliChatImplentation() {
 }
 
 func testChatCompletion() {
-	kai := ai.NewKarmaAI(ai.Llama4_Scout_17B, ai.Groq,
+	kai := ai.NewKarmaAI(ai.Grok4, ai.XAI,
 		ai.WithSystemMessage("You are a smart AI assistant"),
 		ai.WithTemperature(1),
-		ai.WithMaxTokens(200),
+		ai.WithMaxTokens(600),
 		ai.WithTopP(0.9))
+	kai.Features.EnableGrokLiveSearch(struct {
+		ReturnCitations  bool             `json:"return_citations"`
+		MaxSearchResults int              `json:"max_search_results"`
+		Sources          []map[string]any `json:"sources"`
+	}{
+		ReturnCitations:  true,
+		MaxSearchResults: 10,
+		// Sources: []map[string]any{
+		// 	{"type": "web", "country": "IN"},
+		// 	{"type": "x", "included_x_handles": []string{"lyzn_ai", "mellob1989"}},
+		// },
+	})
 	response, err := kai.ChatCompletion(models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
-				Message: "Please describe this image for me",
+				Message: "When is Lyzn AI starting it's beta?",
 				Role:    models.User,
-				Images: []string{
-					"https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Googleplex_HQ_%28cropped%29.jpg/960px-Googleplex_HQ_%28cropped%29.jpg",
-				},
+				// Images: []string{
+				// 	"https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Googleplex_HQ_%28cropped%29.jpg/960px-Googleplex_HQ_%28cropped%29.jpg",
+				// },
 			},
 		},
 	})

@@ -62,6 +62,9 @@ const (
 	MistralLarge BaseModel = "mistral-large"
 	MistralSmall BaseModel = "mistral-small"
 
+	// Quew Models
+	Quew3_32B BaseModel = "quew3-32b"
+
 	// Amazon Titan Models
 	TitanTextG1Large BaseModel = "titan-text-g1-large"
 	TitanTextPremier BaseModel = "titan-text-premier"
@@ -208,6 +211,7 @@ var (
 			Llama4_Scout_17B: "meta-llama/llama-4-scout-17b-16e-instruct",
 			GPTOSS_120B:      "openai/gpt-oss-120b",
 			GPTOSS_20B:       "openai/gpt-oss-20b",
+			Quew3_32B:        "qwen/qwen3-32b",
 		},
 	}
 )
@@ -508,6 +512,9 @@ func NewKarmaAI(baseModel BaseModel, provider Provider, options ...Option) *Karm
 		MaxTokens:    1024,
 		MCPConfig:    make(map[string]MCPTool),
 		ToolsEnabled: false,
+		Features: &F{
+			optionalFields: make(map[string]any),
+		},
 	}
 
 	for _, option := range options {
