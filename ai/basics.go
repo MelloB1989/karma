@@ -92,9 +92,12 @@ const (
 	PaLM2             BaseModel = "palm-2"
 
 	// xAI Models
-	Grok4     BaseModel = "grok-4"
-	Grok3     BaseModel = "grok-3"
-	Grok3Mini BaseModel = "grok-3-mini"
+	Grok4              BaseModel = "grok-4"
+	GrokCodeFast       BaseModel = "grok-code-fast-1"
+	Grok4ReasoningFast BaseModel = "grok-4-fast-reasoning"
+	Grok4Fast          BaseModel = "grok-4-fast-non-reasoning"
+	Grok3              BaseModel = "grok-3"
+	Grok3Mini          BaseModel = "grok-3-mini"
 )
 
 // Providers
@@ -200,9 +203,12 @@ var (
 			PaLM2:             "palm-2",
 		},
 		XAI: {
-			Grok4:     "grok-4",
-			Grok3:     "grok-3",
-			Grok3Mini: "grok-3-mini",
+			Grok4:              "grok-4",
+			Grok4Fast:          "grok-4-fast-non-reasoning",
+			Grok4ReasoningFast: "grok-4-fast-reasoning",
+			GrokCodeFast:       "grok-code-fast-1",
+			Grok3:              "grok-3",
+			Grok3Mini:          "grok-3-mini",
 		},
 		Groq: {
 			Llama31_8B:       "llama-3.1-8b-instant",
