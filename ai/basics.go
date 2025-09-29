@@ -98,6 +98,9 @@ const (
 	Grok4Fast          BaseModel = "grok-4-fast-non-reasoning"
 	Grok3              BaseModel = "grok-3"
 	Grok3Mini          BaseModel = "grok-3-mini"
+
+	// Sarvam AI Models
+	SarvamM BaseModel = "sarvam-m"
 )
 
 // Providers
@@ -108,12 +111,14 @@ const (
 	Google    Provider = "google"
 	XAI       Provider = "xai"
 	Groq      Provider = "groq"
+	Sarvam    Provider = "sarvam"
 )
 
 // API URLs for different providers
 const (
-	XAI_API  = "https://api.x.ai/v1"
-	GROQ_API = "https://api.groq.com/openai/v1"
+	XAI_API    = "https://api.x.ai/v1"
+	GROQ_API   = "https://api.groq.com/openai/v1"
+	SARVAM_API = "https://api.sarvam.ai/v1"
 )
 
 // ModelConfig represents a model with its provider configuration
@@ -218,6 +223,9 @@ var (
 			GPTOSS_120B:      "openai/gpt-oss-120b",
 			GPTOSS_20B:       "openai/gpt-oss-20b",
 			Quew3_32B:        "qwen/qwen3-32b",
+		},
+		Sarvam: {
+			SarvamM: "sarvam-m",
 		},
 	}
 )

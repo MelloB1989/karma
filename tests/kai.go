@@ -204,7 +204,7 @@ func testCliChatImplentation() {
 }
 
 func testChatCompletion() {
-	kai := ai.NewKarmaAI(ai.Grok4, ai.XAI,
+	kai := ai.NewKarmaAI(ai.Grok4Fast, ai.XAI,
 		ai.WithSystemMessage("You are a smart AI assistant"),
 		ai.WithTemperature(1),
 		ai.WithMaxTokens(600),
@@ -224,7 +224,7 @@ func testChatCompletion() {
 	response, err := kai.ChatCompletion(models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
-				Message: "When is Lyzn AI starting it's beta?",
+				Message: "Trending news on X in India.",
 				Role:    models.User,
 				// Images: []string{
 				// 	"https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Googleplex_HQ_%28cropped%29.jpg/960px-Googleplex_HQ_%28cropped%29.jpg",

@@ -27,6 +27,8 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 		response, err = kai.handleOpenAICompatibleChatCompletion(messages, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
 	case Groq:
 		response, err = kai.handleOpenAICompatibleChatCompletion(messages, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
+	case Sarvam:
+		response, err = kai.handleOpenAICompatibleChatCompletion(messages, SARVAM_API, config.GetEnvRaw("SARVAM_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
@@ -70,6 +72,8 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 		response, err = kai.handleOpenAICompatibleChatCompletion(singleMessage, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
 	case Groq:
 		response, err = kai.handleOpenAICompatibleChatCompletion(singleMessage, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
+	case Sarvam:
+		response, err = kai.handleOpenAICompatibleChatCompletion(singleMessage, SARVAM_API, config.GetEnvRaw("SARVAM_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
@@ -103,6 +107,8 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 		response, err = kai.handleOpenAICompatibleStreamCompletion(messages, callback, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
 	case Groq:
 		response, err = kai.handleOpenAICompatibleStreamCompletion(messages, callback, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
+	case Sarvam:
+		response, err = kai.handleOpenAICompatibleStreamCompletion(messages, callback, SARVAM_API, config.GetEnvRaw("SARVAM_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
