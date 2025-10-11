@@ -24,13 +24,19 @@ func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 
 	// Choose URL based on environment
 	var dbURL string
+	prefix := ""
+
+	if len(options) > 0 && options[0].DatabaseUrlPrefix != "" {
+		prefix = "_" + options[0].DatabaseUrlPrefix
+	}
+
 	if env.Environment == "" {
-		dbURL = env.DatabaseURL
-	} else if len(options) > 0 && options[0].DatabaseUrlPrefix != "" {
-		opt := options[0]
-		dbURL = config.GetEnvRaw(opt.DatabaseUrlPrefix + "_DATABASE_URL")
+		dbURL = config.GetEnvRaw(strings.TrimPrefix(prefix, "_") + "_DATABASE_URL")
+		if dbURL == "" {
+			dbURL = env.DatabaseURL
+		}
 	} else {
-		dbURL = config.GetEnvRaw(env.Environment + "_DATABASE_URL")
+		dbURL = config.GetEnvRaw(env.Environment + prefix + "_DATABASE_URL")
 	}
 
 	parsedURL, err := url.Parse(dbURL)
