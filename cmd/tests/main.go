@@ -15,11 +15,12 @@ func main() {
 	// 	panic(error)
 	// }
 	// fmt.Print(embeddings)
-	tests.TestKai()
+	// tests.TestKai()
 	// tests.TestImageGen()
 	// tests.TestMCPServer()
 	// tests.TestSendingSingleMail()
 	// tests.ORMTest()
+	tests.TestORMv2()
 	// tests.GoogleAuth()
 	// tests.TestKarmaErrorPackage()
 	// tests.TestKarmaFiles()

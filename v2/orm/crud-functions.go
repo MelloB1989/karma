@@ -33,7 +33,7 @@ func (o *ORM) GetByFieldIn(fieldName string, values ...any) *QueryResult {
 }
 
 func (o *ORM) GetAll() *QueryResult {
-	query := "SELECT * FROM " + o.tableName
+	query := "SELECT * FROM \"" + o.tableName + "\""
 	return o.QueryRaw(query)
 }
 

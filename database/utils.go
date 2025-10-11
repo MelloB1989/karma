@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/jmoiron/sqlx"
@@ -18,42 +19,33 @@ import (
 
 // TypeRegistry maps interface{} field names to their expected concrete types
 var TypeRegistry = make(map[string]reflect.Type)
+var typeRegistryMutex sync.RWMutex
 
-// RegisterType registers a concrete type for an interface{} field by name
 func RegisterType(fieldName string, sampleValue interface{}) {
+	typeRegistryMutex.Lock()
+	defer typeRegistryMutex.Unlock()
 	TypeRegistry[fieldName] = reflect.TypeOf(sampleValue)
 }
 
-// inferTypeFromJSON tries to determine the appropriate type for interface{} fields
 func inferTypeFromJSON(data []byte, fieldName string) (interface{}, error) {
-	// First check if we have a registered type for this field
 	if registeredType, exists := TypeRegistry[fieldName]; exists {
-		// Create a new instance of the registered type
 		newValue := reflect.New(registeredType).Interface()
 		if err := json.Unmarshal(data, newValue); err == nil {
 			return reflect.ValueOf(newValue).Elem().Interface(), nil
 		}
 	}
 
-	// Fallback to map[string]interface{} for interface{} fields
 	var result map[string]interface{}
 	if err := json.Unmarshal(data, &result); err == nil {
 		return result, nil
 	}
 
-	// Last resort: try as generic interface{}
 	var genericResult interface{}
 	if err := json.Unmarshal(data, &genericResult); err == nil {
 		return genericResult, nil
 	}
 
 	return nil, errors.New("failed to unmarshal JSON data")
-}
-
-func init() {
-	// Register common types - users can add more as needed
-	// Example: RegisterType("Store", Store{})
-	// This can be done in the application's init function
 }
 
 func FetchColumnNames(db *sqlx.DB, tableName string) ([]string, error) {
@@ -72,6 +64,9 @@ func FetchColumnNames(db *sqlx.DB, tableName string) ([]string, error) {
 		}
 		columns = append(columns, column)
 	}
+	if columns == nil {
+		columns = []string{}
+	}
 	return columns, nil
 }
 
@@ -80,13 +75,12 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 	if destValue.Kind() != reflect.Ptr || destValue.Elem().Kind() != reflect.Slice {
 		return errors.New("destination must be a pointer to a slice")
 	}
+
 	sliceValue := destValue.Elem()
 	elemType := sliceValue.Type().Elem()
 
-	// Ensure elemType is a struct
-	isPtr := false
-	if elemType.Kind() == reflect.Ptr {
-		isPtr = true
+	isPtr := elemType.Kind() == reflect.Ptr
+	if isPtr {
 		elemType = elemType.Elem()
 	}
 	if elemType.Kind() != reflect.Struct {
@@ -98,34 +92,7 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 		return err
 	}
 
-	// Build a mapping from column names to struct fields
-	columnToFieldMap := make(map[string]reflect.StructField)
-	for i := 0; i < elemType.NumField(); i++ {
-		field := elemType.Field(i)
-		jsonTag := field.Tag.Get("json")
-		dbTag := field.Tag.Get("db")
-
-		// Skip fields with json:"-" (like TableName)
-		if jsonTag == "-" {
-			continue
-		}
-
-		var columnName string
-		if jsonTag != "" && jsonTag != "-" {
-			// Remove omitempty and other options from json tag
-			parts := strings.Split(jsonTag, ",")
-			columnName = parts[0]
-		} else {
-			columnName = camelToSnake(field.Name)
-		}
-
-		columnToFieldMap[columnName] = field
-
-		// Also map db tag if it exists for special handling
-		if dbTag != "" && dbTag != "-" {
-			columnToFieldMap[dbTag] = field
-		}
-	}
+	columnToFieldMap := buildColumnFieldMap(elemType)
 
 	for rows.Next() {
 		columnValues := make([]interface{}, len(columns))
@@ -138,17 +105,12 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 			return err
 		}
 
-		// Create a new instance of the struct (or a pointer to the struct)
 		elem := reflect.New(elemType).Elem()
 
 		for i, column := range columns {
-			fieldInfo, ok := columnToFieldMap[column]
-			if !ok {
-				// Try snakeToCamel conversion
-				fieldInfo, ok = columnToFieldMap[snakeToCamel(column)]
-				if !ok {
-					continue // Skip columns without corresponding struct fields
-				}
+			fieldInfo := findFieldInfo(column, columnToFieldMap)
+			if fieldInfo == nil {
+				continue
 			}
 
 			field := elem.FieldByName(fieldInfo.Name)
@@ -156,97 +118,11 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 				continue
 			}
 
-			// Check if columnValues[i] is nil
-			if columnValues[i] == nil {
-				// Handle nil values - set zero value for the field type
-				if field.CanSet() {
-					field.Set(reflect.Zero(field.Type()))
-				}
-				continue
-			}
-
-			val := reflect.ValueOf(columnValues[i])
-
-			// Add check for zero value before calling val.Type()
-			if !val.IsValid() {
-				log.Printf("Invalid value for field %s, skipping", fieldInfo.Name)
-				continue
-			}
-
-			// Handle fields with 'db' tag for JSON unmarshaling
-			if fieldInfo.Tag.Get("db") != "" {
-				// Obtain the data as []byte
-				var data []byte
-				switch v := val.Interface().(type) {
-				case []byte:
-					data = v
-				case string:
-					data = []byte(v)
-				default:
-					log.Printf("Unsupported type for field with 'db' tag: %s, got type: %v", fieldInfo.Name, val.Type())
-					continue
-				}
-
-				// For interface{} fields, use type inference
-				if field.Kind() == reflect.Interface {
-					result, err := inferTypeFromJSON(data, fieldInfo.Name)
-					if err != nil {
-						log.Printf("Failed to unmarshal JSON for interface field %s: %v (data: %s)", fieldInfo.Name, err, string(data))
-						continue
-					}
-					field.Set(reflect.ValueOf(result))
-					continue
-				}
-
-				// For concrete types, unmarshal directly
-				if err := json.Unmarshal(data, field.Addr().Interface()); err != nil {
-					// If unmarshal fails, try to handle the case where we have a string that needs to be converted
-					var jsonStr string
-					if err := json.Unmarshal(data, &jsonStr); err == nil {
-						// If the field is a float32
-						if field.Kind() == reflect.Float32 {
-							if f, err := stringToFloat32(jsonStr); err == nil {
-								field.SetFloat(float64(f))
-								continue
-							}
-						}
-						// TODO: Add more type conversions here
-					}
-					log.Printf("Failed to unmarshal JSON for field %s: %v (data: %s)", fieldInfo.Name, err, string(data))
-					continue
-				}
-			} else {
-				// Standard processing for other fields
-				if val.Kind() == reflect.Ptr && !val.IsNil() {
-					val = val.Elem()
-				}
-				if val.Kind() == reflect.Interface && !val.IsNil() {
-					val = val.Elem()
-				}
-
-				// Additional check after dereferencing
-				if !val.IsValid() {
-					log.Printf("Invalid value after dereferencing for field %s, skipping", fieldInfo.Name)
-					continue
-				}
-
-				if val.Type().ConvertibleTo(field.Type()) {
-					field.Set(val.Convert(field.Type()))
-				} else if val.Kind() == reflect.Slice && val.Type().Elem().Kind() == reflect.Uint8 && field.Kind() == reflect.String {
-					// Convert []byte to string
-					field.SetString(string(val.Interface().([]byte)))
-				} else {
-					// Safe check before calling val.Type()
-					if val.IsValid() {
-						log.Printf("Cannot set field %s with value of type %v", fieldInfo.Name, val.Type())
-					} else {
-						log.Printf("Cannot set field %s with invalid value", fieldInfo.Name)
-					}
-				}
+			if err := setFieldValue(field, *fieldInfo, columnValues[i]); err != nil {
+				log.Printf("Failed to set field %s: %v", fieldInfo.Name, err)
 			}
 		}
 
-		// Append the new struct (or pointer) to the slice
 		if isPtr {
 			sliceValue.Set(reflect.Append(sliceValue, elem.Addr()))
 		} else {
@@ -257,246 +133,222 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 	return nil
 }
 
-func stringToFloat32(s string) (float32, error) {
-	f, err := strconv.ParseFloat(s, 32)
-	if err != nil {
-		return 0, err
+func buildColumnFieldMap(elemType reflect.Type) map[string]reflect.StructField {
+	columnToFieldMap := make(map[string]reflect.StructField)
+
+	for i := 0; i < elemType.NumField(); i++ {
+		field := elemType.Field(i)
+		jsonTag := field.Tag.Get("json")
+		dbTag := field.Tag.Get("db")
+
+		if jsonTag == "-" {
+			continue
+		}
+
+		if jsonTag != "" && jsonTag != "-" {
+			parts := strings.Split(jsonTag, ",")
+			jsonColumnName := parts[0]
+			columnToFieldMap[jsonColumnName] = field
+			columnToFieldMap[camelToSnake(jsonColumnName)] = field
+		}
+
+		columnToFieldMap[field.Name] = field
+		columnToFieldMap[camelToSnake(field.Name)] = field
+
+		if dbTag != "" && dbTag != "-" {
+			columnToFieldMap[dbTag] = field
+		}
 	}
-	return float32(f), nil
+
+	return columnToFieldMap
+}
+
+func findFieldInfo(column string, columnToFieldMap map[string]reflect.StructField) *reflect.StructField {
+	if fieldInfo, ok := columnToFieldMap[column]; ok {
+		return &fieldInfo
+	}
+
+	conversions := []string{
+		snakeToCamel(column),
+		snakeToPascal(column),
+		strings.ToLower(column),
+	}
+
+	for _, converted := range conversions {
+		if fieldInfo, ok := columnToFieldMap[converted]; ok {
+			return &fieldInfo
+		}
+	}
+
+	return nil
+}
+
+func setFieldValue(field reflect.Value, fieldInfo reflect.StructField, value interface{}) error {
+	if value == nil {
+		field.Set(reflect.Zero(field.Type()))
+		return nil
+	}
+
+	val := reflect.ValueOf(value)
+	if !val.IsValid() {
+		return errors.New("invalid value")
+	}
+
+	if fieldInfo.Tag.Get("db") != "" {
+		return setJSONField(field, fieldInfo, val)
+	}
+
+	return setStandardField(field, val)
+}
+
+func setJSONField(field reflect.Value, fieldInfo reflect.StructField, val reflect.Value) error {
+	var data []byte
+	switch v := val.Interface().(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	default:
+		return fmt.Errorf("unsupported type for JSON field: %v", val.Type())
+	}
+
+	if field.Kind() == reflect.Interface {
+		result, err := inferTypeFromJSON(data, fieldInfo.Name)
+		if err != nil {
+			return err
+		}
+		field.Set(reflect.ValueOf(result))
+		return nil
+	}
+
+	if err := json.Unmarshal(data, field.Addr().Interface()); err != nil {
+		if field.Kind() == reflect.Float32 {
+			var jsonStr string
+			if err := json.Unmarshal(data, &jsonStr); err == nil {
+				if f, err := strconv.ParseFloat(jsonStr, 32); err == nil {
+					field.SetFloat(f)
+					return nil
+				}
+			}
+		}
+		return err
+	}
+
+	return nil
+}
+
+func setStandardField(field reflect.Value, val reflect.Value) error {
+	if val.Kind() == reflect.Ptr && !val.IsNil() {
+		val = val.Elem()
+	}
+	if val.Kind() == reflect.Interface && !val.IsNil() {
+		val = val.Elem()
+	}
+
+	if !val.IsValid() {
+		return errors.New("invalid value after dereferencing")
+	}
+
+	if field.Kind() == reflect.Ptr {
+		if val.Type().ConvertibleTo(field.Type().Elem()) {
+			newVal := reflect.New(field.Type().Elem())
+			newVal.Elem().Set(val.Convert(field.Type().Elem()))
+			field.Set(newVal)
+			return nil
+		}
+		return fmt.Errorf("cannot convert %v to %v", val.Type(), field.Type())
+	}
+
+	if val.Type().ConvertibleTo(field.Type()) {
+		field.Set(val.Convert(field.Type()))
+		return nil
+	}
+
+	if val.Kind() == reflect.Slice && val.Type().Elem().Kind() == reflect.Uint8 && field.Kind() == reflect.String {
+		field.SetString(string(val.Interface().([]byte)))
+		return nil
+	}
+
+	return fmt.Errorf("cannot set field with value of type %v", val.Type())
 }
 
 func snakeToCamel(s string) string {
-	caser := cases.Title(language.English)
-	parts := strings.Split(s, "_")
-	for i := range parts {
-		parts[i] = caser.String(parts[i])
+	if s == "" {
+		return s
 	}
-	return strings.Join(parts, "")
+
+	parts := strings.Split(s, "_")
+	if len(parts) == 1 {
+		return s
+	}
+
+	result := parts[0]
+	caser := cases.Title(language.English)
+	for i := 1; i < len(parts); i++ {
+		result += caser.String(parts[i])
+	}
+	return result
+}
+
+func snakeToPascal(s string) string {
+	if s == "" {
+		return s
+	}
+
+	parts := strings.Split(s, "_")
+	caser := cases.Title(language.English)
+	var result string
+	for _, part := range parts {
+		result += caser.String(part)
+	}
+	return result
 }
 
 func camelToSnake(s string) string {
-	var snake string
+	var snake strings.Builder
 	for i, c := range s {
 		if unicode.IsUpper(c) {
 			if i > 0 {
-				snake += "_"
+				snake.WriteRune('_')
 			}
-			snake += string(unicode.ToLower(c))
+			snake.WriteRune(unicode.ToLower(c))
 		} else {
-			snake += string(c)
+			snake.WriteRune(c)
 		}
 	}
-	return snake
+	return snake.String()
 }
 
-// InsertStruct inserts a struct's fields into the specified table.
+type dbExecutor interface {
+	Exec(query string, args ...interface{}) (sql.Result, error)
+}
+
 func InsertStruct(db *sqlx.DB, tableName string, data any) error {
 	var err error
 	if db == nil {
 		db, err = PostgresConn()
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		defer db.Close()
 	}
-	// Input validation
-	if data == nil {
-		return fmt.Errorf("data cannot be nil")
-	}
-
-	val := reflect.ValueOf(data)
-	if val.Kind() != reflect.Ptr {
-		return fmt.Errorf("data must be a pointer to a struct, but got %s", val.Kind())
-	}
-
-	// Ensure that the pointer is not nil
-	if val.IsNil() {
-		return fmt.Errorf("data pointer is nil")
-	}
-
-	// Dereference the pointer
-	elem := val.Elem()
-	if elem.Kind() != reflect.Struct {
-		return fmt.Errorf("data must point to a struct, but points to %s", elem.Kind())
-	}
-
-	typ := elem.Type()
-
-	var columns []string
-	var values []any
-
-	for i := 0; i < elem.NumField(); i++ {
-		field := typ.Field(i)
-
-		// Retrieve tags
-		jsonTag := field.Tag.Get("json")
-		dbTag := field.Tag.Get("db")
-
-		// Skip fields with json:"-" (like TableName)
-		if jsonTag == "-" {
-			continue
-		}
-
-		// Determine the column name - prioritize json tag
-		var column string
-		if jsonTag != "" && jsonTag != "-" {
-			// Remove omitempty and other options from json tag
-			parts := strings.Split(jsonTag, ",")
-			column = parts[0]
-		} else {
-			// Skip fields without json tags
-			continue
-		}
-
-		fieldValue := elem.Field(i)
-
-		// Handle pointer fields: get the actual value or nil
-		if fieldValue.Kind() == reflect.Ptr {
-			if fieldValue.IsNil() {
-				values = append(values, nil)
-				columns = append(columns, column)
-				continue
-			}
-			// Dereference pointer
-			fieldValue = fieldValue.Elem()
-		}
-
-		// Handle interface{} types by getting the underlying value
-		if fieldValue.Kind() == reflect.Interface && !fieldValue.IsNil() {
-			fieldValue = fieldValue.Elem()
-		}
-
-		// Handle special types: Slice, Map, Struct (or if dbTag exists for JSON serialization)
-		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || fieldValue.Kind() == reflect.Struct || dbTag != "" {
-			// Marshal the field to JSON
-			jsonBytes, err := json.Marshal(fieldValue.Interface())
-			if err != nil {
-				log.Printf("Failed to marshal JSON for field '%s': %v\n", field.Name, err)
-				return fmt.Errorf("failed to marshal JSON for field '%s': %w", field.Name, err)
-			}
-			values = append(values, string(jsonBytes))
-		} else {
-			// Handle other types directly
-			values = append(values, fieldValue.Interface())
-		}
-
-		columns = append(columns, column)
-	}
-
-	// Ensure there are columns to insert
-	if len(columns) == 0 {
-		return fmt.Errorf("no columns to insert for table '%s'", tableName)
-	}
-
-	// Construct the SQL query with placeholders
-	query := fmt.Sprintf(
-		`INSERT INTO %s (%s) VALUES (%s)`,
-		tableName,
-		strings.Join(columns, ", "),
-		placeholders(len(values)),
-	)
-
-	// Execute the query
-	_, err = db.Exec(query, values...)
-	if err != nil {
-		log.Printf("Failed to insert data into table '%s': %v\n", tableName, err)
-		return fmt.Errorf("failed to insert data into table '%s': %w", tableName, err)
-	}
-
-	return nil
+	return insertStruct(db, tableName, data)
 }
 
 func InsertTrxStruct(db *sqlx.Tx, tableName string, data any) error {
-	// Input validation
-	if data == nil {
-		return fmt.Errorf("data cannot be nil")
+	return insertStruct(db, tableName, data)
+}
+
+func insertStruct(executor dbExecutor, tableName string, data any) error {
+	columns, values, err := extractFieldsForInsert(data)
+	if err != nil {
+		return err
 	}
 
-	val := reflect.ValueOf(data)
-	if val.Kind() != reflect.Ptr {
-		return fmt.Errorf("data must be a pointer to a struct, but got %s", val.Kind())
-	}
-
-	// Ensure that the pointer is not nil
-	if val.IsNil() {
-		return fmt.Errorf("data pointer is nil")
-	}
-
-	// Dereference the pointer
-	elem := val.Elem()
-	if elem.Kind() != reflect.Struct {
-		return fmt.Errorf("data must point to a struct, but points to %s", elem.Kind())
-	}
-
-	typ := elem.Type()
-
-	var columns []string
-	var values []any
-
-	for i := 0; i < elem.NumField(); i++ {
-		field := typ.Field(i)
-
-		// Retrieve tags
-		jsonTag := field.Tag.Get("json")
-		dbTag := field.Tag.Get("db")
-
-		// Skip fields with json:"-" (like TableName)
-		if jsonTag == "-" {
-			continue
-		}
-
-		// Determine the column name - prioritize json tag
-		var column string
-		if jsonTag != "" && jsonTag != "-" {
-			// Remove omitempty and other options from json tag
-			parts := strings.Split(jsonTag, ",")
-			column = parts[0]
-		} else {
-			// Skip fields without json tags
-			continue
-		}
-
-		fieldValue := elem.Field(i)
-
-		// Handle pointer fields: get the actual value or nil
-		if fieldValue.Kind() == reflect.Ptr {
-			if fieldValue.IsNil() {
-				values = append(values, nil)
-				columns = append(columns, column)
-				continue
-			}
-			// Dereference pointer
-			fieldValue = fieldValue.Elem()
-		}
-
-		// Handle interface{} types by getting the underlying value
-		if fieldValue.Kind() == reflect.Interface && !fieldValue.IsNil() {
-			fieldValue = fieldValue.Elem()
-		}
-
-		// Handle special types: Slice, Map, Struct (or if dbTag exists for JSON serialization)
-		if fieldValue.Kind() == reflect.Slice || fieldValue.Kind() == reflect.Map || fieldValue.Kind() == reflect.Struct || dbTag != "" {
-			// Marshal the field to JSON
-			jsonBytes, err := json.Marshal(fieldValue.Interface())
-			if err != nil {
-				log.Printf("Failed to marshal JSON for field '%s': %v\n", field.Name, err)
-				return fmt.Errorf("failed to marshal JSON for field '%s': %w", field.Name, err)
-			}
-			values = append(values, string(jsonBytes))
-		} else {
-			// Handle other types directly
-			values = append(values, fieldValue.Interface())
-		}
-
-		columns = append(columns, column)
-	}
-
-	// Ensure there are columns to insert
 	if len(columns) == 0 {
 		return fmt.Errorf("no columns to insert for table '%s'", tableName)
 	}
 
-	// Construct the SQL query with placeholders
 	query := fmt.Sprintf(
 		`INSERT INTO %s (%s) VALUES (%s)`,
 		tableName,
@@ -504,244 +356,189 @@ func InsertTrxStruct(db *sqlx.Tx, tableName string, data any) error {
 		placeholders(len(values)),
 	)
 
-	// Execute the query
-	_, err := db.Exec(query, values...)
-	if err != nil {
-		log.Printf("Failed to insert data into table '%s': %v\n", tableName, err)
+	if _, err := executor.Exec(query, values...); err != nil {
 		return fmt.Errorf("failed to insert data into table '%s': %w", tableName, err)
 	}
 
 	return nil
 }
 
-// UpdateStruct updates fields in the specified table for a given struct based on a condition.
 func UpdateStruct(db *sqlx.DB, tableName string, data any, conditionField string, conditionValue any) error {
 	var err error
 	if db == nil {
 		db, err = PostgresConn()
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 		defer db.Close()
 	}
-	// Input validation
-	if data == nil {
-		return fmt.Errorf("data cannot be nil")
-	}
-
-	val := reflect.ValueOf(data)
-	if val.Kind() != reflect.Ptr {
-		return fmt.Errorf("data must be a pointer to a struct, but got %s", val.Kind())
-	}
-
-	// Ensure that the pointer is not nil
-	if val.IsNil() {
-		return fmt.Errorf("data pointer is nil")
-	}
-
-	// Dereference the pointer
-	elem := val.Elem()
-	if elem.Kind() != reflect.Struct {
-		return fmt.Errorf("data must point to a struct, but points to %s", elem.Kind())
-	}
-
-	var columns []string
-	var values []any
-	typ := elem.Type()
-	placeholderIdx := 1 // Start placeholder index at 1
-	for i := 0; i < elem.NumField(); i++ {
-		field := typ.Field(i)
-		jsonTag := field.Tag.Get("json")
-		dbTag := field.Tag.Get("db")
-
-		// Skip fields with json:"-" (like TableName)
-		if jsonTag == "-" {
-			continue
-		}
-
-		// Determine the column name - prioritize json tag
-		var column string
-		if jsonTag != "" && jsonTag != "-" {
-			// Remove omitempty and other options from json tag
-			parts := strings.Split(jsonTag, ",")
-			column = parts[0]
-		} else {
-			// Skip fields without json tags
-			continue
-		}
-		// Skip the condition field to avoid updating it
-		if column == conditionField {
-			continue
-		}
-		fieldValue := elem.Field(i)
-
-		// Handle pointer fields: get the actual value or nil
-		if fieldValue.Kind() == reflect.Ptr {
-			if fieldValue.IsNil() {
-				values = append(values, nil)
-				columns = append(columns, fmt.Sprintf("%s = $%d", camelToSnake(column), placeholderIdx))
-				placeholderIdx++
-				continue
-			}
-			// Dereference pointer
-			fieldValue = fieldValue.Elem()
-		}
-
-		// Handle interface{} types by getting the underlying value
-		if fieldValue.Kind() == reflect.Interface && !fieldValue.IsNil() {
-			fieldValue = fieldValue.Elem()
-		}
-
-		// Handle slice, map, struct, or fields marked with db tag for JSON serialization
-		if fieldValue.Kind() == reflect.Slice ||
-			fieldValue.Kind() == reflect.Map ||
-			fieldValue.Kind() == reflect.Struct ||
-			dbTag != "" {
-			jsonValue, err := json.Marshal(fieldValue.Interface())
-			if err != nil {
-				log.Printf("Failed to marshal JSON field '%s': %v\n", column, err)
-				return fmt.Errorf("failed to marshal JSON field '%s': %w", column, err)
-			}
-			values = append(values, string(jsonValue)) // Add serialized JSON as string
-		} else {
-			// Use the actual value for other types
-			values = append(values, fieldValue.Interface())
-		}
-		// Add the column update statement with the placeholder
-		columns = append(columns, fmt.Sprintf("%s = $%d", camelToSnake(column), placeholderIdx))
-		placeholderIdx++
-	}
-	// Add the condition field and its value as the last placeholder
-	values = append(values, conditionValue)
-	query := fmt.Sprintf(
-		`UPDATE %s SET %s WHERE %s = $%d`,
-		tableName,
-		strings.Join(columns, ", "),
-		camelToSnake(conditionField), // Convert condition field to snake_case if necessary
-		placeholderIdx,
-	)
-
-	// Execute the query
-	_, err = db.Exec(query, values...)
-	if err != nil {
-		log.Printf("Failed to update record in table: %v. Query: %s, Values: %v", err, query, values)
-		return err
-	}
-	return nil
+	return updateStruct(db, tableName, data, conditionField, conditionValue)
 }
 
 func UpdateTrxStruct(db *sqlx.Tx, tableName string, data any, conditionField string, conditionValue any) error {
-	// Input validation
-	if data == nil {
-		return fmt.Errorf("data cannot be nil")
+	return updateStruct(db, tableName, data, conditionField, conditionValue)
+}
+
+func updateStruct(executor dbExecutor, tableName string, data any, conditionField string, conditionValue any) error {
+	columns, values, err := extractFieldsForUpdate(data, conditionField)
+	if err != nil {
+		return err
 	}
 
-	val := reflect.ValueOf(data)
-	if val.Kind() != reflect.Ptr {
-		return fmt.Errorf("data must be a pointer to a struct, but got %s", val.Kind())
-	}
-
-	// Ensure that the pointer is not nil
-	if val.IsNil() {
-		return fmt.Errorf("data pointer is nil")
-	}
-
-	// Dereference the pointer
-	elem := val.Elem()
-	if elem.Kind() != reflect.Struct {
-		return fmt.Errorf("data must point to a struct, but points to %s", elem.Kind())
-	}
-
-	var columns []string
-	var values []any
-	typ := elem.Type()
-	placeholderIdx := 1 // Start placeholder index at 1
-	for i := 0; i < elem.NumField(); i++ {
-		field := typ.Field(i)
-		jsonTag := field.Tag.Get("json")
-		dbTag := field.Tag.Get("db")
-
-		// Skip fields with json:"-" (like TableName)
-		if jsonTag == "-" {
-			continue
-		}
-
-		// Determine the column name - prioritize json tag
-		var column string
-		if jsonTag != "" && jsonTag != "-" {
-			// Remove omitempty and other options from json tag
-			parts := strings.Split(jsonTag, ",")
-			column = parts[0]
-		} else {
-			// Skip fields without json tags
-			continue
-		}
-		// Skip the condition field to avoid updating it
-		if column == conditionField {
-			continue
-		}
-		fieldValue := elem.Field(i)
-
-		// Handle pointer fields: get the actual value or nil
-		if fieldValue.Kind() == reflect.Ptr {
-			if fieldValue.IsNil() {
-				values = append(values, nil)
-				columns = append(columns, fmt.Sprintf("%s = $%d", camelToSnake(column), placeholderIdx))
-				placeholderIdx++
-				continue
-			}
-			// Dereference pointer
-			fieldValue = fieldValue.Elem()
-		}
-
-		// Handle interface{} types by getting the underlying value
-		if fieldValue.Kind() == reflect.Interface && !fieldValue.IsNil() {
-			fieldValue = fieldValue.Elem()
-		}
-
-		// Handle slice, map, struct, or fields marked with db tag for JSON serialization
-		if fieldValue.Kind() == reflect.Slice ||
-			fieldValue.Kind() == reflect.Map ||
-			fieldValue.Kind() == reflect.Struct ||
-			dbTag != "" {
-			jsonValue, err := json.Marshal(fieldValue.Interface())
-			if err != nil {
-				log.Printf("Failed to marshal JSON field '%s': %v\n", column, err)
-				return fmt.Errorf("failed to marshal JSON field '%s': %w", column, err)
-			}
-			values = append(values, string(jsonValue)) // Add serialized JSON as string
-		} else {
-			// Use the actual value for other types
-			values = append(values, fieldValue.Interface())
-		}
-		// Add the column update statement with the placeholder
-		columns = append(columns, fmt.Sprintf("%s = $%d", camelToSnake(column), placeholderIdx))
-		placeholderIdx++
-	}
-	// Add the condition field and its value as the last placeholder
 	values = append(values, conditionValue)
 	query := fmt.Sprintf(
 		`UPDATE %s SET %s WHERE %s = $%d`,
 		tableName,
 		strings.Join(columns, ", "),
-		camelToSnake(conditionField), // Convert condition field to snake_case if necessary
-		placeholderIdx,
+		camelToSnake(conditionField),
+		len(values),
 	)
 
-	// Execute the query
-	_, err := db.Exec(query, values...)
-	if err != nil {
+	if _, err := executor.Exec(query, values...); err != nil {
 		log.Printf("Failed to update record in table: %v. Query: %s, Values: %v", err, query, values)
 		return err
 	}
+
 	return nil
 }
 
-// placeholders generates a string of placeholders for SQL based on the number of fields.
-func placeholders(n int) string {
-	ph := make([]string, n)
-	for i := range ph {
-		ph[i] = "$" + strconv.Itoa(i+1)
+func extractFieldsForInsert(data any) ([]string, []any, error) {
+	elem, err := validateAndDereference(data)
+	if err != nil {
+		return nil, nil, err
 	}
-	return strings.Join(ph, ", ")
+
+	typ := elem.Type()
+	var columns []string
+	var values []any
+
+	for i := 0; i < elem.NumField(); i++ {
+		field := typ.Field(i)
+		column, skip := getColumnName(field)
+		if skip {
+			continue
+		}
+
+		fieldValue := elem.Field(i)
+		value := extractFieldValue(field, fieldValue)
+
+		columns = append(columns, column)
+		values = append(values, value)
+	}
+
+	return columns, values, nil
+}
+
+func extractFieldsForUpdate(data any, conditionField string) ([]string, []any, error) {
+	elem, err := validateAndDereference(data)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	typ := elem.Type()
+	var columns []string
+	var values []any
+	placeholderIdx := 1
+
+	for i := 0; i < elem.NumField(); i++ {
+		field := typ.Field(i)
+		column, skip := getColumnName(field)
+		if skip || column == conditionField {
+			continue
+		}
+
+		fieldValue := elem.Field(i)
+		value := extractFieldValue(field, fieldValue)
+
+		columns = append(columns, fmt.Sprintf("%s = $%d", camelToSnake(column), placeholderIdx))
+		values = append(values, value)
+		placeholderIdx++
+	}
+
+	return columns, values, nil
+}
+
+func validateAndDereference(data any) (reflect.Value, error) {
+	if data == nil {
+		return reflect.Value{}, errors.New("data cannot be nil")
+	}
+
+	val := reflect.ValueOf(data)
+	if val.Kind() != reflect.Ptr {
+		return reflect.Value{}, fmt.Errorf("data must be a pointer to a struct, but got %s", val.Kind())
+	}
+
+	if val.IsNil() {
+		return reflect.Value{}, errors.New("data pointer is nil")
+	}
+
+	elem := val.Elem()
+	if elem.Kind() != reflect.Struct {
+		return reflect.Value{}, fmt.Errorf("data must point to a struct, but points to %s", elem.Kind())
+	}
+
+	return elem, nil
+}
+
+func getColumnName(field reflect.StructField) (string, bool) {
+	jsonTag := field.Tag.Get("json")
+	if jsonTag == "-" {
+		return "", true
+	}
+
+	if jsonTag != "" && jsonTag != "-" {
+		parts := strings.Split(jsonTag, ",")
+		return parts[0], false
+	}
+
+	return "", true
+}
+
+func extractFieldValue(field reflect.StructField, fieldValue reflect.Value) any {
+	if fieldValue.Kind() == reflect.Ptr {
+		if fieldValue.IsNil() {
+			return nil
+		}
+		fieldValue = fieldValue.Elem()
+	}
+
+	if fieldValue.Kind() == reflect.Interface && !fieldValue.IsNil() {
+		fieldValue = fieldValue.Elem()
+	}
+
+	dbTag := field.Tag.Get("db")
+	needsJSON := fieldValue.Kind() == reflect.Slice ||
+		fieldValue.Kind() == reflect.Map ||
+		fieldValue.Kind() == reflect.Struct ||
+		dbTag != ""
+
+	if needsJSON {
+		jsonBytes, err := json.Marshal(fieldValue.Interface())
+		if err != nil {
+			log.Printf("Failed to marshal JSON for field '%s': %v\n", field.Name, err)
+			return nil
+		}
+		return string(jsonBytes)
+	}
+
+	return fieldValue.Interface()
+}
+
+func placeholders(n int) string {
+	if n == 0 {
+		return ""
+	}
+
+	var builder strings.Builder
+	builder.Grow(n * 3)
+
+	for i := 1; i <= n; i++ {
+		if i > 1 {
+			builder.WriteString(", ")
+		}
+		builder.WriteRune('$')
+		builder.WriteString(strconv.Itoa(i))
+	}
+
+	return builder.String()
 }
