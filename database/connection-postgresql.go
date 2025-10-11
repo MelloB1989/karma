@@ -13,9 +13,10 @@ import (
 )
 
 type PostgresConnOptions struct {
-	MaxOpenConns    *int
-	MaxIdleConns    *int
-	ConnMaxLifetime *time.Duration
+	MaxOpenConns      *int
+	MaxIdleConns      *int
+	ConnMaxLifetime   *time.Duration
+	DatabaseUrlPrefix string
 }
 
 func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
@@ -25,8 +26,11 @@ func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 	var dbURL string
 	if env.Environment == "" {
 		dbURL = env.DatabaseURL
+	} else if len(options) > 0 && options[0].DatabaseUrlPrefix != "" {
+		opt := options[0]
+		dbURL = config.GetEnvRaw(opt.DatabaseUrlPrefix + "_DATABASE_URL")
 	} else {
-		dbURL, _ = config.GetEnv(env.Environment + "_DATABASE_URL")
+		dbURL = config.GetEnvRaw(env.Environment + "_DATABASE_URL")
 	}
 
 	parsedURL, err := url.Parse(dbURL)

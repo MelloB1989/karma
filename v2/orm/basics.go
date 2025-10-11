@@ -107,17 +107,18 @@ func (o *ORM) HasInfiniteTTL() bool {
 
 // ORM struct encapsulates the metadata and methods for a table.
 type ORM struct {
-	tableName    string
-	structType   reflect.Type
-	fieldMap     map[string]string
-	tx           *sqlx.Tx
-	db           *sqlx.DB
-	CacheOn      *bool
-	CacheMethod  *string // "redis", "memory", or "both"
-	CacheKey     *string
-	CacheTTL     *time.Duration
-	RedisClient  *redis.Client
-	serializeMux sync.Mutex
+	tableName      string
+	structType     reflect.Type
+	fieldMap       map[string]string
+	tx             *sqlx.Tx
+	db             *sqlx.DB
+	CacheOn        *bool
+	CacheMethod    *string // "redis", "memory", or "both"
+	CacheKey       *string
+	CacheTTL       *time.Duration
+	RedisClient    *redis.Client
+	serializeMux   sync.Mutex
+	databasePrefix string
 }
 
 type QueryResult struct {
@@ -219,6 +220,12 @@ func Load(entity any, opts ...Options) *ORM {
 		opt(orm)
 	}
 	return orm
+}
+
+func WithDatabasePrefix(prefix string) Options {
+	return func(o *ORM) {
+		o.databasePrefix = prefix
+	}
 }
 
 func WithCacheOn(cacheOn bool) Options {
@@ -456,7 +463,15 @@ func (o *ORM) executeQuery(query string, args ...any) *QueryResult {
 		rows, err = o.tx.Query(query, args...)
 	} else {
 		if o.db == nil {
-			db, err := database.PostgresConn()
+			var db *sqlx.DB
+			var err error
+			if o.databasePrefix != "" {
+				db, err = database.PostgresConn(database.PostgresConnOptions{
+					DatabaseUrlPrefix: o.databasePrefix,
+				})
+			} else {
+				db, err = database.PostgresConn()
+			}
 			if err != nil {
 				log.Printf("Database connection error: %v", err)
 				return &QueryResult{nil, err, query, args, nil, o}

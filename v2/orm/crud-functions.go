@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/MelloB1989/karma/database"
+	"github.com/jmoiron/sqlx"
 )
 
 // GetByFieldIn to return a QueryResult for chaining
@@ -180,7 +181,15 @@ func (o *ORM) GetCount(filters map[string]any) (int, error) {
 	whereStatement := strings.Join(whereClauses, " AND ")
 
 	// Connect to the database
-	db, err := database.PostgresConn()
+	var db *sqlx.DB
+	var err error
+	if o.databasePrefix != "" {
+		db, err = database.PostgresConn(database.PostgresConnOptions{
+			DatabaseUrlPrefix: o.databasePrefix,
+		})
+	} else {
+		db, err = database.PostgresConn()
+	}
 	if err != nil {
 		log.Println("DB connection error:", err)
 		return 0, err
@@ -204,7 +213,15 @@ func (o *ORM) GetCount(filters map[string]any) (int, error) {
 // GetTotalRowCount returns the total number of rows in the table
 func (o *ORM) GetTotalRowCount() (int, error) {
 	// Connect to the database
-	db, err := database.PostgresConn()
+	var db *sqlx.DB
+	var err error
+	if o.databasePrefix != "" {
+		db, err = database.PostgresConn(database.PostgresConnOptions{
+			DatabaseUrlPrefix: o.databasePrefix,
+		})
+	} else {
+		db, err = database.PostgresConn()
+	}
 	if err != nil {
 		log.Println("DB connection error:", err)
 		return 0, err
@@ -340,7 +357,15 @@ func (o *ORM) DeleteByFieldEquals(fieldName string, value any) (int64, error) {
 	}
 
 	// Establish database connection
-	db, err := database.PostgresConn()
+	var db *sqlx.DB
+	var err error
+	if o.databasePrefix != "" {
+		db, err = database.PostgresConn(database.PostgresConnOptions{
+			DatabaseUrlPrefix: o.databasePrefix,
+		})
+	} else {
+		db, err = database.PostgresConn()
+	}
 	if err != nil {
 		log.Println("DB connection error:", err)
 		return 0, err
@@ -396,7 +421,15 @@ func (o *ORM) DeleteByFieldCompare(fieldName string, value any, operator string)
 	}
 
 	// Establish database connection
-	db, err := database.PostgresConn()
+	var db *sqlx.DB
+	var err error
+	if o.databasePrefix != "" {
+		db, err = database.PostgresConn(database.PostgresConnOptions{
+			DatabaseUrlPrefix: o.databasePrefix,
+		})
+	} else {
+		db, err = database.PostgresConn()
+	}
 	if err != nil {
 		log.Println("DB connection error:", err)
 		return 0, err
@@ -443,7 +476,15 @@ func (o *ORM) DeleteByFieldIn(fieldName string, values []any) (int64, error) {
 	}
 
 	// Establish database connection
-	db, err := database.PostgresConn()
+	var db *sqlx.DB
+	var err error
+	if o.databasePrefix != "" {
+		db, err = database.PostgresConn(database.PostgresConnOptions{
+			DatabaseUrlPrefix: o.databasePrefix,
+		})
+	} else {
+		db, err = database.PostgresConn()
+	}
 	if err != nil {
 		log.Println("DB connection error:", err)
 		return 0, err
@@ -507,7 +548,15 @@ fmt.Printf("Deleted %d row with primary key 10\n", rowsDeleted)
 
 func (o *ORM) DeleteAll() (int64, error) {
 	// Establish database connection
-	db, err := database.PostgresConn()
+	var db *sqlx.DB
+	var err error
+	if o.databasePrefix != "" {
+		db, err = database.PostgresConn(database.PostgresConnOptions{
+			DatabaseUrlPrefix: o.databasePrefix,
+		})
+	} else {
+		db, err = database.PostgresConn()
+	}
 	if err != nil {
 		log.Println("DB connection error:", err)
 		return 0, err
