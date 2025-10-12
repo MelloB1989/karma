@@ -1,9 +1,5 @@
 package main
 
-import (
-	"github.com/MelloB1989/karma/tests"
-)
-
 func main() {
 	// bedrock.StartChatSession()
 	// err := godotenv.Load()
@@ -20,7 +16,7 @@ func main() {
 	// tests.TestMCPServer()
 	// tests.TestSendingSingleMail()
 	// tests.ORMTest()
-	tests.TestORMv2()
+	// tests.TestORMv2()
 	// tests.GoogleAuth()
 	// tests.TestKarmaErrorPackage()
 	// tests.TestKarmaFiles()
