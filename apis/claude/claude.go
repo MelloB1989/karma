@@ -13,6 +13,24 @@ import (
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
 )
 
+func extractToolCallsFromClaude(content []anthropic.ContentBlockUnion) []models.ToolCall {
+	var toolCalls []models.ToolCall
+	for _, block := range content {
+		if toolUse, ok := block.AsAny().(anthropic.ToolUseBlock); ok {
+			arguments, _ := json.Marshal(toolUse.Input)
+			toolCalls = append(toolCalls, models.ToolCall{
+				ID:   toolUse.ID,
+				Type: string(toolUse.Type),
+				Function: models.ToolCallFunction{
+					Name:      toolUse.Name,
+					Arguments: string(arguments),
+				},
+			})
+		}
+	}
+	return toolCalls
+}
+
 type ClaudeClient struct {
 	Client          *anthropic.Client
 	MaxTokens       int
@@ -100,7 +118,7 @@ func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (*models.AIChatRespons
 }
 
 // ClaudeChatCompletionWithTools handles chat completion with optional MCP tool support
-func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enableTools bool) (*models.AIChatResponse, error) {
+func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enableTools bool, useMCPExecution bool) (*models.AIChatResponse, error) {
 	processedMessages := processMessages(messages)
 	mgsParam := anthropic.MessageNewParams{
 		MaxTokens: int64(cc.MaxTokens),
@@ -143,6 +161,13 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 				responseText += block.Text
 			case anthropic.ToolUseBlock:
 				hasToolUse = true
+				// If not using MCP execution, return immediately with tool calls for external handling
+				if !useMCPExecution {
+					return &models.AIChatResponse{
+						AIResponse: responseText,
+						ToolCalls:  extractToolCallsFromClaude(message.Content),
+					}, nil
+				}
 				if enableTools {
 					// Call the MCP tool
 					var arguments map[string]any
@@ -184,11 +209,11 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 }
 
 func (cc *ClaudeClient) ClaudeStreamCompletion(messages models.AIChatHistory, callback func(chunck models.StreamedResponse) error) (*models.AIChatResponse, error) {
-	return cc.ClaudeStreamCompletionWithTools(messages, callback, false)
+	return cc.ClaudeStreamCompletionWithTools(messages, callback, false, true)
 }
 
 // ClaudeStreamCompletionWithTools handles streaming completion with optional MCP tool support
-func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHistory, callback func(chunck models.StreamedResponse) error, enableTools bool) (*models.AIChatResponse, error) {
+func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHistory, callback func(chunck models.StreamedResponse) error, enableTools bool, useMCPExecution bool) (*models.AIChatResponse, error) {
 	processedMessages := processMessages(messages)
 	streamParams := anthropic.MessageNewParams{
 		MaxTokens: int64(cc.MaxTokens),

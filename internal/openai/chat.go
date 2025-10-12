@@ -72,7 +72,7 @@ func (o *OpenAI) GetMCPManager() *mcp.Manager {
 	return o.MCPManager
 }
 
-func (o *OpenAI) CreateChat(messages models.AIChatHistory, enableTools bool) (*openai.ChatCompletion, error) {
+func (o *OpenAI) CreateChat(messages models.AIChatHistory, enableTools bool, useMCPExecution bool) (*openai.ChatCompletion, error) {
 	mgs := formatMessages(messages, o.SystemMessage)
 
 	params := openai.ChatCompletionNewParams{
@@ -108,6 +108,11 @@ func (o *OpenAI) CreateChat(messages models.AIChatHistory, enableTools bool) (*o
 
 		// Check if OpenAI wants to use tools
 		if len(chatCompletion.Choices) == 0 || len(chatCompletion.Choices[0].Message.ToolCalls) == 0 {
+			return chatCompletion, nil
+		}
+
+		// If not using MCP execution, return immediately with tool calls for external handling
+		if !useMCPExecution {
 			return chatCompletion, nil
 		}
 
@@ -155,7 +160,7 @@ func (o *OpenAI) CreateChat(messages models.AIChatHistory, enableTools bool) (*o
 	}
 }
 
-func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler func(chuck openai.ChatCompletionChunk), enableTools bool) (*openai.ChatCompletion, error) {
+func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler func(chuck openai.ChatCompletionChunk), enableTools bool, useMCPExecution bool) (*openai.ChatCompletion, error) {
 	mgs := formatMessages(messages, o.SystemMessage)
 
 	params := openai.ChatCompletionNewParams{
@@ -193,7 +198,7 @@ func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler fu
 	}
 
 	// Handle tool calls if any - follow v2 API pattern
-	if enableTools && len(acc.Choices) > 0 && len(acc.Choices[0].Message.ToolCalls) > 0 {
+	if enableTools && useMCPExecution && len(acc.Choices) > 0 && len(acc.Choices[0].Message.ToolCalls) > 0 {
 		followUpParams := params
 		followUpParams.Messages = append(followUpParams.Messages, acc.Choices[0].Message.ToParam())
 

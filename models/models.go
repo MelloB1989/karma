@@ -55,12 +55,24 @@ type AIChatHistory struct {
 	Context     string      `json:"context"`
 }
 
+type ToolCall struct {
+	ID       string           `json:"id"`
+	Type     string           `json:"type"`
+	Function ToolCallFunction `json:"function"`
+}
+
+type ToolCallFunction struct {
+	Name      string `json:"name"`
+	Arguments string `json:"arguments"`
+}
+
 type AIChatResponse struct {
-	AIResponse   string `json:"ai_response"`
-	Tokens       int    `json:"tokens"`
-	InputTokens  int    `json:"input_tokens"`
-	OutputTokens int    `json:"output_tokens"`
-	TimeTaken    int    `json:"time_taken"`
+	AIResponse   string     `json:"ai_response"`
+	Tokens       int        `json:"tokens"`
+	InputTokens  int        `json:"input_tokens"`
+	OutputTokens int        `json:"output_tokens"`
+	TimeTaken    int        `json:"time_taken"`
+	ToolCalls    []ToolCall `json:"tool_calls,omitempty"`
 }
 
 type AIImageResponse struct {
