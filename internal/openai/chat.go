@@ -174,7 +174,11 @@ func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler fu
 		params.Temperature = openai.Float(o.Temperature)
 	}
 	if o.MaxTokens > 0 {
-		params.MaxCompletionTokens = openai.Int(o.MaxTokens)
+		if strings.Contains(o.Model, "gpt-5") { //Special handling for GPT-5 models
+			params.MaxCompletionTokens = openai.Int(o.MaxTokens)
+		} else {
+			params.MaxTokens = openai.Int(o.MaxTokens)
+		}
 	}
 
 	// Add MCP tools if enabled and available

@@ -56,8 +56,9 @@ type AIChatHistory struct {
 }
 
 type ToolCall struct {
-	ID       string           `json:"id"`
-	Type     string           `json:"type"`
+	Index    *int             `json:"index,omitempty"`
+	ID       string           `json:"id,omitempty"`
+	Type     string           `json:"type,omitempty"`
 	Function ToolCallFunction `json:"function"`
 }
 
@@ -81,9 +82,10 @@ type AIImageResponse struct {
 }
 
 type StreamedResponse struct {
-	AIResponse string `json:"text"`
-	TokenUsed  int    `json:"token_used"`
-	TimeTaken  int    `json:"time_taken"`
+	AIResponse string     `json:"text"`
+	TokenUsed  int        `json:"token_used"`
+	TimeTaken  int        `json:"time_taken"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 }
 
 type GoogleConfig struct {
