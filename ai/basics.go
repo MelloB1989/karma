@@ -327,10 +327,11 @@ type KarmaAI struct {
 	AuthToken     string             `json:"auth_token"`
 	MCPTools      []MCPTool          `json:"mcp_tools"`
 	// Deprecated: Use MCPServers instead
-	MCPServers   []MCPServer `json:"mcp_servers"`
-	ToolsEnabled bool        `json:"tools_enabled"`
-	Analytics    *Analytics  `json:"analytics"`
-	Features     *F          `json:"features"`
+	MCPServers      []MCPServer `json:"mcp_servers"`
+	ToolsEnabled    bool        `json:"tools_enabled"`
+	UseMCPExecution bool        `json:"use_mcp_execution"`
+	Analytics       *Analytics  `json:"analytics"`
+	Features        *F          `json:"features"`
 }
 
 type F struct {
@@ -513,6 +514,14 @@ func WithToolsEnabled() Option {
 	}
 }
 
+// WithDirectToolCalls enables tools without MCP execution (for LangChain/n8n)
+func WithDirectToolCalls() Option {
+	return func(kai *KarmaAI) {
+		kai.ToolsEnabled = true
+		kai.UseMCPExecution = false
+	}
+}
+
 // NewKarmaAI creates a new KarmaAI instance with the specified model and options
 func NewKarmaAI(baseModel BaseModel, provider Provider, options ...Option) *KarmaAI {
 	kai := &KarmaAI{
@@ -520,12 +529,14 @@ func NewKarmaAI(baseModel BaseModel, provider Provider, options ...Option) *Karm
 			BaseModel: baseModel,
 			Provider:  provider,
 		},
-		Temperature:  1,
-		TopP:         0.9,
-		TopK:         40,
-		MaxTokens:    1024,
-		MCPConfig:    make(map[string]MCPTool),
-		ToolsEnabled: false,
+		Temperature:     1,
+		TopP:            0.9,
+		TopK:            40,
+		MaxTokens:       1024,
+		MCPConfig:       make(map[string]MCPTool),
+		ToolsEnabled:    false,
+		UseMCPExecution: true,
+		Analytics:       &Analytics{},
 		Features: &F{
 			optionalFields: make(map[string]any),
 		},

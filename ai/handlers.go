@@ -23,7 +23,7 @@ func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*
 	o := openai.NewOpenAI(kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), int64(kai.MaxTokens))
 	kai.configureOpenaiClientForMCP(o)
 	o.ExtraFields = kai.Features.optionalFields
-	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
+	chat, err := o.CreateChat(messages, kai.ToolsEnabled, kai.UseMCPExecution)
 	if err != nil {
 		return nil, err
 	}
@@ -37,6 +37,20 @@ func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*
 		OutputTokens: int(chat.Usage.CompletionTokens),
 		TimeTaken:    int(time.Since(start).Milliseconds()),
 	}
+	if len(chat.Choices[0].Message.ToolCalls) > 0 {
+		toolCalls := make([]models.ToolCall, len(chat.Choices[0].Message.ToolCalls))
+		for i, tc := range chat.Choices[0].Message.ToolCalls {
+			toolCalls[i] = models.ToolCall{
+				ID:   tc.ID,
+				Type: string(tc.Type),
+				Function: models.ToolCallFunction{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			}
+		}
+		res.ToolCalls = toolCalls
+	}
 	return res, nil
 }
 
@@ -45,20 +59,35 @@ func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages models.AIChatH
 	o := openai.NewOpenAICompatible(kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), int64(kai.MaxTokens), base_url, apikey)
 	kai.configureOpenaiClientForMCP(o)
 	o.ExtraFields = kai.Features.optionalFields
-	chat, err := o.CreateChat(messages, kai.ToolsEnabled)
+	chat, err := o.CreateChat(messages, kai.ToolsEnabled, kai.UseMCPExecution)
 	if err != nil {
 		return nil, err
 	}
 	if len(chat.Choices) == 0 {
 		return nil, errors.New("No response from OpenAI")
 	}
-	return &models.AIChatResponse{
+	res := &models.AIChatResponse{
 		AIResponse:   chat.Choices[0].Message.Content,
 		Tokens:       int(chat.Usage.TotalTokens),
 		InputTokens:  int(chat.Usage.PromptTokens),
 		OutputTokens: int(chat.Usage.CompletionTokens),
 		TimeTaken:    int(time.Since(start).Milliseconds()),
-	}, nil
+	}
+	if len(chat.Choices[0].Message.ToolCalls) > 0 {
+		toolCalls := make([]models.ToolCall, len(chat.Choices[0].Message.ToolCalls))
+		for i, tc := range chat.Choices[0].Message.ToolCalls {
+			toolCalls[i] = models.ToolCall{
+				ID:   tc.ID,
+				Type: string(tc.Type),
+				Function: models.ToolCallFunction{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			}
+		}
+		res.ToolCalls = toolCalls
+	}
+	return res, nil
 }
 
 func (kai *KarmaAI) handleBedrockChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
@@ -86,7 +115,7 @@ func (kai *KarmaAI) handleAnthropicChatCompletion(messages models.AIChatHistory)
 	cc := claude.NewClaudeClient(int(kai.MaxTokens), anthropic.Model(kai.Model.GetModelString()), float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), kai.SystemMessage)
 	kai.configureClaudeClientForMCP(cc)
 	start := time.Now()
-	response, err := cc.ClaudeChatCompletion(messages, kai.ToolsEnabled)
+	response, err := cc.ClaudeChatCompletion(messages, kai.ToolsEnabled, kai.UseMCPExecution)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get response from Claude: %w", err)
 	}
@@ -164,26 +193,65 @@ func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, 
 			log.Println("No choices in chunk")
 			return
 		}
-		callback(models.StreamedResponse{
+
+		streamResp := models.StreamedResponse{
 			AIResponse: chuck.Choices[0].Delta.Content,
 			TokenUsed:  int(chuck.Usage.TotalTokens),
 			TimeTaken:  int(chuck.Created),
-		})
+		}
+
+		// Handle tool calls in the delta
+		if len(chuck.Choices[0].Delta.ToolCalls) > 0 {
+			toolCalls := make([]models.ToolCall, len(chuck.Choices[0].Delta.ToolCalls))
+			for i, tc := range chuck.Choices[0].Delta.ToolCalls {
+				idx := int(tc.Index)
+				toolCalls[i] = models.ToolCall{
+					Index: &idx,
+					ID:    tc.ID,
+					Type:  string(tc.Type),
+					Function: models.ToolCallFunction{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
+				}
+			}
+			streamResp.ToolCalls = toolCalls
+		}
+
+		callback(streamResp)
 	}
-	chat, err := o.CreateChatStream(messages, chunkHandler, kai.ToolsEnabled)
+	chat, err := o.CreateChatStream(messages, chunkHandler, kai.ToolsEnabled, kai.UseMCPExecution)
 	if err != nil {
 		return nil, err
 	}
 	if len(chat.Choices) == 0 {
 		return nil, errors.New("No response from OpenAI")
 	}
-	return &models.AIChatResponse{
+	res := &models.AIChatResponse{
 		AIResponse:   chat.Choices[0].Message.Content,
 		Tokens:       int(chat.Usage.TotalTokens),
 		TimeTaken:    int(time.Since(start).Milliseconds()),
 		InputTokens:  int(chat.Usage.PromptTokens),
 		OutputTokens: int(chat.Usage.CompletionTokens),
-	}, nil
+	}
+
+	// Include tool calls if present
+	if len(chat.Choices[0].Message.ToolCalls) > 0 {
+		toolCalls := make([]models.ToolCall, len(chat.Choices[0].Message.ToolCalls))
+		for i, tc := range chat.Choices[0].Message.ToolCalls {
+			toolCalls[i] = models.ToolCall{
+				ID:   tc.ID,
+				Type: string(tc.Type),
+				Function: models.ToolCallFunction{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			}
+		}
+		res.ToolCalls = toolCalls
+	}
+
+	return res, nil
 }
 
 func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error, base_url string, apikey string) (*models.AIChatResponse, error) {
@@ -196,26 +264,65 @@ func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages models.AICha
 			log.Println("No choices in chunk")
 			return
 		}
-		callback(models.StreamedResponse{
+
+		streamResp := models.StreamedResponse{
 			AIResponse: chunk.Choices[0].Delta.Content,
 			TokenUsed:  int(chunk.Usage.TotalTokens),
 			TimeTaken:  int(chunk.Created),
-		})
+		}
+
+		// Handle tool calls in the delta
+		if len(chunk.Choices[0].Delta.ToolCalls) > 0 {
+			toolCalls := make([]models.ToolCall, len(chunk.Choices[0].Delta.ToolCalls))
+			for i, tc := range chunk.Choices[0].Delta.ToolCalls {
+				idx := int(tc.Index)
+				toolCalls[i] = models.ToolCall{
+					Index: &idx,
+					ID:    tc.ID,
+					Type:  string(tc.Type),
+					Function: models.ToolCallFunction{
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					},
+				}
+			}
+			streamResp.ToolCalls = toolCalls
+		}
+
+		callback(streamResp)
 	}
-	chat, err := o.CreateChatStream(messages, chunkHandler, kai.ToolsEnabled)
+	chat, err := o.CreateChatStream(messages, chunkHandler, kai.ToolsEnabled, kai.UseMCPExecution)
 	if err != nil {
 		return nil, err
 	}
 	if len(chat.Choices) == 0 {
 		return nil, errors.New("No response from OpenAI")
 	}
-	return &models.AIChatResponse{
+	res := &models.AIChatResponse{
 		AIResponse:   chat.Choices[0].Message.Content,
 		Tokens:       int(chat.Usage.TotalTokens),
 		TimeTaken:    int(time.Since(start).Milliseconds()),
 		InputTokens:  int(chat.Usage.PromptTokens),
 		OutputTokens: int(chat.Usage.CompletionTokens),
-	}, nil
+	}
+
+	// Include tool calls if present
+	if len(chat.Choices[0].Message.ToolCalls) > 0 {
+		toolCalls := make([]models.ToolCall, len(chat.Choices[0].Message.ToolCalls))
+		for i, tc := range chat.Choices[0].Message.ToolCalls {
+			toolCalls[i] = models.ToolCall{
+				ID:   tc.ID,
+				Type: string(tc.Type),
+				Function: models.ToolCallFunction{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			}
+		}
+		res.ToolCalls = toolCalls
+	}
+
+	return res, nil
 }
 
 func (kai *KarmaAI) handleBedrockStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
@@ -260,7 +367,7 @@ func (kai *KarmaAI) handleAnthropicStreamCompletion(messages models.AIChatHistor
 	start := time.Now()
 	cc := claude.NewClaudeClient(int(kai.MaxTokens), anthropic.Model(kai.Model.GetModelString()), float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), kai.SystemMessage)
 	kai.configureClaudeClientForMCP(cc)
-	response, err := cc.ClaudeStreamCompletionWithTools(messages, callback, kai.ToolsEnabled)
+	response, err := cc.ClaudeStreamCompletionWithTools(messages, callback, kai.ToolsEnabled, kai.UseMCPExecution)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get response from Claude: %w", err)
 	}

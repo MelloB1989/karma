@@ -95,11 +95,6 @@ func (c *Client) CreateTool(name, description, mcpToolName string, inputSchema a
 
 // generateSchema generates JSON schema from a Go struct
 func (c *Client) generateSchema(inputStruct any) (map[string]any, error) {
-	reflector := jsonschema.Reflector{
-		AllowAdditionalProperties: false,
-		DoNotReference:            true,
-	}
-
 	// Handle nil input: return an empty object schema to avoid panic
 	if inputStruct == nil || reflect.TypeOf(inputStruct) == nil {
 		return map[string]any{
@@ -107,6 +102,24 @@ func (c *Client) generateSchema(inputStruct any) (map[string]any, error) {
 			"properties":           map[string]any{},
 			"additionalProperties": false,
 		}, nil
+	}
+
+	// Check if input is already a JSON Schema map (from n8n or other sources)
+	if schemaMap, ok := inputStruct.(map[string]any); ok {
+		// Validate that it has the minimum required fields for a JSON Schema
+		if _, hasType := schemaMap["type"]; hasType {
+			// Ensure properties field exists even if empty
+			if _, hasProps := schemaMap["properties"]; !hasProps {
+				schemaMap["properties"] = map[string]any{}
+			}
+			return schemaMap, nil
+		}
+	}
+
+	// Otherwise, generate schema from Go struct using reflection
+	reflector := jsonschema.Reflector{
+		AllowAdditionalProperties: false,
+		DoNotReference:            true,
 	}
 
 	var schema *jsonschema.Schema
