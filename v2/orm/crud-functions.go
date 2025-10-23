@@ -171,8 +171,8 @@ func (o *ORM) GetCount(filters map[string]any) (int, error) {
 			return 0, fmt.Errorf("field %s not found in struct", fieldName)
 		}
 
-		// Append the condition with the appropriate placeholder
-		whereClauses = append(whereClauses, fmt.Sprintf("%s = $%d", columnName, placeholder))
+		// Append the condition with the appropriate placeholder (quote column name for case sensitivity)
+		whereClauses = append(whereClauses, fmt.Sprintf(`"%s" = $%d`, columnName, placeholder))
 		args = append(args, value)
 		placeholder++
 	}
@@ -406,8 +406,8 @@ func (o *ORM) DeleteByFieldEquals(fieldName string, value any) (int64, error) {
 	}
 	defer db.Close()
 
-	// Construct DELETE query
-	query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1", o.tableName, columnName)
+	// Construct DELETE query (quote column name for case sensitivity)
+	query := fmt.Sprintf(`DELETE FROM %s WHERE "%s" = $1`, o.tableName, columnName)
 
 	// Execute the query
 	result, err := db.Exec(query, value)
@@ -470,8 +470,8 @@ func (o *ORM) DeleteByFieldCompare(fieldName string, value any, operator string)
 	}
 	defer db.Close()
 
-	// Construct DELETE query
-	query := fmt.Sprintf("DELETE FROM %s WHERE %s %s $1", o.tableName, columnName, operator)
+	// Construct DELETE query (quote column name for case sensitivity)
+	query := fmt.Sprintf(`DELETE FROM %s WHERE "%s" %s $1`, o.tableName, columnName, operator)
 
 	// Execute the query
 	result, err := db.Exec(query, value)
@@ -530,7 +530,7 @@ func (o *ORM) DeleteByFieldIn(fieldName string, values []any) (int64, error) {
 	for i := range values {
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 	}
-	query := fmt.Sprintf("DELETE FROM %s WHERE %s IN (%s)", o.tableName, columnName, strings.Join(placeholders, ", "))
+	query := fmt.Sprintf(`DELETE FROM %s WHERE "%s" IN (%s)`, o.tableName, columnName, strings.Join(placeholders, ", "))
 
 	// Convert []any to []interface{}
 	args := make([]interface{}, len(values))

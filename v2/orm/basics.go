@@ -549,12 +549,13 @@ func (o *ORM) normalizeValues(values ...any) ([]any, error) {
 }
 
 // resolveColumn gets the DB column name for a struct field name
+// Returns the column name wrapped in double quotes to preserve case sensitivity in PostgreSQL
 func (o *ORM) resolveColumn(fieldName string) (string, error) {
 	columnName, ok := o.fieldMap[fieldName]
 	if !ok {
 		return "", fmt.Errorf("field %s not found in struct", fieldName)
 	}
-	return columnName, nil
+	return fmt.Sprintf(`"%s"`, columnName), nil
 }
 
 // generatePlaceholders creates SQL placeholders ($1, $2, etc.)
