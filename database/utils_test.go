@@ -659,7 +659,7 @@ func TestUpdateStruct(t *testing.T) {
 			conditionField: "id",
 			conditionValue: 1,
 			setupMock: func(m sqlmock.Sqlmock) {
-				m.ExpectExec("UPDATE users SET name = \\$1 WHERE id = \\$2").
+				m.ExpectExec(`UPDATE users SET "name" = \$1 WHERE "id" = \$2`).
 					WithArgs("Updated Name", 1).
 					WillReturnResult(sqlmock.NewResult(0, 1))
 			},

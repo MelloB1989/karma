@@ -349,10 +349,16 @@ func insertStruct(executor dbExecutor, tableName string, data any) error {
 		return fmt.Errorf("no columns to insert for table '%s'", tableName)
 	}
 
+	// Quote column names to preserve case sensitivity in PostgreSQL
+	quotedColumns := make([]string, len(columns))
+	for i, col := range columns {
+		quotedColumns[i] = fmt.Sprintf(`"%s"`, col)
+	}
+
 	query := fmt.Sprintf(
 		`INSERT INTO %s (%s) VALUES (%s)`,
 		tableName,
-		strings.Join(columns, ", "),
+		strings.Join(quotedColumns, ", "),
 		placeholders(len(values)),
 	)
 
@@ -387,10 +393,10 @@ func updateStruct(executor dbExecutor, tableName string, data any, conditionFiel
 
 	values = append(values, conditionValue)
 	query := fmt.Sprintf(
-		`UPDATE %s SET %s WHERE %s = $%d`,
+		`UPDATE %s SET %s WHERE "%s" = $%d`,
 		tableName,
 		strings.Join(columns, ", "),
-		camelToSnake(conditionField),
+		conditionField,
 		len(values),
 	)
 
@@ -450,7 +456,7 @@ func extractFieldsForUpdate(data any, conditionField string) ([]string, []any, e
 		fieldValue := elem.Field(i)
 		value := extractFieldValue(field, fieldValue)
 
-		columns = append(columns, fmt.Sprintf("%s = $%d", camelToSnake(column), placeholderIdx))
+		columns = append(columns, fmt.Sprintf(`"%s" = $%d`, column, placeholderIdx))
 		values = append(values, value)
 		placeholderIdx++
 	}

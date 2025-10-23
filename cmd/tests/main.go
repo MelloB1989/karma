@@ -16,7 +16,6 @@ func main() {
 	// tests.TestMCPServer()
 	// tests.TestSendingSingleMail()
 	// tests.ORMTest()
-	// tests.TestORMv2()
 	// tests.GoogleAuth()
 	// tests.TestKarmaErrorPackage()
 	// tests.TestKarmaFiles()

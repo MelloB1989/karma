@@ -331,6 +331,23 @@ func (o *ORM) Insert(entity any) error {
 	if o.tx != nil {
 		return database.InsertTrxStruct(o.tx, o.tableName, entity)
 	} else {
+		// Initialize database connection if not already done
+		if o.db == nil {
+			var db *sqlx.DB
+			var err error
+			if o.databasePrefix != "" {
+				db, err = database.PostgresConn(database.PostgresConnOptions{
+					DatabaseUrlPrefix: o.databasePrefix,
+				})
+			} else {
+				db, err = database.PostgresConn()
+			}
+			if err != nil {
+				log.Printf("Database connection error: %v", err)
+				return err
+			}
+			o.db = db
+		}
 		return database.InsertStruct(o.db, o.tableName, entity)
 	}
 }
@@ -345,6 +362,23 @@ func (o *ORM) Update(entity any, primaryKeyValue string) error {
 	if o.tx != nil {
 		return database.UpdateTrxStruct(o.tx, o.tableName, entity, primaryField, primaryKeyValue)
 	} else {
+		// Initialize database connection if not already done
+		if o.db == nil {
+			var db *sqlx.DB
+			var err error
+			if o.databasePrefix != "" {
+				db, err = database.PostgresConn(database.PostgresConnOptions{
+					DatabaseUrlPrefix: o.databasePrefix,
+				})
+			} else {
+				db, err = database.PostgresConn()
+			}
+			if err != nil {
+				log.Printf("Database connection error: %v", err)
+				return err
+			}
+			o.db = db
+		}
 		return database.UpdateStruct(o.db, o.tableName, entity, primaryField, primaryKeyValue)
 	}
 }
