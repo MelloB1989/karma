@@ -208,7 +208,7 @@ func Load(entity any, opts ...Options) *ORM {
 	}
 
 	orm := &ORM{
-		tableName:  tableName,
+		tableName:  fmt.Sprintf(`"%s"`, tableName), // Quote table name for case sensitivity
 		structType: t,
 		fieldMap:   fieldMap,
 		db:         nil,
