@@ -36,15 +36,15 @@ const (
 )
 
 type AIMessage struct {
-	Images     []string        `json:"images"`          //Image URLs or Base64 image data URLs
-	Files      []string        `json:"files"`           //File URLs or Base64 file data URLs
-	ToolCalls  *OpenAIToolCall `json:"tools,omitempty"` // Tool calls based on OpenAI standards
-	ToolCallId string          `json:"tool_call_id,omitempty"`
-	Message    string          `json:"message"`
-	Metadata   string          `json:"metadata"` //Store metadata related to the message, you can also store stringified JSON data
-	Role       AIRoles         `json:"role"`
-	Timestamp  time.Time       `json:"timestamp"`
-	UniqueId   string          `json:"unique_id"`
+	Images     []string         `json:"images"`          //Image URLs or Base64 image data URLs
+	Files      []string         `json:"files"`           //File URLs or Base64 file data URLs
+	ToolCalls  []OpenAIToolCall `json:"tools,omitempty"` // Tool calls based on OpenAI standards
+	ToolCallId string           `json:"tool_call_id,omitempty"`
+	Message    string           `json:"message"`
+	Metadata   string           `json:"metadata"` //Store metadata related to the message, you can also store stringified JSON data
+	Role       AIRoles          `json:"role"`
+	Timestamp  time.Time        `json:"timestamp"`
+	UniqueId   string           `json:"unique_id"`
 }
 
 type OpenAIToolCall struct {
