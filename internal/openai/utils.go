@@ -55,6 +55,8 @@ func formatMessages(messages models.AIChatHistory, sysmgs string) []openai.ChatC
 			mgs = append(mgs, openai.AssistantMessage(message.Message))
 		case "system":
 			mgs = append(mgs, openai.SystemMessage(message.Message))
+		case "tool":
+			mgs = append(mgs, openai.ToolMessage(message.Message, message.ToolCallId))
 		}
 	}
 	return mgs
