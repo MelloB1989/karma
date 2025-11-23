@@ -374,3 +374,44 @@ func (kai *KarmaAI) handleAnthropicStreamCompletion(messages models.AIChatHistor
 	response.TimeTaken = int(time.Since(start).Milliseconds())
 	return response, nil
 }
+
+func (kai *KarmaAI) handleOpenAIEmbeddingGeneration(text string) (*models.AIEmbeddingResponse, error) {
+	embeddings, err := openai.GenerateEmbeddings(text, string(kai.Model.BaseModel))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate embeddings: %w", err)
+	}
+
+	// Extract the embedding vector from the first data element
+	var embeddingVector []float64
+	if len(embeddings.Data) > 0 {
+		embeddingVector = embeddings.Data[0].Embedding
+	}
+
+	return &models.AIEmbeddingResponse{
+		Embeddings: embeddingVector,
+		Usage: struct {
+			PromptTokens int `json:"prompt_tokens"`
+			TotalTokens  int `json:"total_tokens"`
+		}{
+			PromptTokens: int(embeddings.Usage.PromptTokens),
+			TotalTokens:  int(embeddings.Usage.TotalTokens),
+		},
+	}, nil
+}
+
+func (kai *KarmaAI) handleBedrockEmbeddingGeneration(text string) (*models.AIEmbeddingResponse, error) {
+	embeddings, err := bedrock_runtime.CreateEmbeddings(text, kai.Model.GetModelString())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Bedrock embeddings: %w", err)
+	}
+	// Convert the embeddings to a slice of float64
+	embeddingVector := make([]float64, 0, len(embeddings))
+	for _, v := range embeddings {
+		embeddingVector = append(embeddingVector, float64(v))
+	}
+
+	// TODO: Include usage details.
+	return &models.AIEmbeddingResponse{
+		Embeddings: embeddingVector,
+	}, nil
+}

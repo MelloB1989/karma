@@ -1,19 +1,19 @@
 package tests
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/MelloB1989/karma/ai"
 )
 
-func GetEmbedding(text string) ([]float32, error) {
-	kai := ai.NewKarmaAI(ai.TitanEmbedText, ai.Bedrock)
+func TestKAIEmbeddingGeneration() {
+	kai := ai.NewKarmaAI(ai.TextEmbedding3Small, ai.OpenAI)
 
-	embeddingPrompt := fmt.Sprintf("Generate embedding for: %s", text)
-	embeddingResponse, err := kai.GetEmbeddings(embeddingPrompt)
+	embeddingString := "I like milkshakes."
+	embeddingResponse, err := kai.GetEmbeddings(embeddingString)
 	if err != nil {
-		return nil, err
+		log.Fatal(err)
 	}
 
-	return embeddingResponse.Embedding, nil
+	log.Println("Embedding: ", embeddingResponse.GetEmbeddingsFloat32())
 }

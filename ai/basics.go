@@ -31,6 +31,11 @@ const (
 	GPTOSS_20B  BaseModel = "gpt-oss-20b"
 	GPTOSS_120B BaseModel = "gpt-oss-120b"
 
+	// Text Embedding Models
+	TextEmbeddingAda002 BaseModel = "text-embedding-ada-002"
+	TextEmbedding3Large BaseModel = "text-embedding-3-large"
+	TextEmbedding3Small BaseModel = "text-embedding-3-small"
+
 	// Claude Models
 	Claude35Sonnet BaseModel = "claude-3.5-sonnet"
 	Claude35Haiku  BaseModel = "claude-3.5-haiku"
@@ -81,6 +86,7 @@ const (
 	NovaMicro  BaseModel = "nova-micro"
 
 	// Google Models
+	Gemini3ProPreview BaseModel = "gemini-3-pro-preview"
 	Gemini25Flash     BaseModel = "gemini-2.5-flash"
 	Gemini25Pro       BaseModel = "gemini-2.5-pro"
 	Gemini20Flash     BaseModel = "gemini-2.0-flash"
@@ -133,17 +139,20 @@ type providerMap map[Provider]map[BaseModel]string
 var (
 	ProviderModelMapping providerMap = map[Provider]map[BaseModel]string{
 		OpenAI: {
-			GPT4:       "gpt-4",
-			GPT4o:      "gpt-4o",
-			GPT4oMini:  "gpt-4o-mini",
-			GPT4Turbo:  "gpt-4-turbo",
-			GPT35Turbo: "gpt-3.5-turbo",
-			GPT5:       "gpt-5",
-			GPT5Nano:   "gpt-5-nano",
-			GPT5Mini:   "gpt-5-mini",
-			O1:         "o1",
-			O1Mini:     "o1-mini",
-			O1Preview:  "o1-preview",
+			GPT4:                "gpt-4",
+			GPT4o:               "gpt-4o",
+			GPT4oMini:           "gpt-4o-mini",
+			GPT4Turbo:           "gpt-4-turbo",
+			GPT35Turbo:          "gpt-3.5-turbo",
+			GPT5:                "gpt-5",
+			GPT5Nano:            "gpt-5-nano",
+			GPT5Mini:            "gpt-5-mini",
+			O1:                  "o1",
+			O1Mini:              "o1-mini",
+			O1Preview:           "o1-preview",
+			TextEmbeddingAda002: "text-embedding-ada-002",
+			TextEmbedding3Large: "text-embedding-3-large",
+			TextEmbedding3Small: "text-embedding-3-small",
 		},
 		Anthropic: {
 			ClaudeInstant:  "claude-instant-v1.2",
@@ -197,6 +206,7 @@ var (
 			NovaMicro:  "amazon.nova-micro-v1:0",
 		},
 		Google: {
+			Gemini3ProPreview: "gemini-3-pro-preview",
 			Gemini25Flash:     "gemini-2.5-flash",
 			Gemini25Pro:       "gemini-2.5-pro",
 			Gemini20Flash:     "gemini-2.0-flash",

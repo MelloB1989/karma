@@ -14,7 +14,7 @@ import (
 	"github.com/openai/openai-go/v2"
 )
 
-func GenImage(prompt string, model, destination_dir string, com ...CompatibleOptions) (*models.AIImageResponse, error) {
+func GenImage(prompt, model, destination_dir string, com ...CompatibleOptions) (*models.AIImageResponse, error) {
 	client := createClient(com...)
 	ctx := context.Background()
 

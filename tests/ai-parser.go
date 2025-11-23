@@ -9,189 +9,203 @@ import (
 	"github.com/MelloB1989/karma/models"
 )
 
-// Sample response structure
-type ProductRecommendation struct {
-	Name        string   `json:"name" description:"Product name"`
-	Description string   `json:"description" description:"Brief product description"`
-	Price       float64  `json:"price" description:"Product price in USD"`
-	Rating      float64  `json:"rating" description:"User rating from 1.0 to 5.0"`
-	Features    []string `json:"features" description:"Key product features"`
-	Pros        []string `json:"pros" description:"Product advantages"`
-	Cons        []string `json:"cons" description:"Product disadvantages"`
+// Example 1: Simple structured data extraction
+type Product struct {
+	Name     string   `json:"name" description:"Product name"`
+	Price    float64  `json:"price" description:"Price in USD"`
+	Category string   `json:"category" description:"Product category"`
+	Features []string `json:"features" description:"List of key features"`
+	InStock  bool     `json:"in_stock" description:"Availability status"`
+	Rating   float64  `json:"rating,omitempty" description:"User rating out of 5"`
 }
 
-type GitLabIssues struct {
-	Name        string   `json:"name" description:"Issue name"`
-	Description string   `json:"description" description:"Issue description"`
-	Labels      []string `json:"labels" description:"Issue labels"`
+// Example 2: Complex nested structure
+type Article struct {
+	Title    string    `json:"title" description:"Article title"`
+	Summary  string    `json:"summary" description:"Brief summary"`
+	Author   Author    `json:"author" description:"Author information"`
+	Tags     []string  `json:"tags" description:"Article tags"`
+	Sections []Section `json:"sections" description:"Article sections"`
 }
 
-type GitLabIssuesResponse struct {
-	Issues []GitLabIssues `json:"issues"`
+type Author struct {
+	Name  string `json:"name" description:"Author name"`
+	Email string `json:"email,omitempty" description:"Author email"`
 }
 
-func TestKarmaParser() {
-
-	// Example with chat history
-	chatExample()
-	productsGeneration()
-	issuesGeneration()
+type Section struct {
+	Heading string `json:"heading" description:"Section heading"`
+	Content string `json:"content" description:"Section content"`
 }
 
-func issuesGeneration() {
-	// Initialize the AI parser
+// Example 3: Data analysis result
+type SentimentAnalysis struct {
+	OverallSentiment string             `json:"overall_sentiment" description:"positive, negative, or neutral"`
+	Score            float64            `json:"score" description:"Sentiment score from -1 to 1"`
+	KeyPhrases       []string           `json:"key_phrases" description:"Important phrases"`
+	Emotions         map[string]float64 `json:"emotions" description:"Emotion scores"`
+}
+
+func TestParser() {
+	// Initialize parser with options
 	p := parser.NewParser(
-		parser.WithModel((ai.Gemini20Flash)),
-		parser.WithAIOptions(
-			ai.WithTemperature(0.5),
-			ai.WithSystemMessage("You are a helpful AI Project manager that specializes in issue generation."),
-			ai.WithMaxTokens(500),
-			ai.WithTopP(0.9),
-			ai.WithResponseType("application/json"),
-		),
+		parser.WithMaxRetries(3),
+		parser.WithDebug(true),
+	)
+
+	// Example 1: Extract product information
+	fmt.Println("=== Example 1: Product Extraction ===")
+	productExample()
+
+	// Example 2: Generate structured article
+	fmt.Println("\n=== Example 2: Article Generation ===")
+	articleExample(p)
+
+	// Example 3: Sentiment analysis
+	fmt.Println("\n=== Example 3: Sentiment Analysis ===")
+	sentimentExample(p)
+
+	// Example 4: Chat-based parsing
+	fmt.Println("\n=== Example 4: Chat Completion ===")
+	chatExample(p)
+}
+
+func productExample() {
+	// Custom AI client setup
+	client := ai.NewKarmaAI(
+		ai.GPT4oMini,
+		ai.OpenAI,
+	)
+
+	p := parser.NewParser(
+		parser.WithAIClient(client),
 		parser.WithMaxRetries(2),
 	)
 
-	// Define a prompt
-	prompt := `
-	Generate a list of issues for Gitlab based on the following issue list, refine and make them detailed:
-	- Default country India ___HIGH
-- Need help, onboarding screens (UI/UX) ___LOW
-	`
+	var product Product
+	prompt := "Extract information about the iPhone 15 Pro"
+	context := "Latest Apple flagship smartphone released in 2023"
 
-	// Context information (optional)
-	context := ""
-
-	// Initialize the output structure
-	var recommendation GitLabIssuesResponse
-
-	// Parse the response
-	timeTaken, tokens, err := p.Parse(prompt, context, &recommendation)
+	duration, tokens, err := p.Parse(prompt, context, &product)
 	if err != nil {
-		log.Fatalf("Error parsing AI response: %v", err)
+		log.Fatalf("Parse error: %v", err)
 	}
 
-	// Display the structured result
-	fmt.Println("Generated Issues:")
-	fmt.Println("Time taken: ", timeTaken)
-	fmt.Println("Tokens: ", tokens)
-	for _, issue := range recommendation.Issues {
-		fmt.Printf("Name: %s\n", issue.Name)
-		fmt.Printf("Description: %s\n", issue.Description)
-		fmt.Printf("Labels: %v\n", issue.Labels)
-		fmt.Println()
-	}
+	fmt.Printf("Duration: %v, Tokens: %d\n", duration, tokens)
+	fmt.Printf("Product: %+v\n", product)
 }
 
-func productsGeneration() {
-	// Initialize the AI parser
-	p := parser.NewParser(
-		parser.WithModel((ai.Llama3_70B)),
-		parser.WithAIOptions(
-			ai.WithTemperature(0.1),
-			ai.WithSystemMessage("You are a helpful assistant that specializes in product recommendations."),
-			ai.WithMaxTokens(500),
-			ai.WithTopP(0.9),
-		),
-		parser.WithMaxRetries(2),
-	)
+func articleExample(p *parser.Parser) {
+	var article Article
+	prompt := "Write an article about the benefits of meditation"
+	context := "Target audience: beginners interested in wellness"
 
-	// Define a prompt
-	prompt := "Recommend a smartphone for a college student who needs good battery life and camera quality, budget around $500."
-
-	// Context information (optional)
-	context := "The user is looking for a mid-range smartphone with emphasis on battery life and camera quality."
-
-	// Initialize the output structure
-	var recommendation ProductRecommendation
-
-	// Parse the response
-	timeTaken, tokens, err := p.Parse(prompt, context, &recommendation)
+	duration, tokens, err := p.Parse(prompt, context, &article)
 	if err != nil {
-		log.Fatalf("Error parsing AI response: %v", err)
+		log.Fatalf("Parse error: %v", err)
 	}
 
-	// Display the structured result
-	fmt.Println("Time taken: ", timeTaken)
-	fmt.Println("Tokens: ", tokens)
-	fmt.Printf("Recommended Product: %s\n", recommendation.Name)
-	fmt.Printf("Description: %s\n", recommendation.Description)
-	fmt.Printf("Price: $%.2f\n", recommendation.Price)
-	fmt.Printf("Rating: %.1f/5.0\n", recommendation.Rating)
-
-	fmt.Println("\nFeatures:")
-	for _, feature := range recommendation.Features {
-		fmt.Printf("- %s\n", feature)
-	}
-
-	fmt.Println("\nPros:")
-	for _, pro := range recommendation.Pros {
-		fmt.Printf("- %s\n", pro)
-	}
-
-	fmt.Println("\nCons:")
-	for _, con := range recommendation.Cons {
-		fmt.Printf("- %s\n", con)
-	}
+	fmt.Printf("Duration: %v, Tokens: %d\n", duration, tokens)
+	fmt.Printf("Title: %s\n", article.Title)
+	fmt.Printf("Author: %s\n", article.Author.Name)
+	fmt.Printf("Sections: %d\n", len(article.Sections))
 }
 
-func chatExample() {
-	fmt.Println("\n--- Chat Example ---")
+func sentimentExample(p *parser.Parser) {
+	var sentiment SentimentAnalysis
+	prompt := "Analyze the sentiment of this review"
+	context := `"This product exceeded my expectations! The quality is outstanding,
+	and customer service was incredibly helpful. However, shipping took longer than expected."`
 
-	// Initialize the AI parser
-	p := parser.NewParser()
+	duration, tokens, err := p.Parse(prompt, context, &sentiment)
+	if err != nil {
+		log.Fatalf("Parse error: %v", err)
+	}
 
-	// Create a chat history
-	chatHistory := []models.AIMessage{
-		{
-			Role:    models.System,
-			Message: "You are a helpful assistant that specializes in weather forecasts.",
-		},
+	fmt.Printf("Duration: %v, Tokens: %d\n", duration, tokens)
+	fmt.Printf("Sentiment: %s (%.2f)\n", sentiment.OverallSentiment, sentiment.Score)
+	fmt.Printf("Key Phrases: %v\n", sentiment.KeyPhrases)
+	fmt.Printf("Emotions: %v\n", sentiment.Emotions)
+}
+
+func chatExample(p *parser.Parser) {
+	var product Product
+
+	messages := []models.AIMessage{
 		{
 			Role:    models.User,
-			Message: "What's the weather like in New York?",
+			Message: "I need information about wireless headphones",
 		},
 		{
 			Role:    models.Assistant,
-			Message: "I don't have access to real-time weather data. To provide an accurate forecast, I would need the current date and access to weather services.",
+			Message: "I can help with that. Which brand are you interested in?",
 		},
 		{
 			Role:    models.User,
-			Message: "Let's assume it's spring. Give me a typical forecast for New York in spring.",
+			Message: "Sony WH-1000XM5",
 		},
 	}
 
-	// Define the output structure
-	type WeatherForecast struct {
-		Location    string `json:"location" description:"City name"`
-		Season      string `json:"season" description:"Current season"`
-		Temperature struct {
-			High float64 `json:"high" description:"High temperature in Celsius"`
-			Low  float64 `json:"low" description:"Low temperature in Celsius"`
-		} `json:"temperature" description:"Temperature range"`
-		Conditions []string `json:"conditions" description:"Possible weather conditions"`
-		Activities []string `json:"recommendedActivities" description:"Recommended activities for this weather"`
-	}
-
-	var forecast WeatherForecast
-
-	// Parse the chat response
-	err := p.ParseChatResponse(chatHistory, &forecast)
+	err := p.ParseChat(messages, &product)
 	if err != nil {
-		log.Fatalf("Error parsing chat response: %v", err)
+		log.Fatalf("Chat parse error: %v", err)
 	}
 
-	// Display the structured result
-	fmt.Printf("Weather Forecast for %s in %s\n", forecast.Location, forecast.Season)
-	fmt.Printf("Temperature: %.1f°C to %.1f°C\n", forecast.Temperature.Low, forecast.Temperature.High)
+	fmt.Printf("Product: %+v\n", product)
+}
 
-	fmt.Println("Possible Conditions:")
-	for _, condition := range forecast.Conditions {
-		fmt.Printf("- %s\n", condition)
+// Advanced Example: Batch processing
+func batchProcessingExample() {
+	p := parser.NewParser(parser.WithMaxRetries(2))
+
+	reviews := []string{
+		"Great product, highly recommend!",
+		"Terrible experience, would not buy again.",
+		"It's okay, nothing special.",
 	}
 
-	fmt.Println("\nRecommended Activities:")
-	for _, activity := range forecast.Activities {
-		fmt.Printf("- %s\n", activity)
+	type BatchResult struct {
+		Reviews []SentimentAnalysis `json:"reviews"`
+	}
+
+	var result BatchResult
+	prompt := "Analyze sentiment for each review"
+	context := fmt.Sprintf("Reviews: %v", reviews)
+
+	_, _, err := p.Parse(prompt, context, &result)
+	if err != nil {
+		log.Fatalf("Batch parse error: %v", err)
+	}
+
+	for i, analysis := range result.Reviews {
+		fmt.Printf("Review %d: %s (%.2f)\n", i+1, analysis.OverallSentiment, analysis.Score)
+	}
+}
+
+// Error handling example
+func errorHandlingExample() {
+	p := parser.NewParser(parser.WithMaxRetries(1))
+
+	type InvalidStruct struct {
+		unexported string // Won't work - unexported field
+	}
+
+	var invalid InvalidStruct
+	_, _, err := p.Parse("test", "", &invalid)
+	if err != nil {
+		fmt.Printf("Expected error: %v\n", err)
+	}
+
+	// Correct usage
+	type ValidStruct struct {
+		Field string `json:"field"`
+	}
+
+	var valid ValidStruct
+	duration, tokens, err := p.Parse("Generate a test value", "", &valid)
+	if err != nil {
+		log.Printf("Error: %v", err)
+	} else {
+		fmt.Printf("Success! Duration: %v, Tokens: %d, Value: %+v\n", duration, tokens, valid)
 	}
 }

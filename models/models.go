@@ -100,6 +100,23 @@ type AIImageResponse struct {
 	FilePath       string `json:"file_path"`
 }
 
+type AIEmbeddingResponse struct {
+	Embeddings []float64 `json:"embeddings"`
+	Usage      struct {
+		PromptTokens int `json:"prompt_tokens"`
+		TotalTokens  int `json:"total_tokens"`
+	} `json:"usage"`
+}
+
+// GetEmbeddingsFloat32 converts the embeddings to float32
+func (e *AIEmbeddingResponse) GetEmbeddingsFloat32() []float32 {
+	out := make([]float32, len(e.Embeddings))
+	for i, v := range e.Embeddings {
+		out[i] = float32(v)
+	}
+	return out
+}
+
 type StreamedResponse struct {
 	AIResponse string     `json:"text"`
 	TokenUsed  int        `json:"token_used"`

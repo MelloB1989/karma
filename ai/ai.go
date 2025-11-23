@@ -2,10 +2,8 @@ package ai
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/MelloB1989/karma/config"
-	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/models"
 )
 
@@ -124,12 +122,14 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 	return response, err
 }
 
-func (kai *KarmaAI) GetEmbeddings(text string) (*bedrock_runtime.EmbeddingResponse, error) {
-	embeddings, err := bedrock_runtime.CreateEmbeddings(text, kai.Model.GetModelString())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Bedrock embeddings: %w", err)
+func (kai *KarmaAI) GetEmbeddings(text string) (*models.AIEmbeddingResponse, error) {
+	kai.setBasicProperties()
+	switch kai.Model.GetModelProvider() {
+	case OpenAI:
+		return kai.handleOpenAIEmbeddingGeneration(text)
+	case Bedrock:
+		return kai.handleBedrockEmbeddingGeneration(text)
+	default:
+		return nil, errors.New("this provider is not supported yet for embeddings")
 	}
-	return &bedrock_runtime.EmbeddingResponse{
-		Embedding: embeddings,
-	}, nil
 }
