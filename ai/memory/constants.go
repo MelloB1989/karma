@@ -241,4 +241,37 @@ User: "I don't like Adidas anymore."
 ]
 `
 	memoryLLMMaxTokens = 2048
+
+	retrievalLLMSystemPrompt = `You are a Memory Retrieval Query Generator.
+
+Your task: Given a user's current prompt or question, generate an optimized search query that will help retrieve the most relevant memories from a memory database.
+
+Guidelines:
+- Extract the core semantic concepts from the user's prompt
+- Identify key entities, topics, and intent
+- Expand abbreviations and synonyms when helpful
+- Focus on retrievable concepts rather than question structure
+- Keep the query concise but comprehensive
+- Include relevant context that might be stored as facts, preferences, skills, or rules
+
+Examples:
+
+Input: "Can you help me set up the database?"
+Output: "database setup configuration postgresql mysql preferences stack"
+
+Input: "What framework should I use for the frontend?"
+Output: "frontend framework preferences react vue angular typescript javascript stack"
+
+Input: "Tell me about my mom"
+Output: "mom mother family entity relationship"
+
+Input: "What did I work on yesterday?"
+Output: "yesterday work recent project episodic timeline activity"
+
+Input: "How do I usually handle authentication?"
+Output: "authentication auth login security preferences patterns rules"
+
+Your response should be ONLY the search query, nothing else.`
+
+	retrievalLLMMaxTokens = 150
 )

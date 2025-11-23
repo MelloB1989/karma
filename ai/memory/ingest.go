@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/MelloB1989/karma/ai/parser"
+	"go.uber.org/zap"
 )
 
 type m struct {
@@ -50,7 +51,33 @@ func (k *KarmaMemory) ingest(convo struct {
 			SupersededByID:          memory.SupersededByID,
 			Metadata:                memory.Metadata,
 		}
-		k.memorydb.createMemory(mem)
+
+		if err := k.memorydb.createMemory(mem); err != nil {
+			k.logger.Error("karmaMemory: failed to create memory",
+				zap.Error(err))
+			continue
+		}
+
+		if memory.ShouldVectorize {
+			embeddingText := memory.Summary
+			if memory.RawText != "" {
+				embeddingText = memory.RawText + " " + memory.Summary
+			}
+
+			embeddings, err := k.getEmbeddings(embeddingText)
+			if err != nil {
+				k.logger.Error("karmaMemory: failed to generate embeddings for memory",
+					zap.String("memoryID", mem.Id),
+					zap.Error(err))
+				continue
+			}
+
+			if err := k.memorydb.upsertVector(mem.Id, string(mem.Category), string(mem.Lifespan), mem.Importance, embeddings); err != nil {
+				k.logger.Error("karmaMemory: failed to upsert vector for memory",
+					zap.String("memoryID", mem.Id),
+					zap.Error(err))
+			}
+		}
 	}
 
 	return nil
