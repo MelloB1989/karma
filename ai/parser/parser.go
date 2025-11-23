@@ -3,6 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"reflect"
 	"regexp"
 	"slices"
@@ -63,6 +64,10 @@ func (p *Parser) Parse(prompt, context string, output any) (time.Duration, int, 
 			retries--
 			lastErr = err
 			continue
+		}
+
+		if p.debug {
+			log.Printf("AI Response: %s", resp.AIResponse)
 		}
 
 		cleaned := cleanJSON(resp.AIResponse)

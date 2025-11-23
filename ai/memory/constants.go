@@ -2,11 +2,12 @@ package memory
 
 const (
 	memoryLLMSystemPrompt = `You are a Memory Classifier and Extractor for an AI assistant.
+
 Your job:
 - INPUT: one user message or event (plain text).
 - OUTPUT: a JSON object describing ZERO OR MORE "memories" that should be stored.
 - You MUST output ONLY valid JSON. No extra text, no comments, no markdown.
-- If no memory is worth storing, output exactly: []
+- If no memory is worth storing, output exactly: {"memories": []}
 
 You classify memories into the following CATEGORIES:
 
@@ -159,34 +160,36 @@ OUTPUT JSON FORMAT
 
 Always output exactly this structure:
 
-[
-  {
-    "category": "fact | preference | skill | context | rule | entity | episodic",
+{
+  "memories": [
+    {
+      "category": "fact | preference | skill | context | rule | entity | episodic",
 
-    "summary": "Short natural-language summary of the memory.",
-    "raw_text": "The exact or normalized text span that led to this memory.",
+      "summary": "Short natural-language summary of the memory.",
+      "raw_text": "The exact or normalized text span that led to this memory.",
 
-    "canonical_key": "string_or_null",
-    "value": "string_or_null",
+      "canonical_key": "string_or_null",
+      "value": "string_or_null",
 
-    "lifespan": "short_term | mid_term | long_term | lifelong",
-    "forget_score": 0.0,
-    "importance": 1,
+      "lifespan": "short_term | mid_term | long_term | lifelong",
+      "forget_score": 0.0,
+      "importance": 1,
 
-    "mutability": "immutable | mutable",
-    "supersedes_canonical_keys": ["optional", "list", "can", "be", "empty"],
+      "mutability": "immutable | mutable",
+      "supersedes_canonical_keys": ["optional", "list", "can", "be", "empty"],
 
-    "should_vectorize": true,
+      "should_vectorize": true,
 
-    "metadata": {
-      "tags": ["optional", "tags"],
-      "source": "chat"  // or "tool", "system", "webhook", etc. if known
+      "metadata": {
+        "tags": ["optional", "tags"],
+        "source": "chat"  // or "tool", "system", "webhook", etc. if known
+      }
     }
-  }
-]
+  ]
+}
 
 Notes:
-- If no memories should be stored, respond: []
+- If no memories should be stored, respond: {"memories": []}
 - If some fields are not applicable (e.g., canonical_key for a purely episodic event), set them to null or an empty list.
 - Be conservative: avoid storing small talk or one-off jokes with no future value.
 
@@ -197,48 +200,53 @@ EXAMPLES
 Example 1:
 User: "I use PostgreSQL for databases."
 
-[
-  {
-    "category": "fact",
-    "summary": "User uses PostgreSQL as their database.",
-    "raw_text": "I use PostgreSQL for databases",
-    "canonical_key": "db.primary",
-    "value": "postgresql",
-    "lifespan": "long_term",
-    "forget_score": 0.1,
-    "importance": 4,
-    "mutability": "mutable",
-    "supersedes_canonical_keys": [],
-    "should_vectorize": true,
-    "metadata": {
-      "tags": ["database", "technology"],
-      "source": "chat"
+{
+  "memories": [
+    {
+      "category": "fact",
+      "summary": "User uses PostgreSQL as their database.",
+      "raw_text": "I use PostgreSQL for databases",
+      "canonical_key": "db.primary",
+      "value": "postgresql",
+      "lifespan": "long_term",
+      "forget_score": 0.1,
+      "importance": 4,
+      "mutability": "mutable",
+      "supersedes_canonical_keys": [],
+      "should_vectorize": true,
+      "metadata": {
+        "tags": ["database", "technology"],
+        "source": "chat"
+      }
     }
-  }
-]
+  ]
+}
 
 Example 2:
 User: "I don't like Adidas anymore."
 
-[
-  {
-    "category": "preference",
-    "summary": "User no longer likes Adidas.",
-    "raw_text": "I don't like Adidas anymore",
-    "canonical_key": "brand.adidas",
-    "value": "dislike",
-    "lifespan": "mid_term",
-    "forget_score": 0.6,
-    "importance": 4,
-    "mutability": "mutable",
-    "supersedes_canonical_keys": ["brand.adidas"],
-    "should_vectorize": true,
-    "metadata": {
-      "tags": ["brand", "adidas"],
-      "source": "chat"
+{
+  "memories": [
+    {
+      "category": "preference",
+      "summary": "User no longer likes Adidas.",
+      "raw_text": "I don't like Adidas anymore",
+      "canonical_key": "brand.adidas",
+      "value": "dislike",
+      "lifespan": "mid_term",
+      "forget_score": 0.6,
+      "importance": 4,
+      "mutability": "mutable",
+      "supersedes_canonical_keys": ["brand.adidas"],
+      "should_vectorize": true,
+      "metadata": {
+        "tags": ["brand", "adidas"],
+        "source": "chat"
+      }
     }
-  }
-]
+  ]
+}
+
 `
 	memoryLLMMaxTokens = 2048
 

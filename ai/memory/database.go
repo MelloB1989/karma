@@ -7,6 +7,7 @@ import (
 
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/database"
+	"github.com/MelloB1989/karma/utils"
 	"github.com/MelloB1989/karma/v2/orm"
 	"github.com/upstash/vector-go"
 )
@@ -53,7 +54,7 @@ type EntityRelationship struct {
 }
 
 type Memory struct {
-	TableName               string               `karma_table:"memories"`
+	TableName               string               `karma_table:"karma_ai_memories"`
 	Id                      string               `json:"id" karma:"primary_key"`
 	SubjectKey              string               `json:"subject_key"`
 	Namespace               string               `json:"namespace"`
@@ -67,17 +68,17 @@ type Memory struct {
 	Lifespan                MemoryLifespan       `json:"lifespan"`
 	ForgetScore             float64              `json:"forget_score"`
 	Status                  MemoryStatus         `json:"status"`
-	SupersedesCanonicalKeys []string             `json:"supersedes_canonical_keys" db:"supersedes_canonical_keys"`
+	SupersedesCanonicalKeys json.RawMessage      `db:"supersedes_canonical_keys"`
 	SupersededByID          *string              `json:"superseded_by_id,omitempty"`
-	Metadata                json.RawMessage      `json:"metadata" db:"metadata"`
+	Metadata                json.RawMessage      `json:"metadata"`
 	CreatedAt               time.Time            `json:"created_at"`
 	UpdatedAt               time.Time            `json:"updated_at"`
 	ExpiresAt               *time.Time           `json:"expires_at,omitempty"`
-	EntityRelationships     []EntityRelationship `json:"entity_relationships,omitempty" db:"-"` // Not stored in DB, used for link creation
+	EntityRelationships     []EntityRelationship `json:"-"`
 }
 
 type EntityLink struct {
-	TableName    string          `karma_table:"entity_links"`
+	TableName    string          `karma_table:"karma_ai_entity_links"`
 	ID           string          `json:"id" karma:"primary_key"`
 	SubjectKey   string          `json:"subject_key"`
 	Namespace    string          `json:"namespace"`
@@ -118,66 +119,44 @@ func (d *dbClient) setUser(userId string) string {
 }
 
 func (d *dbClient) runMigrations() error {
-	db, err := database.PostgresConn()
+	db, err := database.PostgresConn(database.PostgresConnOptions{
+		DatabaseUrlPrefix: "KARMA_MEMORY",
+	})
 	if err != nil {
 		return err
 	}
 	defer db.Close()
 
+	// Drop existing tables to apply schema changes
+	// _, _ = db.Exec(`DROP TABLE IF EXISTS karma_ai_memories CASCADE;`)
+	// _, _ = db.Exec(`DROP TABLE IF EXISTS karma_ai_entity_links CASCADE;`)
+
 	// Create memories table with partitioning by namespace
 	memoriesTable := `
-	CREATE TABLE IF NOT EXISTS memories (
-		id                      UUID DEFAULT gen_random_uuid(),
-
-		-- Identify who/what this memory belongs to (no FK on purpose)
-		subject_key             TEXT NOT NULL,   -- e.g. "user_123", "org_acme"
-
-		-- Partition / namespace: app, service, or logical memory space
-		namespace               TEXT NOT NULL,   -- e.g. "lyzn_chat", "sales_agent"
-
-		-- Memory categorization (aligned with the classifier)
-		category                TEXT NOT NULL CHECK (
-									category IN (
-										'fact',
-										'preference',
-										'skill',
-										'context',
-										'rule',
-										'entity',
-										'episodic'
-									)
-								),
-
-		summary                 TEXT NOT NULL,
-		raw_text                TEXT NOT NULL,
-
-		-- Optional semantic key/value for facts, preferences, skills, etc.
-		canonical_key           TEXT,
-		value                   TEXT,
-
-		-- Memory lifecycle & importance
-		importance              INT NOT NULL CHECK (importance BETWEEN 1 AND 5),
-		mutability              TEXT NOT NULL CHECK (mutability IN ('immutable', 'mutable')),
-		lifespan                TEXT NOT NULL CHECK (
-									lifespan IN ('short_term','mid_term','long_term','lifelong')
-								),
-		forget_score            REAL NOT NULL CHECK (forget_score >= 0.0 AND forget_score <= 1.0),
-
-		-- Status & supersession (for preference changes etc.)
-		status                  TEXT NOT NULL CHECK (
-									status IN ('active', 'superseded', 'deleted')
-								) DEFAULT 'active',
-		supersedes_canonical_keys TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
-		superseded_by_id        UUID,  -- references memories(id) logically; no FK constraint if you want
-
-		metadata                JSONB NOT NULL DEFAULT '{}'::jsonb,
-
-		created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-		expires_at              TIMESTAMPTZ,
-
-		PRIMARY KEY (id, namespace)
-	) PARTITION BY LIST (namespace);
+	CREATE TABLE karma_ai_memories (
+    id                      VARCHAR(255) NOT NULL,
+    subject_key             TEXT NOT NULL,
+    namespace               TEXT NOT NULL,   -- partition key
+    category                TEXT NOT NULL CHECK (category IN (
+                                'fact','preference','skill','context','rule','entity','episodic'
+                            )),
+    summary                 TEXT NOT NULL,
+    raw_text                TEXT NOT NULL,
+    canonical_key           TEXT,
+    value                   TEXT,
+    importance              INT NOT NULL CHECK (importance BETWEEN 1 AND 5),
+    mutability              TEXT NOT NULL CHECK (mutability IN ('immutable','mutable')),
+    lifespan                TEXT NOT NULL CHECK (lifespan IN ('short_term','mid_term','long_term','lifelong')),
+    forget_score            REAL NOT NULL CHECK (forget_score >= 0.0 AND forget_score <= 1.0),
+    status                  TEXT NOT NULL CHECK (status IN ('active','superseded','deleted')) DEFAULT 'active',
+    supersedes_canonical_keys JSONB NOT NULL DEFAULT '[]'::jsonb,
+    superseded_by_id        VARCHAR(255),
+    metadata                JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at              TIMESTAMPTZ,
+    PRIMARY KEY (id, namespace)
+) PARTITION BY LIST (namespace);
 	`
 
 	if _, err := db.Exec(memoriesTable); err != nil {
@@ -186,8 +165,8 @@ func (d *dbClient) runMigrations() error {
 
 	// Create default partition for all namespaces
 	defaultPartition := `
-	CREATE TABLE IF NOT EXISTS memories_default
-	PARTITION OF memories DEFAULT;
+	CREATE TABLE karma_ai_memories_default
+	PARTITION OF karma_ai_memories DEFAULT;
 	`
 
 	if _, err := db.Exec(defaultPartition); err != nil {
@@ -196,14 +175,14 @@ func (d *dbClient) runMigrations() error {
 
 	// Create indexes for memories table
 	indexes := []string{
-		`CREATE INDEX IF NOT EXISTS idx_memories_subject_ns_cat
-		ON memories (subject_key, namespace, category, status);`,
+		`CREATE INDEX IF NOT EXISTS idx_karma_ai_memories_subject_ns_cat
+		ON karma_ai_memories (subject_key, namespace, category, status);`,
 
-		`CREATE INDEX IF NOT EXISTS idx_memories_expires_at
-		ON memories (expires_at);`,
+		`CREATE INDEX IF NOT EXISTS idx_karma_ai_memories_expires_at
+		ON karma_ai_memories (expires_at);`,
 
-		`CREATE INDEX IF NOT EXISTS idx_memories_canonical_active
-		ON memories (subject_key, namespace, canonical_key, status);`,
+		`CREATE INDEX IF NOT EXISTS idx_karma_ai_memories_canonical_active
+		ON karma_ai_memories (subject_key, namespace, canonical_key, status);`,
 	}
 
 	for _, idx := range indexes {
@@ -214,14 +193,14 @@ func (d *dbClient) runMigrations() error {
 
 	// Create entity_links table
 	entityLinksTable := `
-	CREATE TABLE IF NOT EXISTS entity_links (
-		id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+	CREATE TABLE karma_ai_entity_links (
+		id              VARCHAR(255) PRIMARY KEY,
 
 		subject_key     TEXT NOT NULL,
 		namespace       TEXT NOT NULL,
 
-		from_memory_id  UUID NOT NULL,   -- should point to a memory with category='entity'
-		to_memory_id    UUID NOT NULL,   -- another 'entity' memory
+		from_memory_id  VARCHAR(255) NOT NULL,   -- should point to a memory with category='entity'
+		to_memory_id    VARCHAR(255) NOT NULL,   -- another 'entity' memory
 		relation_type   TEXT NOT NULL,   -- e.g. 'parent_of', 'works_with', 'cofounder_of'
 
 		metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -235,8 +214,8 @@ func (d *dbClient) runMigrations() error {
 
 	// Create index for entity_links table
 	entityLinksIndex := `
-	CREATE INDEX IF NOT EXISTS idx_entity_links_subject_ns
-	ON entity_links (subject_key, namespace);
+	CREATE INDEX IF NOT EXISTS idx_karma_ai_entity_links_subject_ns
+	ON karma_ai_entity_links (subject_key, namespace);
 	`
 
 	if _, err := db.Exec(entityLinksIndex); err != nil {
@@ -248,10 +227,11 @@ func (d *dbClient) runMigrations() error {
 
 // CreateMemory inserts a new memory into the database
 func (d *dbClient) createMemory(memory *Memory) error {
-	o := orm.Load(&Memory{}, orm.WithDatabasePrefix("postgres"))
+	o := orm.Load(&Memory{}, orm.WithDatabasePrefix("KARMA_MEMORY"))
 	defer o.Close()
 
 	now := time.Now()
+	memory.Id = utils.GenerateID(8)
 	memory.CreatedAt = now
 	memory.UpdatedAt = now
 	memory.SubjectKey = d.userId
@@ -261,9 +241,6 @@ func (d *dbClient) createMemory(memory *Memory) error {
 	}
 	if memory.Metadata == nil {
 		memory.Metadata = json.RawMessage("{}")
-	}
-	if len(memory.SupersedesCanonicalKeys) == 0 {
-		memory.SupersedesCanonicalKeys = []string{}
 	}
 
 	memory.ExpiresAt = computeExpiry(now, memory.Lifespan, memory.ForgetScore)
@@ -290,6 +267,7 @@ func (d *dbClient) createEntityLinksForMemory(memory *Memory, txOrm *orm.ORM) er
 	now := time.Now()
 	for _, rel := range memory.EntityRelationships {
 		link := &EntityLink{
+			ID:           utils.GenerateID(8),
 			SubjectKey:   memory.SubjectKey,
 			Namespace:    memory.Namespace,
 			FromMemoryID: memory.Id,
@@ -400,7 +378,7 @@ func (d *dbClient) getMemoriesByImportance(subjectKey, namespace string, minImpo
 	defer o.Close()
 
 	var memories []Memory
-	query := `SELECT * FROM memories WHERE subject_key = $1 AND namespace = $2 AND importance >= $3 AND status = $4`
+	query := `SELECT * FROM karma_ai_memories WHERE subject_key = $1 AND namespace = $2 AND importance >= $3 AND status = $4`
 	err := o.QueryRaw(query, subjectKey, namespace, minImportance, StatusActive).Scan(&memories)
 	if err != nil {
 		return nil, err
@@ -432,7 +410,7 @@ func (d *dbClient) getExpiredMemories() ([]Memory, error) {
 	defer o.Close()
 
 	var memories []Memory
-	query := `SELECT * FROM memories WHERE expires_at IS NOT NULL AND expires_at < NOW() AND status = $1`
+	query := `SELECT * FROM karma_ai_memories WHERE expires_at IS NOT NULL AND expires_at < NOW() AND status = $1`
 	err := o.QueryRaw(query, StatusActive).Scan(&memories)
 	if err != nil {
 		return nil, err
@@ -447,7 +425,7 @@ func (d *dbClient) searchMemoriesByText(subjectKey, namespace, searchText string
 
 	var memories []Memory
 	pattern := fmt.Sprintf("%%%s%%", searchText)
-	query := `SELECT * FROM memories WHERE subject_key = $1 AND namespace = $2 AND status = $3 AND (summary ILIKE $4 OR raw_text ILIKE $4)`
+	query := `SELECT * FROM karma_ai_memories WHERE subject_key = $1 AND namespace = $2 AND status = $3 AND (summary ILIKE $4 OR raw_text ILIKE $4)`
 	err := o.QueryRaw(query, subjectKey, namespace, StatusActive, pattern).Scan(&memories)
 	if err != nil {
 		return nil, err
@@ -469,7 +447,7 @@ func (d *dbClient) updateMemoryStatus(id, status string) error {
 	o := orm.Load(&Memory{}, orm.WithDatabasePrefix("KARMA_MEMORY"))
 	defer o.Close()
 
-	query := `UPDATE memories SET status = $1, updated_at = NOW() WHERE id = $2`
+	query := `UPDATE karma_ai_memories SET status = $1, updated_at = NOW() WHERE id = $2`
 	_, err := o.ExecuteRaw(query, status, id)
 	return err
 }
@@ -482,7 +460,7 @@ func (d *dbClient) supersedeMemory(newMemory *Memory, oldCanonicalKeys []string)
 	return o.WithTransaction(func(txOrm *orm.ORM) error {
 		// Mark old memories as superseded
 		for _, oldKey := range oldCanonicalKeys {
-			query := `UPDATE memories SET status = $1, superseded_by_id = $2, updated_at = NOW()
+			query := `UPDATE karma_ai_memories SET status = $1, superseded_by_id = $2, updated_at = NOW()
 					  WHERE subject_key = $3 AND namespace = $4 AND canonical_key = $5 AND status = $6`
 			_, err := txOrm.ExecuteRaw(query, StatusSuperseded, newMemory.Id, newMemory.SubjectKey,
 				newMemory.Namespace, oldKey, StatusActive)
@@ -492,7 +470,11 @@ func (d *dbClient) supersedeMemory(newMemory *Memory, oldCanonicalKeys []string)
 		}
 
 		// Insert new memory
-		newMemory.SupersedesCanonicalKeys = oldCanonicalKeys
+		supersedesJSON, err := json.Marshal(oldCanonicalKeys)
+		if err != nil {
+			return err
+		}
+		newMemory.SupersedesCanonicalKeys = json.RawMessage(supersedesJSON)
 		now := time.Now()
 		newMemory.CreatedAt = now
 		newMemory.UpdatedAt = now
@@ -515,7 +497,7 @@ func (d *dbClient) deleteMemoriesByCanonicalKey(subjectKey, namespace, canonical
 	o := orm.Load(&Memory{}, orm.WithDatabasePrefix("KARMA_MEMORY"))
 	defer o.Close()
 
-	query := `UPDATE memories SET status = $1, updated_at = NOW()
+	query := `UPDATE karma_ai_memories SET status = $1, updated_at = NOW()
 			  WHERE subject_key = $2 AND namespace = $3 AND canonical_key = $4 AND status = $5`
 	result, err := o.ExecuteRaw(query, StatusDeleted, subjectKey, namespace, canonicalKey, StatusActive)
 	if err != nil {
@@ -537,7 +519,7 @@ func (d *dbClient) incrementForgetScore(id string, increment float64) error {
 	o := orm.Load(&Memory{}, orm.WithDatabasePrefix("KARMA_MEMORY"))
 	defer o.Close()
 
-	query := `UPDATE memories SET forget_score = LEAST(forget_score + $1, 1.0), updated_at = NOW() WHERE id = $2`
+	query := `UPDATE karma_ai_memories SET forget_score = LEAST(forget_score + $1, 1.0), updated_at = NOW() WHERE id = $2`
 	_, err := o.ExecuteRaw(query, increment, id)
 	return err
 }
@@ -547,7 +529,7 @@ func (d *dbClient) resetForgetScore(id string) error {
 	o := orm.Load(&Memory{}, orm.WithDatabasePrefix("KARMA_MEMORY"))
 	defer o.Close()
 
-	query := `UPDATE memories SET forget_score = 0.0, updated_at = NOW() WHERE id = $1`
+	query := `UPDATE karma_ai_memories SET forget_score = 0.0, updated_at = NOW() WHERE id = $1`
 	_, err := o.ExecuteRaw(query, id)
 	return err
 }
@@ -558,7 +540,7 @@ func (d *dbClient) getMemoriesByForgetScore(subjectKey, namespace string, thresh
 	defer o.Close()
 
 	var memories []Memory
-	query := `SELECT * FROM memories WHERE subject_key = $1 AND namespace = $2 AND forget_score >= $3 AND status = $4`
+	query := `SELECT * FROM karma_ai_memories WHERE subject_key = $1 AND namespace = $2 AND forget_score >= $3 AND status = $4`
 	err := o.QueryRaw(query, subjectKey, namespace, threshold, StatusActive).Scan(&memories)
 	if err != nil {
 		return nil, err
@@ -569,7 +551,7 @@ func (d *dbClient) getMemoriesByForgetScore(subjectKey, namespace string, thresh
 // CreateEntityLink creates a link between two entity memories
 // This validates that both memories exist and are of category 'entity'
 func (d *dbClient) createEntityLink(link *EntityLink) error {
-	o := orm.Load(&EntityLink{}, orm.WithDatabasePrefix("postgres"))
+	o := orm.Load(&EntityLink{}, orm.WithDatabasePrefix("KARMA_MEMORY"))
 	defer o.Close()
 
 	// Validate that both memories exist and are entity type
@@ -577,6 +559,7 @@ func (d *dbClient) createEntityLink(link *EntityLink) error {
 		return err
 	}
 
+	link.ID = utils.GenerateID(8)
 	link.CreatedAt = time.Now()
 	if link.Metadata == nil {
 		link.Metadata = json.RawMessage("{}")
@@ -587,7 +570,7 @@ func (d *dbClient) createEntityLink(link *EntityLink) error {
 
 // validateEntityMemories checks that both memory IDs exist and are of category 'entity'
 func (d *dbClient) validateEntityMemories(fromMemoryID, toMemoryID string) error {
-	o := orm.Load(&Memory{}, orm.WithDatabasePrefix("postgres"))
+	o := orm.Load(&Memory{}, orm.WithDatabasePrefix("KARMA_MEMORY"))
 	defer o.Close()
 
 	// Check from_memory
@@ -617,7 +600,7 @@ func (d *dbClient) getEntityLinks(subjectKey, namespace, memoryID string) ([]Ent
 	defer o.Close()
 
 	var links []EntityLink
-	query := `SELECT * FROM entity_links WHERE subject_key = $1 AND namespace = $2 AND (from_memory_id = $3 OR to_memory_id = $3)`
+	query := `SELECT * FROM karma_ai_entity_links WHERE subject_key = $1 AND namespace = $2 AND (from_memory_id = $3 OR to_memory_id = $3)`
 	err := o.QueryRaw(query, subjectKey, namespace, memoryID).Scan(&links)
 	if err != nil {
 		return nil, err
@@ -631,7 +614,7 @@ func (d *dbClient) getEntityLinksByRelationType(subjectKey, namespace, memoryID,
 	defer o.Close()
 
 	var links []EntityLink
-	query := `SELECT * FROM entity_links WHERE subject_key = $1 AND namespace = $2 AND (from_memory_id = $3 OR to_memory_id = $3) AND relation_type = $4`
+	query := `SELECT * FROM karma_ai_entity_links WHERE subject_key = $1 AND namespace = $2 AND (from_memory_id = $3 OR to_memory_id = $3) AND relation_type = $4`
 	err := o.QueryRaw(query, subjectKey, namespace, memoryID, relationType).Scan(&links)
 	if err != nil {
 		return nil, err
@@ -650,10 +633,10 @@ func (d *dbClient) deleteEntityLink(id string) (int64, error) {
 // DeleteEntityLinksByMemoryID deletes all links associated with a memory
 // This should be called when deleting an entity memory
 func (d *dbClient) deleteEntityLinksByMemoryID(memoryID string) (int64, error) {
-	o := orm.Load(&EntityLink{}, orm.WithDatabasePrefix("postgres"))
+	o := orm.Load(&EntityLink{}, orm.WithDatabasePrefix("KARMA_MEMORY"))
 	defer o.Close()
 
-	query := `DELETE FROM entity_links WHERE from_memory_id = $1 OR to_memory_id = $1`
+	query := `DELETE FROM karma_ai_entity_links WHERE from_memory_id = $1 OR to_memory_id = $1`
 	result, err := o.ExecuteRaw(query, memoryID)
 	if err != nil {
 		return 0, err
@@ -663,7 +646,7 @@ func (d *dbClient) deleteEntityLinksByMemoryID(memoryID string) (int64, error) {
 
 // DeleteMemoryWithLinks deletes a memory and its associated entity links (for entity category)
 func (d *dbClient) deleteMemoryWithLinks(id string) error {
-	o := orm.Load(&Memory{}, orm.WithDatabasePrefix("postgres"))
+	o := orm.Load(&Memory{}, orm.WithDatabasePrefix("KARMA_MEMORY"))
 	defer o.Close()
 
 	return o.WithTransaction(func(txOrm *orm.ORM) error {
@@ -675,14 +658,14 @@ func (d *dbClient) deleteMemoryWithLinks(id string) error {
 
 		// If it's an entity, delete associated links first
 		if memory.Category == CategoryEntity {
-			query := `DELETE FROM entity_links WHERE from_memory_id = $1 OR to_memory_id = $1`
+			query := `DELETE FROM karma_ai_entity_links WHERE from_memory_id = $1 OR to_memory_id = $1`
 			if _, err := txOrm.ExecuteRaw(query, id); err != nil {
 				return err
 			}
 		}
 
 		// Soft delete the memory
-		query := `UPDATE memories SET status = $1, updated_at = NOW() WHERE id = $2`
+		query := `UPDATE karma_ai_memories SET status = $1, updated_at = NOW() WHERE id = $2`
 		_, err := txOrm.ExecuteRaw(query, StatusDeleted, id)
 		return err
 	})

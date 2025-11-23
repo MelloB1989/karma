@@ -25,17 +25,48 @@ type m struct {
 	ShouldVectorize         bool             `json:"should_vectorize" description:"Indicates whether this memory should be vectorized and stored in a vector database. Useful for mutable categories like preferences or for memories that need to be searched for similarity."`
 }
 
+type memoriesWrapper struct {
+	Memories []m `json:"memories" description:"Array of extracted memories from the conversation"`
+}
+
 func (k *KarmaMemory) ingest(convo struct {
 	UserMessage string
 	AIResponse  string
 }) error {
-	parser := parser.NewParser(parser.WithAIClient(k.memoryAI))
-	var memories []m
-	if _, _, err := parser.Parse(fmt.Sprintf("UserMessage: %s\nAIResponse: %s\nGenerate the memory array\njson_mode = true", convo.UserMessage, convo.AIResponse), "", &memories); err != nil || len(memories) == 0 {
+	p := parser.NewParser(parser.WithAIClient(k.memoryAI), parser.WithDebug(false))
+
+	prompt := fmt.Sprintf(`Extract memories from this conversation.
+
+UserMessage: %s
+AIResponse: %s
+
+Return a JSON object with a "memories" array containing all extracted memories.
+If no memories should be stored, return: {"memories": []}`, convo.UserMessage, convo.AIResponse)
+
+	var wrapper memoriesWrapper
+	if _, _, err := p.Parse(prompt, "", &wrapper); err != nil {
+		k.logger.Error("karmaMemory: failed to parse memories",
+			zap.Error(err))
 		return err
 	}
 
-	for _, memory := range memories {
+	if len(wrapper.Memories) == 0 {
+		k.logger.Debug("karmaMemory: no memories extracted from conversation")
+		return nil
+	}
+
+	k.logger.Debug("karmaMemory: extracted memories",
+		zap.Int("count", len(wrapper.Memories)))
+
+	for _, memory := range wrapper.Memories {
+		// Convert SupersedesCanonicalKeys to JSON
+		supersedesJSON, err := json.Marshal(memory.SupersedesCanonicalKeys)
+		if err != nil {
+			k.logger.Error("karmaMemory: failed to marshal supersedes_canonical_keys",
+				zap.Error(err))
+			continue
+		}
+
 		mem := &Memory{
 			Category:                memory.Category,
 			Summary:                 memory.Summary,
@@ -47,7 +78,7 @@ func (k *KarmaMemory) ingest(convo struct {
 			Lifespan:                memory.Lifespan,
 			ForgetScore:             memory.ForgetScore,
 			Status:                  memory.Status,
-			SupersedesCanonicalKeys: memory.SupersedesCanonicalKeys,
+			SupersedesCanonicalKeys: json.RawMessage(supersedesJSON),
 			SupersededByID:          memory.SupersededByID,
 			Metadata:                memory.Metadata,
 		}
