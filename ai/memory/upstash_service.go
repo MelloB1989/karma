@@ -61,10 +61,36 @@ func (d *upstashVectorClient) buildMetadataFilter(f *filters, includeScope bool)
 
 	if f != nil {
 		if f.Category != nil && *f.Category != "" {
-			parts = append(parts, fmt.Sprintf("category = '%s'", *f.Category))
+			categories := strings.Split(*f.Category, ",")
+			for i := range categories {
+				categories[i] = strings.TrimSpace(categories[i])
+			}
+			if len(categories) == 1 {
+				parts = append(parts, fmt.Sprintf("category = '%s'", categories[0]))
+			} else {
+				// Build IN clause: category IN ('fact', 'preference', 'rule')
+				quotedCats := make([]string, len(categories))
+				for i, cat := range categories {
+					quotedCats[i] = fmt.Sprintf("'%s'", cat)
+				}
+				parts = append(parts, fmt.Sprintf("category IN (%s)", strings.Join(quotedCats, ", ")))
+			}
 		}
 		if f.Lifespan != nil && *f.Lifespan != "" {
-			parts = append(parts, fmt.Sprintf("lifespan = '%s'", *f.Lifespan))
+			lifespans := strings.Split(*f.Lifespan, ",")
+			for i := range lifespans {
+				lifespans[i] = strings.TrimSpace(lifespans[i])
+			}
+			if len(lifespans) == 1 {
+				parts = append(parts, fmt.Sprintf("lifespan = '%s'", lifespans[0]))
+			} else {
+				// Build IN clause: lifespan IN ('short_term', 'long_term')
+				quotedLifespans := make([]string, len(lifespans))
+				for i, ls := range lifespans {
+					quotedLifespans[i] = fmt.Sprintf("'%s'", ls)
+				}
+				parts = append(parts, fmt.Sprintf("lifespan IN (%s)", strings.Join(quotedLifespans, ", ")))
+			}
 		}
 		if f.Importance != nil && *f.Importance != 0 {
 			parts = append(parts, fmt.Sprintf("importance = %d", *f.Importance))
@@ -146,13 +172,37 @@ func (d *upstashVectorClient) matchesFilter(metadata map[string]interface{}, f *
 	}
 
 	if f.Category != nil && *f.Category != "" {
-		if cat, ok := metadata["category"].(string); !ok || cat != *f.Category {
+		cat, ok := metadata["category"].(string)
+		if !ok {
+			return false
+		}
+		categories := strings.Split(*f.Category, ",")
+		found := false
+		for _, c := range categories {
+			if strings.TrimSpace(c) == cat {
+				found = true
+				break
+			}
+		}
+		if !found {
 			return false
 		}
 	}
 
 	if f.Lifespan != nil && *f.Lifespan != "" {
-		if ls, ok := metadata["lifespan"].(string); !ok || ls != *f.Lifespan {
+		ls, ok := metadata["lifespan"].(string)
+		if !ok {
+			return false
+		}
+		lifespans := strings.Split(*f.Lifespan, ",")
+		found := false
+		for _, l := range lifespans {
+			if strings.TrimSpace(l) == ls {
+				found = true
+				break
+			}
+		}
+		if !found {
 			return false
 		}
 	}

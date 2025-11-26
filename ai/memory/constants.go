@@ -236,7 +236,6 @@ User: "I don't like Adidas anymore."
     }
   ]
 }
-
 `
 	memoryLLMMaxTokens = 2048
 
@@ -251,102 +250,160 @@ You are generating a **structured JSON filter object**.
 Target JSON shape (matching the 'filters' struct):
 
 {
+  "search_query": "semantic search terms",
   "category": "fact | preference | skill | context | rule | entity | episodic",
   "lifespan": "short_term | mid_term | long_term | lifelong",
-  "importance": 1–5,
   "expiry": "ISO-8601 timestamp string or null",
   "status": "active | superseded | deleted"
 }
 
+Important classifications of memory:
+1) "fact"
+   - Objective information about the user or stable truths.
+   - Examples:
+     - "I use PostgreSQL for databases."
+     - "I live in Hyderabad."
+   - These are usually long-term.
+
+2) "preference"
+   - Personal likes/dislikes, choices, subjective tastes.
+   - Examples:
+     - "I prefer clean, readable code."
+     - "I like Adidas."
+     - "I don't like Adidas anymore."
+   - Preferences can change over time.
+
+3) "skill"
+   - Abilities, expertise, and experience.
+   - Examples:
+     - "Experienced with FastAPI."
+     - "I know TypeScript really well."
+   - Skills tend to be long-term but may grow or become outdated.
+
+4) "context"
+   - Project information, current work, situational context.
+   - Examples:
+     - "Working on an e-commerce platform."
+     - "Right now I'm building an AI memory layer."
+   - Often relevant for a specific app/service or time period.
+
+5) "rule"
+   - Guidelines and constraints for how the assistant should behave or how work should be done.
+   - Examples:
+     - "Always write tests first."
+     - "When I say 'make a deck', generate a Gamma prompt."
+     - "Never reply in Telugu."
+   - These directly affect assistant behavior.
+
+6) "entity"
+   - People, organizations, or other entities in the user's life.
+   - Examples:
+     - "Jane is my mom."
+     - "Karthik is my lead developer."
+     - "Bleu is my EV mobility program."
+   - These may be linked together later as a graph.
+
+7) "episodic"
+   - Specific events or episodes in time.
+   - Examples:
+     - "Yesterday we deployed the new version."
+     - "Today I tried configuring LinkedIn auth and it failed."
+   - These form the user's timeline or history.
+
 Field semantics (adapted from the struct):
 
 - **search_query** (string):
-Query string for vector search, include common words or phrases related to the user prompt.
+  Query string for vector search. Include common words or phrases related to the user prompt.
 
 - **category** (string, optional):
-  High-level category of the memory. One of:
-  - '"fact"': objective info about the subject
-    e.g. "I use PostgreSQL for databases".
-  - '"preference"': likes/dislikes or choices
-    e.g. "I prefer clean, readable code", "I like Adidas".
-  - '"skill"': abilities and expertise
-    e.g. "Experienced with FastAPI".
-  - '"context"': project or situation info
-    e.g. "Working on e-commerce platform", "Currently traveling in the US".
-  - '"rule"': behavioral guidelines or constraints
-    e.g. "Always write tests first", "Never reply in Telugu".
-  - '"entity"': people/organizations in subject's life
-    e.g. "Jane is my mom", "Karthik is my lead developer".
-  - '"episodic"': specific events in time
-    e.g. "Yesterday we deployed the new version".
+  High-level category of the memory.
 
-  Choose the **single most relevant** category for what the user’s prompt is asking to recall.
+  **CRITICAL: You MUST specify MULTIPLE categories separated by commas to cast a wider net.**
+
+  Available categories:
+  - "fact": objective info about the subject
+  - "preference": likes/dislikes or choices
+  - "skill": abilities and expertise
+  - "context": project or situation info
+  - "rule": behavioral guidelines or constraints
+  - "entity": people/organizations in subject's life
+  - "episodic": specific events in time
+
+  **Default strategy**: Include 2-4 categories that could reasonably contain relevant memories.
+
+  Examples:
+  - Query about "allergies" → "fact, preference, episodic" (facts about allergies, food preferences, past allergy incidents)
+  - Query about "database setup" → "context, skill, episodic, preference" (current project context, technical skills, past setup events, preferred databases)
+  - Query about "my mom" → "entity, episodic, fact" (entity info, events with mom, facts about mom)
+  - Query about "what I worked on yesterday" → "episodic, context, skill" (recent events, project context, skills used)
 
 - **lifespan** (string, optional):
-  Intended lifespan category of the memories to retrieve. One of:
-  - '"short_term"': ephemeral / near-term context
-    e.g. "This week I am traveling".
-  - '"mid_term"': medium-lived preferences or context
-    e.g. "Currently using Tailwind for styling".
-  - '"long_term"': persistent facts/skills
-    e.g. "I use PostgreSQL", "Experienced with FastAPI".
-  - '"lifelong"': identity-level traits
-    e.g. "I love coding", "I enjoy cooking".
+  Intended lifespan category of the memories to retrieve.
 
-  - If the prompt is about **identity or stable traits** → often '"lifelong"'.
-  - If about **ongoing projects / current stack / current situation** → often '"mid_term"' or '"long_term"'.
-  - If about **recent events like yesterday / last week** → often '"short_term"' or '"episodic"' + short_term.
+  **CRITICAL: You MUST specify MULTIPLE lifespans separated by commas to avoid missing relevant memories.**
 
-- **importance** (integer 1–5, optional):
-  Importance score from 1 to 5 indicating how critical these memories are for personalization and future recall.
-  - 1 = low value, rarely needed.
-  - 3 = normal.
-  - 5 = very important, central to subject identity, stable preferences, long-term goals, or behavior.
+  Available lifespans:
+  - "short_term": ephemeral / near-term context (days to weeks)
+  - "mid_term": medium-lived preferences or context (weeks to months)
+  - "long_term": persistent facts/skills (months to years)
+  - "lifelong": identity-level traits (permanent characteristics)
+
+  **Default strategy**: Include 2-3 lifespans that could reasonably contain relevant information.
+
   Examples:
-  - "Never reply in Telugu" → often 5.
-  - "My favorite brand is Adidas" → 3 or 4.
-  - "What did I eat for lunch yesterday?" → 1 or 2.
-  - If unsure, default to **3**.
+  - Query about "allergies" → "lifelong, long_term, mid_term" (permanent allergies, developed allergies, recent reactions)
+  - Query about "database setup" → "mid_term, long_term" (current project tech, established database knowledge)
+  - Query about identity/traits → "lifelong, long_term" (core identity, established characteristics)
+  - Query about recent events → "short_term, mid_term" (recent and ongoing context)
+  - Query about current projects → "mid_term, long_term, short_term" (ongoing work, established knowledge, recent updates)
+
+  **Reasoning guidelines**:
+  - Information that could have been established at ANY point in the past → include multiple lifespans
+  - Information that definitely relates to recent events ONLY → focus on "short_term" but consider "mid_term"
+  - Information about stable traits or facts → include "lifelong, long_term, mid_term" to catch variations
 
 - **expiry** (string or null, optional):
   Expiration timestamp for these memories, indicating when they should be considered stale.
-  - Use an **ISO-8601 datetime string** (e.g. '"2025-12-31T23:59:59Z"') if the prompt clearly implies a time limit.
-  - Otherwise set '"expiry": null' or omit the field.
-  - For **lifelong / long_term** traits, usually 'null'.
+  - Use an **ISO-8601 datetime string** (e.g. "2025-12-31T23:59:59Z") if the prompt clearly implies a time limit.
+  - Otherwise set "expiry": null or omit the field.
+  - For **lifelong / long_term** traits, usually null.
   - For **short_term** context (e.g. "this week"), you may set a near-future expiry if inferable.
 
 - **status** (string, optional):
   Current lifecycle state of the memory. Typical values:
-  - '"active"': current and should be considered during retrieval.
-  - '"superseded"': replaced by a newer memory of the same canonical concept.
-  - '"deleted"': soft-deleted or logically removed memory.
+  - "active": current and should be considered during retrieval.
+  - "superseded": replaced by a newer memory of the same canonical concept.
+  - "deleted": soft-deleted or logically removed memory.
 
-  **For retrieval filters, you will almost always use '"active"'**.
+  **For retrieval filters, you will almost always use "active"**.
 
 - **IncludeAllScopes**:
   This field exists in the underlying struct but **must be ignored**.
-  **Never include** '"include_all_scopes"' in the JSON output.
+  **Never include** "include_all_scopes" in the JSON output.
 
 General guidelines:
 
-- Extract the core semantic concepts from the user’s prompt.
+- **ALWAYS use multiple categories and lifespans** unless the query is extremely specific and narrow.
+- Extract the core semantic concepts from the user's prompt.
 - Ask yourself:
-  > “If there is a memory that would answer this, what *kind* of memory is it? A fact? A preference? A rule? A recent event?”
-- Map that to:
-  - 'category'
-  - 'lifespan'
-  - 'importance'
-  - 'status' (usually '"active"')
+  > "What are ALL the types of memories that might contain relevant information for this query?"
+  > "Could this information have been stored at different points in time with different lifespans?"
+- Default to being **inclusive rather than exclusive** with categories and lifespans.
+- Map your analysis to:
+  - 'category' (2-4 categories, comma-separated)
+  - 'lifespan' (2-3 lifespans, comma-separated)
+  - 'status' (usually "active")
 - Use 'expiry' only when the prompt clearly indicates a time-bounded context.
 - If you cannot confidently assign a field, you may omit it from the JSON.
 
 Output formatting rules:
 
 - Your response **must be valid JSON**.
-- Keys must be in **lowerCamelCase**: 'category', 'lifespan', 'importance', 'expiry', 'status'.
+- Keys must be in **lowerCamelCase**: 'search_query', 'category', 'lifespan', 'expiry', 'status'.
 - You **must not** include comments or trailing commas.
-- You **must not** include '"include_all_scopes"'.
-- If a value is unknown, either omit the field entirely or set it to 'null'.
+- You **must not** include "include_all_scopes".
+- Multiple values in 'category' and 'lifespan' must be comma-separated within the string.
+- If a value is unknown, either omit the field entirely or set it to null.
 - **Your response must be ONLY the JSON object, nothing else.**
 
 Examples:
@@ -357,9 +414,8 @@ Input:
 Output:
 {
   "search_query": "database setup",
-  "category": "context",
-  "lifespan": "mid_term",
-  "importance": 3,
+  "category": "context, skill, episodic, preference",
+  "lifespan": "mid_term, long_term, short_term",
   "expiry": null,
   "status": "active"
 }
@@ -372,9 +428,8 @@ Input:
 Output:
 {
   "search_query": "frontend framework",
-  "category": "preference",
-  "lifespan": "mid_term",
-  "importance": 4,
+  "category": "preference, context, episodic, skill",
+  "lifespan": "mid_term, long_term, short_term",
   "expiry": null,
   "status": "active"
 }
@@ -387,9 +442,8 @@ Input:
 Output:
 {
   "search_query": "my mom",
-  "category": "entity",
-  "lifespan": "lifelong",
-  "importance": 5,
+  "category": "entity, episodic, fact",
+  "lifespan": "lifelong, long_term, mid_term",
   "expiry": null,
   "status": "active"
 }
@@ -402,9 +456,8 @@ Input:
 Output:
 {
   "search_query": "work yesterday",
-  "category": "episodic",
-  "lifespan": "short_term",
-  "importance": 3,
+  "category": "episodic, context, skill",
+  "lifespan": "short_term, mid_term",
   "expiry": null,
   "status": "active"
 }
@@ -412,14 +465,13 @@ Output:
 ---
 
 Input:
-"How do I usually handle authentication?"
+"What are my allergies?"
 
 Output:
 {
-  "search_query": "authentication",
-  "category": "rule",
-  "lifespan": "long_term",
-  "importance": 4,
+  "search_query": "allergies",
+  "category": "fact, preference, episodic, context",
+  "lifespan": "lifelong, long_term, mid_term",
   "expiry": null,
   "status": "active"
 }

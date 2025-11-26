@@ -3,8 +3,10 @@ package memory
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/MelloB1989/karma/ai/parser"
+	"github.com/MelloB1989/karma/utils"
 	"go.uber.org/zap"
 )
 
@@ -35,12 +37,11 @@ func (k *KarmaMemory) ingest(convo struct {
 	p := parser.NewParser(parser.WithAIClient(k.memoryAI), parser.WithDebug(false))
 
 	prompt := fmt.Sprintf(`Extract memories from this conversation.
-
+CurrentMemoryContext: %s
 UserMessage: %s
 AIResponse: %s
-
 Return a JSON object with a "memories" array containing all extracted memories.
-If no memories should be stored, return: {"memories": []}`, convo.UserMessage, convo.AIResponse)
+If no memories should be stored, return: {"memories": []}`, convo.CurrentMemoryContext, convo.UserMessage, convo.AIResponse)
 
 	var wrapper memoriesWrapper
 	if _, _, err := p.Parse(prompt, "", &wrapper); err != nil {
@@ -69,6 +70,8 @@ If no memories should be stored, return: {"memories": []}`, convo.UserMessage, c
 			continue
 		}
 
+		now := time.Now()
+
 		mem := &Memory{
 			Category:                memory.Category,
 			Summary:                 memory.Summary,
@@ -80,6 +83,12 @@ If no memories should be stored, return: {"memories": []}`, convo.UserMessage, c
 			Status:                  memory.Status,
 			SupersedesCanonicalKeys: json.RawMessage(supersedesJSON),
 			Metadata:                memory.Metadata,
+			Id:                      utils.GenerateID(7),
+			CreatedAt:               now,
+			UpdatedAt:               now,
+			ExpiresAt:               computeExpiry(now, memory.Lifespan, memory.ForgetScore),
+			Namespace:               k.scope,
+			SubjectKey:              k.userID,
 		}
 
 		embeddingText := memory.Summary
@@ -120,14 +129,18 @@ If no memories should be stored, return: {"memories": []}`, convo.UserMessage, c
 		}
 	}
 
-	if err := k.memorydb.client.upsertVectors(vc); err != nil {
-		k.logger.Error("karmaMemory: failed to upsert vector for memory",
-			zap.Error(err))
+	if len(vc) > 0 {
+		if err := k.memorydb.client.upsertVectors(vc); err != nil {
+			k.logger.Error("karmaMemory: failed to upsert vector for memory",
+				zap.Error(err))
+		}
 	}
 
-	if _, err := k.memorydb.client.deleteVectors(vd); err != nil {
-		k.logger.Error("karmaMemory: failed to delete vector for memory",
-			zap.Error(err))
+	if len(vd) > 0 {
+		if _, err := k.memorydb.client.deleteVectors(vd); err != nil {
+			k.logger.Error("karmaMemory: failed to delete vector for memory",
+				zap.Error(err))
+		}
 	}
 
 	return nil

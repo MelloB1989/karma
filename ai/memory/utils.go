@@ -150,15 +150,13 @@ func (k *KarmaMemory) formatContextForIngest(memories []Memory) string {
 
 	for _, mem := range memories {
 		if mem.ExpiresAt == nil {
-			ms = append(ms, fmt.Sprintf("MemoryId: %s; MemoryCreatedAt: %s; MemoryExpiry: noExpiry; MemorySummary: %s", mem.Id, mem.CreatedAt.GoString(), strings.TrimSpace(mem.Summary)))
+			ms = append(ms, fmt.Sprintf("MemoryId: %s; MemoryCreatedAt: %s; MemoryExpiry: noExpiry; MemorySummary: %s", mem.Id, mem.CreatedAt.Format(time.RFC3339), strings.TrimSpace(mem.Summary)))
 		} else {
-			ms = append(ms, fmt.Sprintf("MemoryId: %s; MemoryCreatedAt: %s; MemoryExpiry: %s; MemorySummary: %s", mem.Id, mem.CreatedAt.GoString(), mem.ExpiresAt.GoString(), strings.TrimSpace(mem.Summary)))
+			ms = append(ms, fmt.Sprintf("MemoryId: %s; MemoryCreatedAt: %s; MemoryExpiry: %s; MemorySummary: %s", mem.Id, mem.CreatedAt.Format(time.RFC3339), mem.ExpiresAt.Format(time.RFC3339), strings.TrimSpace(mem.Summary)))
 		}
 	}
 
-	var sb strings.Builder
-
-	return sb.String()
+	return strings.Join(ms, "\n")
 }
 
 func computeExpiry(baseTime time.Time, lifespan MemoryLifespan, forgetScore float64) *time.Time {

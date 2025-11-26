@@ -146,6 +146,10 @@ func (k *KarmaMemory) UpdateMessageHistory(messages []models.AIMessage) {
 		}
 	}
 
+	if k.currentMemoryContext == "" {
+		k.GetContext(lastUserMsg)
+	}
+
 	if lastUserMsg != "" && lastAIMsg != "" {
 		go func() {
 			if err := k.ingest(struct {

@@ -2,6 +2,7 @@ package memory
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,6 +21,8 @@ func setupTestMemory(t *testing.T) *KarmaMemory {
 
 	kai := ai.NewKarmaAI(ai.GPT4oMini, ai.OpenAI)
 	mem := NewKarmaMemory(kai, "test_user_123", "test_scope")
+	mem.UseMemoryLLM(ai.Llama31_8B, ai.Groq)
+	mem.UseService(VectorServicePinecone)
 
 	return mem
 }
@@ -308,11 +311,11 @@ func TestMemoryPersistence(t *testing.T) {
 	mem1 := setupTestMemory(t)
 
 	messages := []models.AIMessage{
-		{Role: models.User, Message: "I'm allergic to peanuts", Timestamp: time.Now(), UniqueId: "1"},
+		{Role: models.User, Message: "I'm allergic to peanuts!", Timestamp: time.Now(), UniqueId: "1"},
 		{Role: models.Assistant, Message: "I'll remember your peanut allergy.", Timestamp: time.Now(), UniqueId: "2"},
 	}
 	mem1.UpdateMessageHistory(messages)
-	time.Sleep(1 * time.Second)
+	time.Sleep(6 * time.Second)
 
 	mem2 := setupTestMemory(t)
 	context, err := mem2.GetContext("What are my allergies?")
@@ -366,4 +369,319 @@ func TestSingleMessage(t *testing.T) {
 	if mem.NumberOfMessages() != 1 {
 		t.Errorf("Expected 1 message, got %d", mem.NumberOfMessages())
 	}
+}
+
+// ==================== Benchmark Tests ====================
+
+func BenchmarkGetContext(b *testing.B) {
+	apiKey := config.GetEnvRaw("OPENAI_KEY")
+	if apiKey == "" {
+		b.Skip("OPENAI_KEY not set")
+	}
+
+	kai := ai.NewKarmaAI(ai.GPT4oMini, ai.OpenAI)
+	mem := NewKarmaMemory(kai, "bench_user", "bench_scope")
+
+	// Seed some memory
+	messages := []models.AIMessage{
+		{Role: models.User, Message: "I use PostgreSQL and Redis", Timestamp: time.Now(), UniqueId: "1"},
+		{Role: models.Assistant, Message: "Great database choices!", Timestamp: time.Now(), UniqueId: "2"},
+	}
+	mem.UpdateMessageHistory(messages)
+	time.Sleep(2 * time.Second)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = mem.GetContext("What databases do I use?")
+	}
+}
+
+func BenchmarkUpdateMessageHistory(b *testing.B) {
+	apiKey := config.GetEnvRaw("OPENAI_KEY")
+	if apiKey == "" {
+		b.Skip("OPENAI_KEY not set")
+	}
+
+	kai := ai.NewKarmaAI(ai.GPT4oMini, ai.OpenAI)
+	mem := NewKarmaMemory(kai, "bench_user", "bench_scope")
+
+	messages := []models.AIMessage{
+		{Role: models.User, Message: "Test message", Timestamp: time.Now(), UniqueId: "1"},
+		{Role: models.Assistant, Message: "Test response", Timestamp: time.Now(), UniqueId: "2"},
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		mem.UpdateMessageHistory(messages)
+	}
+}
+
+func BenchmarkChatCompletion(b *testing.B) {
+	apiKey := config.GetEnvRaw("OPENAI_KEY")
+	if apiKey == "" {
+		b.Skip("OPENAI_KEY not set")
+	}
+
+	kai := ai.NewKarmaAI(ai.GPT4oMini, ai.OpenAI)
+	mem := NewKarmaMemory(kai, "bench_user", "bench_scope")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, _ = mem.ChatCompletion("Hello")
+		mem.ClearHistory()
+	}
+}
+
+func BenchmarkHistoryOperations(b *testing.B) {
+	apiKey := config.GetEnvRaw("OPENAI_KEY")
+	if apiKey == "" {
+		b.Skip("OPENAI_KEY not set")
+	}
+
+	kai := ai.NewKarmaAI(ai.GPT4oMini, ai.OpenAI)
+	mem := NewKarmaMemory(kai, "bench_user", "bench_scope")
+
+	messages := make([]models.AIMessage, 100)
+	for i := 0; i < 100; i++ {
+		role := models.User
+		if i%2 == 1 {
+			role = models.Assistant
+		}
+		messages[i] = models.AIMessage{
+			Role:      role,
+			Message:   fmt.Sprintf("Message %d", i),
+			Timestamp: time.Now(),
+			UniqueId:  fmt.Sprintf("msg_%d", i),
+		}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		mem.UpdateMessageHistory(messages)
+		_ = mem.GetHistory()
+		_ = mem.NumberOfMessages()
+		mem.ClearHistory()
+	}
+}
+
+// ==================== Recall Latency Tests ====================
+
+func TestRecallLatency(t *testing.T) {
+	mem := setupTestMemory(t)
+
+	// Seed memories
+	messages := []models.AIMessage{
+		{Role: models.User, Message: "My favorite programming language is Rust", Timestamp: time.Now(), UniqueId: "1"},
+		{Role: models.Assistant, Message: "Rust is known for memory safety!", Timestamp: time.Now(), UniqueId: "2"},
+	}
+	mem.UpdateMessageHistory(messages)
+	time.Sleep(2 * time.Second)
+
+	// Measure recall latency
+	iterations := 5
+	var totalLatency time.Duration
+
+	for i := 0; i < iterations; i++ {
+		start := time.Now()
+		_, err := mem.GetContext("What is my favorite language?")
+		elapsed := time.Since(start)
+
+		if err != nil {
+			t.Logf("Iteration %d error: %v", i, err)
+		}
+
+		totalLatency += elapsed
+		t.Logf("Iteration %d latency: %v", i, elapsed)
+	}
+
+	avgLatency := totalLatency / time.Duration(iterations)
+	t.Logf("Average recall latency: %v", avgLatency)
+
+	// Warn if latency is too high (>2 seconds)
+	if avgLatency > 2*time.Second {
+		t.Logf("WARNING: Average recall latency exceeds 2 seconds: %v", avgLatency)
+	}
+}
+
+func TestRecallLatencyByMode(t *testing.T) {
+	mem := setupTestMemory(t)
+
+	// Seed memories
+	messages := []models.AIMessage{
+		{Role: models.User, Message: "I work as a software architect at Google", Timestamp: time.Now(), UniqueId: "1"},
+		{Role: models.Assistant, Message: "That's an impressive role!", Timestamp: time.Now(), UniqueId: "2"},
+	}
+	mem.UpdateMessageHistory(messages)
+	time.Sleep(2 * time.Second)
+
+	modes := []RetrievalMode{RetrievalModeAuto, RetrievalModeConscious}
+
+	for _, mode := range modes {
+		mem.UseRetrievalMode(mode)
+
+		start := time.Now()
+		_, err := mem.GetContext("Where do I work?")
+		elapsed := time.Since(start)
+
+		if err != nil {
+			t.Logf("Mode %s error: %v", mode, err)
+		}
+
+		t.Logf("Mode %s latency: %v", mode, elapsed)
+	}
+}
+
+func TestRecallLatencyUnderLoad(t *testing.T) {
+	mem := setupTestMemory(t)
+
+	// Seed memories
+	messages := []models.AIMessage{
+		{Role: models.User, Message: "I prefer dark mode in all applications", Timestamp: time.Now(), UniqueId: "1"},
+		{Role: models.Assistant, Message: "Dark mode is easier on the eyes!", Timestamp: time.Now(), UniqueId: "2"},
+	}
+	mem.UpdateMessageHistory(messages)
+	time.Sleep(2 * time.Second)
+
+	concurrentRequests := 5
+	var wg sync.WaitGroup
+	latencies := make(chan time.Duration, concurrentRequests)
+
+	for i := 0; i < concurrentRequests; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			start := time.Now()
+			_, _ = mem.GetContext("What theme do I prefer?")
+			latencies <- time.Since(start)
+		}(i)
+	}
+
+	wg.Wait()
+	close(latencies)
+
+	var total time.Duration
+	var max time.Duration
+	var min = time.Hour
+	count := 0
+
+	for lat := range latencies {
+		total += lat
+		count++
+		if lat > max {
+			max = lat
+		}
+		if lat < min {
+			min = lat
+		}
+	}
+
+	avg := total / time.Duration(count)
+	t.Logf("Concurrent recall latency stats:")
+	t.Logf("  Min: %v", min)
+	t.Logf("  Max: %v", max)
+	t.Logf("  Avg: %v", avg)
+}
+
+func TestChatCompletionLatency(t *testing.T) {
+	mem := setupTestMemory(t)
+
+	// Seed context
+	messages := []models.AIMessage{
+		{Role: models.User, Message: "I am building a microservices architecture", Timestamp: time.Now(), UniqueId: "1"},
+		{Role: models.Assistant, Message: "Microservices provide great scalability!", Timestamp: time.Now(), UniqueId: "2"},
+	}
+	mem.UpdateMessageHistory(messages)
+	time.Sleep(1 * time.Second)
+
+	iterations := 3
+	var totalLatency time.Duration
+
+	for i := 0; i < iterations; i++ {
+		start := time.Now()
+		_, err := mem.ChatCompletion("What architecture am I building?")
+		elapsed := time.Since(start)
+
+		if err != nil {
+			t.Logf("Iteration %d error: %v", i, err)
+			continue
+		}
+
+		totalLatency += elapsed
+		t.Logf("ChatCompletion iteration %d latency: %v", i, elapsed)
+	}
+
+	avgLatency := totalLatency / time.Duration(iterations)
+	t.Logf("Average ChatCompletion latency: %v", avgLatency)
+}
+
+func TestMemoryIngestionLatency(t *testing.T) {
+	mem := setupTestMemory(t)
+
+	messages := []models.AIMessage{
+		{Role: models.User, Message: "I completed a marathon last week", Timestamp: time.Now(), UniqueId: "1"},
+		{Role: models.Assistant, Message: "Congratulations on your achievement!", Timestamp: time.Now(), UniqueId: "2"},
+	}
+
+	start := time.Now()
+	mem.UpdateMessageHistory(messages)
+	updateLatency := time.Since(start)
+
+	t.Logf("UpdateMessageHistory latency (sync part): %v", updateLatency)
+
+	// Wait for async ingestion to complete
+	time.Sleep(5 * time.Second)
+
+	// Verify memory was ingested by trying to recall it
+	recallStart := time.Now()
+	context, err := mem.GetContext("What did I complete recently?")
+	recallLatency := time.Since(recallStart)
+
+	if err != nil {
+		t.Logf("Recall error: %v", err)
+	}
+
+	t.Logf("Post-ingestion recall latency: %v", recallLatency)
+	t.Logf("Retrieved context: %s", context)
+}
+
+func TestP50P99Latency(t *testing.T) {
+	mem := setupTestMemory(t)
+
+	// Seed memories
+	messages := []models.AIMessage{
+		{Role: models.User, Message: "My email is test@example.com", Timestamp: time.Now(), UniqueId: "1"},
+		{Role: models.Assistant, Message: "Got it, I'll remember your email.", Timestamp: time.Now(), UniqueId: "2"},
+	}
+	mem.UpdateMessageHistory(messages)
+	time.Sleep(2 * time.Second)
+
+	iterations := 10
+	latencies := make([]time.Duration, iterations)
+
+	for i := 0; i < iterations; i++ {
+		start := time.Now()
+		_, _ = mem.GetContext("What is my email?")
+		latencies[i] = time.Since(start)
+	}
+
+	// Sort latencies
+	for i := 0; i < len(latencies); i++ {
+		for j := i + 1; j < len(latencies); j++ {
+			if latencies[j] < latencies[i] {
+				latencies[i], latencies[j] = latencies[j], latencies[i]
+			}
+		}
+	}
+
+	p50Index := len(latencies) / 2
+	p99Index := int(float64(len(latencies)) * 0.99)
+	if p99Index >= len(latencies) {
+		p99Index = len(latencies) - 1
+	}
+
+	t.Logf("Latency percentiles over %d iterations:", iterations)
+	t.Logf("  P50: %v", latencies[p50Index])
+	t.Logf("  P99: %v", latencies[p99Index])
+	t.Logf("  Min: %v", latencies[0])
+	t.Logf("  Max: %v", latencies[len(latencies)-1])
 }

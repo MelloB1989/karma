@@ -2,7 +2,10 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/MelloB1989/karma/config"
 	"github.com/pinecone-io/go-pinecone/v4/pinecone"
@@ -67,20 +70,42 @@ func (d *pineconeVectorClient) upsertVectors(vectors []v) error {
 		records := make([]*pinecone.IntegratedRecord, 0, len(vectors))
 
 		for _, v := range vectors {
-			m, err := v.memories.ToMap()
-			if err != nil {
-				d.logger.Error("Failed to map memory metadata", zap.Error(err))
-				continue
-			}
-
 			record := &pinecone.IntegratedRecord{
 				"_id":        v.memories.Id,
 				"chunk_text": v.memories.Summary,
 			}
 
-			for k, val := range m {
-				if k != "id" && k != "summary" {
-					(*record)[k] = val
+			// Add sanitized metadata fields (only primitive types supported)
+			(*record)["subject_key"] = v.memories.SubjectKey
+			(*record)["namespace"] = v.memories.Namespace
+			(*record)["category"] = string(v.memories.Category)
+			(*record)["importance"] = v.memories.Importance
+			(*record)["mutability"] = string(v.memories.Mutability)
+			(*record)["lifespan"] = string(v.memories.Lifespan)
+			(*record)["forget_score"] = v.memories.ForgetScore
+			(*record)["status"] = string(v.memories.Status)
+			(*record)["created_at"] = v.memories.CreatedAt.Format(time.RFC3339)
+			(*record)["updated_at"] = v.memories.UpdatedAt.Format(time.RFC3339)
+
+			if v.memories.RawText != "" {
+				(*record)["raw_text"] = v.memories.RawText
+			}
+			if v.memories.SupersededById != nil {
+				(*record)["superseded_by_id"] = *v.memories.SupersededById
+			}
+			if v.memories.ExpiresAt != nil {
+				(*record)["expires_at"] = v.memories.ExpiresAt.Format(time.RFC3339)
+			}
+			if len(v.memories.Metadata) > 0 {
+				(*record)["metadata_json"] = string(v.memories.Metadata)
+			}
+			if len(v.memories.SupersedesCanonicalKeys) > 0 {
+				(*record)["supersedes_canonical_keys_json"] = string(v.memories.SupersedesCanonicalKeys)
+			}
+			if len(v.memories.EntityRelationships) > 0 {
+				relBytes, err := json.Marshal(v.memories.EntityRelationships)
+				if err == nil {
+					(*record)["entity_relationships_json"] = string(relBytes)
 				}
 			}
 
@@ -89,9 +114,11 @@ func (d *pineconeVectorClient) upsertVectors(vectors []v) error {
 
 		err := d.idx.UpsertRecords(d.ctx, records)
 		if err != nil {
+			d.logger.Error("Pinecone integrated records upsert failed", zap.Error(err), zap.Int("record_count", len(records)))
 			return fmt.Errorf("pinecone integrated records upsert failed: %w", err)
 		}
 
+		d.logger.Info("Pinecone integrated records upserted", zap.Int("record_count", len(records)))
 		return nil
 	}
 
@@ -136,7 +163,6 @@ func (d *pineconeVectorClient) queryVector(v []float32, topK int, fs ...filters)
 	var metadataFilter map[string]any
 
 	if f == nil || f.IncludeAllScopes == nil || !*f.IncludeAllScopes {
-
 		metadataFilter = map[string]any{
 			"namespace": map[string]any{
 				"$eq": d.scope,
@@ -145,7 +171,7 @@ func (d *pineconeVectorClient) queryVector(v []float32, topK int, fs ...filters)
 	}
 
 	if f != nil {
-		filterConditions := []map[string]any{}
+		filterConditions := []any{}
 		if metadataFilter != nil {
 			if namespaceFilter, ok := metadataFilter["namespace"]; ok {
 				filterConditions = append(filterConditions, map[string]any{
@@ -154,18 +180,42 @@ func (d *pineconeVectorClient) queryVector(v []float32, topK int, fs ...filters)
 			}
 		}
 		if f.Category != nil && *f.Category != "" {
-			filterConditions = append(filterConditions, map[string]any{
-				"category": map[string]any{
-					"$eq": *f.Category,
-				},
-			})
+			categories := strings.Split(*f.Category, ",")
+			for i := range categories {
+				categories[i] = strings.TrimSpace(categories[i])
+			}
+			if len(categories) == 1 {
+				filterConditions = append(filterConditions, map[string]any{
+					"category": map[string]any{
+						"$eq": categories[0],
+					},
+				})
+			} else {
+				filterConditions = append(filterConditions, map[string]any{
+					"category": map[string]any{
+						"$in": categories,
+					},
+				})
+			}
 		}
 		if f.Lifespan != nil && *f.Lifespan != "" {
-			filterConditions = append(filterConditions, map[string]any{
-				"lifespan": map[string]any{
-					"$eq": *f.Lifespan,
-				},
-			})
+			lifespans := strings.Split(*f.Lifespan, ",")
+			for i := range lifespans {
+				lifespans[i] = strings.TrimSpace(lifespans[i])
+			}
+			if len(lifespans) == 1 {
+				filterConditions = append(filterConditions, map[string]any{
+					"lifespan": map[string]any{
+						"$eq": lifespans[0],
+					},
+				})
+			} else {
+				filterConditions = append(filterConditions, map[string]any{
+					"lifespan": map[string]any{
+						"$in": lifespans,
+					},
+				})
+			}
 		}
 		if f.Importance != nil && *f.Importance != 0 {
 			filterConditions = append(filterConditions, map[string]any{
@@ -184,7 +234,7 @@ func (d *pineconeVectorClient) queryVector(v []float32, topK int, fs ...filters)
 		if f.Status != nil && *f.Status != "" {
 			filterConditions = append(filterConditions, map[string]any{
 				"status": map[string]any{
-					"$eq": *f.Status,
+					"$eq": string(*f.Status),
 				},
 			})
 		}
@@ -193,16 +243,17 @@ func (d *pineconeVectorClient) queryVector(v []float32, topK int, fs ...filters)
 				"$and": filterConditions,
 			}
 		} else if len(filterConditions) == 1 {
-			metadataFilter = filterConditions[0]
+			metadataFilter = filterConditions[0].(map[string]any)
 		}
 	}
 
 	var filterStruct *structpb.Struct
 	if metadataFilter != nil {
 		var err error
-		filterStruct, err = structpb.NewStruct(metadataFilter)
+		filterStruct, err = structpb.NewStruct(d.sanitizeFilterForProto(metadataFilter))
 		if err != nil {
-			return nil, fmt.Errorf("failed to create filter struct: %w", err)
+			d.logger.Warn("Failed to create filter struct, querying without filter", zap.Error(err))
+			filterStruct = nil
 		}
 	}
 
@@ -251,7 +302,7 @@ func (d *pineconeVectorClient) queryVectorByMetadata(f filters) ([]map[string]an
 		}
 	}
 
-	filterConditions := []map[string]any{}
+	filterConditions := []any{}
 	if metadataFilter != nil {
 		if namespaceFilter, ok := metadataFilter["namespace"]; ok {
 			filterConditions = append(filterConditions, map[string]any{
@@ -260,18 +311,42 @@ func (d *pineconeVectorClient) queryVectorByMetadata(f filters) ([]map[string]an
 		}
 	}
 	if f.Category != nil && *f.Category != "" {
-		filterConditions = append(filterConditions, map[string]any{
-			"category": map[string]any{
-				"$eq": *f.Category,
-			},
-		})
+		categories := strings.Split(*f.Category, ",")
+		for i := range categories {
+			categories[i] = strings.TrimSpace(categories[i])
+		}
+		if len(categories) == 1 {
+			filterConditions = append(filterConditions, map[string]any{
+				"category": map[string]any{
+					"$eq": categories[0],
+				},
+			})
+		} else {
+			filterConditions = append(filterConditions, map[string]any{
+				"category": map[string]any{
+					"$in": categories,
+				},
+			})
+		}
 	}
 	if f.Lifespan != nil && *f.Lifespan != "" {
-		filterConditions = append(filterConditions, map[string]any{
-			"lifespan": map[string]any{
-				"$eq": *f.Lifespan,
-			},
-		})
+		lifespans := strings.Split(*f.Lifespan, ",")
+		for i := range lifespans {
+			lifespans[i] = strings.TrimSpace(lifespans[i])
+		}
+		if len(lifespans) == 1 {
+			filterConditions = append(filterConditions, map[string]any{
+				"lifespan": map[string]any{
+					"$eq": lifespans[0],
+				},
+			})
+		} else {
+			filterConditions = append(filterConditions, map[string]any{
+				"lifespan": map[string]any{
+					"$in": lifespans,
+				},
+			})
+		}
 	}
 	if f.Importance != nil && *f.Importance != 0 {
 		filterConditions = append(filterConditions, map[string]any{
@@ -290,7 +365,7 @@ func (d *pineconeVectorClient) queryVectorByMetadata(f filters) ([]map[string]an
 	if f.Status != nil && *f.Status != "" {
 		filterConditions = append(filterConditions, map[string]any{
 			"status": map[string]any{
-				"$eq": *f.Status,
+				"$eq": string(*f.Status),
 			},
 		})
 	}
@@ -302,10 +377,10 @@ func (d *pineconeVectorClient) queryVectorByMetadata(f filters) ([]map[string]an
 			"$and": filterConditions,
 		}
 	} else {
-		metadataFilter = filterConditions[0]
+		metadataFilter = filterConditions[0].(map[string]any)
 	}
 
-	filterStruct, err := structpb.NewStruct(metadataFilter)
+	filterStruct, err := structpb.NewStruct(d.sanitizeFilterForProto(metadataFilter))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create filter struct: %w", err)
 	}
@@ -374,9 +449,9 @@ func (d *pineconeVectorClient) matchesPineconeFilter(metadata *structpb.Struct, 
 	metadataMap := metadata.AsMap()
 	filterMap := filter.AsMap()
 
-	if andConditions, ok := filterMap["$and"].([]interface{}); ok {
+	if andConditions, ok := filterMap["$and"].([]any); ok {
 		for _, condition := range andConditions {
-			condMap, ok := condition.(map[string]interface{})
+			condMap, ok := condition.(map[string]any)
 			if !ok {
 				return false
 			}
@@ -390,9 +465,9 @@ func (d *pineconeVectorClient) matchesPineconeFilter(metadata *structpb.Struct, 
 	return d.matchesSingleCondition(metadataMap, filterMap)
 }
 
-func (d *pineconeVectorClient) matchesSingleCondition(metadataMap map[string]interface{}, condMap map[string]interface{}) bool {
+func (d *pineconeVectorClient) matchesSingleCondition(metadataMap map[string]any, condMap map[string]any) bool {
 	for field, operator := range condMap {
-		opMap, ok := operator.(map[string]interface{})
+		opMap, ok := operator.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -407,6 +482,36 @@ func (d *pineconeVectorClient) matchesSingleCondition(metadataMap map[string]int
 			case "$eq":
 				if metadataValue != expectedValue {
 					return false
+				}
+			case "$in":
+				values, ok := expectedValue.([]any)
+				if !ok {
+					if strValues, ok := expectedValue.([]string); ok {
+						found := false
+						metaStr, _ := metadataValue.(string)
+						for _, v := range strValues {
+							if v == metaStr {
+								found = true
+								break
+							}
+						}
+						if !found {
+							return false
+						}
+					} else {
+						return false
+					}
+				} else {
+					found := false
+					for _, v := range values {
+						if metadataValue == v {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return false
+					}
 				}
 			case "$ne":
 				if metadataValue == expectedValue {
@@ -501,4 +606,31 @@ func (d *pineconeVectorClient) shiftUser(userId string) string {
 
 	d.idx = idxConnection
 	return d.userId
+}
+
+// sanitizeFilterForProto converts filter map to a format compatible with structpb.NewStruct
+func (d *pineconeVectorClient) sanitizeFilterForProto(filter map[string]any) map[string]any {
+	result := make(map[string]any)
+
+	for k, v := range filter {
+		switch val := v.(type) {
+		case []any:
+			// Convert slice elements recursively
+			sanitized := make([]any, len(val))
+			for i, item := range val {
+				if m, ok := item.(map[string]any); ok {
+					sanitized[i] = d.sanitizeFilterForProto(m)
+				} else {
+					sanitized[i] = item
+				}
+			}
+			result[k] = sanitized
+		case map[string]any:
+			result[k] = d.sanitizeFilterForProto(val)
+		default:
+			result[k] = v
+		}
+	}
+
+	return result
 }
