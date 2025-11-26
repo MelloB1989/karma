@@ -26,17 +26,18 @@ type Caching struct {
 }
 
 type KarmaMemory struct {
-	messagesHistory models.AIChatHistory
-	kai             *ai.KarmaAI
-	memoryAI        *ai.KarmaAI
-	embeddingAI     *ai.KarmaAI
-	retrievalAI     *ai.KarmaAI
-	Caching         Caching
-	memorydb        *dbClient
-	userID          string // User ID
-	scope           string // Application name, service name, etc.
-	logger          *zap.Logger
-	retrievalMode   RetrievalMode
+	messagesHistory      models.AIChatHistory
+	kai                  *ai.KarmaAI
+	memoryAI             *ai.KarmaAI
+	embeddingAI          *ai.KarmaAI
+	retrievalAI          *ai.KarmaAI
+	Caching              Caching
+	memorydb             *vectorClient
+	userID               string // User ID
+	scope                string // Application name, service name, etc.
+	logger               *zap.Logger
+	retrievalMode        RetrievalMode
+	currentMemoryContext string
 }
 
 func NewKarmaMemory(kai *ai.KarmaAI, userId string, sc ...string) *KarmaMemory {
@@ -45,10 +46,8 @@ func NewKarmaMemory(kai *ai.KarmaAI, userId string, sc ...string) *KarmaMemory {
 	if len(sc) > 0 {
 		scope = sc[0]
 	}
-	memorydb := newDBClient(userId, scope)
-	memorydb.runMigrations()
-
 	logger, _ := zap.NewProduction()
+	memorydb := newVectorClient(userId, scope, logger)
 
 	return &KarmaMemory{
 		messagesHistory: models.AIChatHistory{
@@ -97,6 +96,14 @@ func (k *KarmaMemory) UseEmbeddingLLM(llm ai.BaseModel, provider ai.Provider) {
 	k.embeddingAI = ai.NewKarmaAI(llm, provider)
 }
 
+func (k *KarmaMemory) UseService(service VectorServices) error {
+	return k.memorydb.switchService(k.userID, k.scope, service)
+}
+
+func (k *KarmaMemory) UseLogger(logger *zap.Logger) {
+	k.logger = logger
+}
+
 func (k *KarmaMemory) UseRetrievalMode(mode RetrievalMode) {
 	k.retrievalMode = mode
 }
@@ -142,11 +149,13 @@ func (k *KarmaMemory) UpdateMessageHistory(messages []models.AIMessage) {
 	if lastUserMsg != "" && lastAIMsg != "" {
 		go func() {
 			if err := k.ingest(struct {
-				UserMessage string
-				AIResponse  string
+				UserMessage          string
+				AIResponse           string
+				CurrentMemoryContext string
 			}{
-				UserMessage: lastUserMsg,
-				AIResponse:  lastAIMsg,
+				UserMessage:          lastUserMsg,
+				AIResponse:           lastAIMsg,
+				CurrentMemoryContext: k.currentMemoryContext,
 			}); err != nil {
 				k.logger.Error("karmaMemory: memory ingestion failed",
 					zap.String("userID", k.userID),
@@ -180,35 +189,39 @@ func (k *KarmaMemory) GetContext(userPrompt string) (string, error) {
 	}
 
 	searchQuery, err := k.generateSearchQuery(userPrompt)
+	sq := searchQuery.SearchQuery
 	if err != nil {
 		k.logger.Warn("karmaMemory: search query generation failed, using original prompt",
 			zap.Error(err))
-		searchQuery = userPrompt
+		sq = userPrompt
 	}
 
-	dbMemories, err := k.memorydb.getMemoriesBySubjectAndNamespace(k.userID, k.scope)
-	if err != nil {
-		k.logger.Error("karmaMemory: failed to retrieve memories from db",
-			zap.Error(err))
-		return "", err
-	}
-
-	embeddings, err := k.getEmbeddings(searchQuery)
+	embeddings, err := k.getEmbeddings(sq)
 	if err != nil {
 		k.logger.Error("karmaMemory: failed to generate embeddings",
 			zap.Error(err))
 		return "", err
 	}
 
-	vectorResults, err := k.memorydb.queryVector(embeddings, filters{})
+	vectorResults, err := k.memorydb.client.queryVector(embeddings, topK, searchQuery)
 	if err != nil {
 		k.logger.Warn("karmaMemory: vector search failed",
 			zap.Error(err))
 	}
 
-	relevantMemories := k.selectRelevantMemories(dbMemories, vectorResults, topK)
+	rules, err := k.memorydb.client.queryVectorByMetadata(filters{
+		Category: ptrStr("rule"),
+	})
+	if err != nil {
+		k.logger.Warn("karmaMemory: rules query failed",
+			zap.Error(err))
+		rules = []map[string]any{}
+	}
+
+	relevantMemories := k.selectRelevantMemories(vectorResults, rules, topK)
 
 	context := k.formatContext(relevantMemories, maxTokens)
+	k.currentMemoryContext = k.formatContextForIngest(relevantMemories)
 
 	k.logger.Info("karmaMemory: context retrieved",
 		zap.String("mode", string(mode)),

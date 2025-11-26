@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MelloB1989/karma/ai"
+	"github.com/MelloB1989/karma/ai/memory"
 	"github.com/MelloB1989/karma/apis/aws/bedrock"
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
@@ -93,6 +94,9 @@ func testWithMcpServer() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	newMemory := memory.NewKarmaMemory(kai, "user124")
+	newMemory.ChatCompletion("Hi, I love Go!")
+	newMemory.UseScope("agent1")
 	fmt.Println(res)
 	log.Println(res.AIResponse)
 }
