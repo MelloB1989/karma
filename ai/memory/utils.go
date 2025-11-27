@@ -3,12 +3,21 @@ package memory
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/MelloB1989/karma/ai/parser"
 	"github.com/upstash/vector-go"
 )
+
+func normalizeSummary(s string) string {
+	s = strings.ToLower(s)
+	reg := regexp.MustCompile(`[.,!?;:'"\-_()[\]{}]`)
+	s = reg.ReplaceAllString(s, "")
+	s = strings.Join(strings.Fields(s), " ")
+	return strings.TrimSpace(s)
+}
 
 func (k *KarmaMemory) generateSearchQuery(userPrompt string) (filters, error) {
 	var filters filters
@@ -19,6 +28,9 @@ func (k *KarmaMemory) generateSearchQuery(userPrompt string) (filters, error) {
 
 func (k *KarmaMemory) selectRelevantMemories(vectorResults []vector.VectorScore, rules []map[string]any, topK int) []Memory {
 	var result []Memory
+
+	seenIds := make(map[string]bool)
+	seenSummaries := make(map[string]bool)
 
 	type scoredMemory struct {
 		memory Memory
@@ -34,6 +46,22 @@ func (k *KarmaMemory) selectRelevantMemories(vectorResults []vector.VectorScore,
 		mem := metadataToMemory(vr.Metadata, vr.Id)
 		if mem.Status != StatusActive || mem.Category == CategoryRule {
 			continue
+		}
+
+		if mem.Id != "" && seenIds[mem.Id] {
+			continue
+		}
+
+		normalizedSummary := normalizeSummary(mem.Summary)
+		if normalizedSummary != "" && seenSummaries[normalizedSummary] {
+			continue
+		}
+
+		if mem.Id != "" {
+			seenIds[mem.Id] = true
+		}
+		if normalizedSummary != "" {
+			seenSummaries[normalizedSummary] = true
 		}
 
 		scored = append(scored, scoredMemory{memory: mem, score: float64(vr.Score)})
@@ -57,9 +85,27 @@ func (k *KarmaMemory) selectRelevantMemories(vectorResults []vector.VectorScore,
 
 	for _, r := range rules {
 		mem := metadataToMemory(r, "")
-		if mem.Status == StatusActive {
-			result = append(result, mem)
+		if mem.Status != StatusActive {
+			continue
 		}
+
+		if mem.Id != "" && seenIds[mem.Id] {
+			continue
+		}
+
+		normalizedSummary := normalizeSummary(mem.Summary)
+		if normalizedSummary != "" && seenSummaries[normalizedSummary] {
+			continue
+		}
+
+		if mem.Id != "" {
+			seenIds[mem.Id] = true
+		}
+		if normalizedSummary != "" {
+			seenSummaries[normalizedSummary] = true
+		}
+
+		result = append(result, mem)
 	}
 
 	return result

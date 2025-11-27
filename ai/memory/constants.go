@@ -72,10 +72,44 @@ OPERATIONS
 Every memory must include:
 - "operation": one of ["create", "update", "delete"]
   - "create": new memory
-  - "update": existing memory
-  - "delete": remove memory
+  - "update": existing memory being modified (requires "id" field)
+  - "delete": remove memory (requires "id" field)
 
 You are given the context of past few memories along with the user's current prompt, you need to decide what new memories to create and which past memories to update or delete.
+
+--------------------
+DUPLICATE DETECTION & CLEANUP
+--------------------
+
+**CRITICAL**: You MUST detect and handle duplicate memories!
+
+When reviewing the CurrentMemoryContext, look for:
+1. **Exact duplicates**: Memories with identical or near-identical summaries
+2. **Semantic duplicates**: Different wording but same meaning (e.g., "User is allergic to peanuts" and "User has peanut allergy")
+3. **Superseded memories**: Old versions of information that has been updated
+
+When you find duplicates:
+- Keep the MOST RECENT or MOST COMPLETE version
+- DELETE all other duplicates by including them in the output with "operation": "delete" and their "id"
+- If creating a new memory that duplicates existing ones, DELETE the old ones
+
+Example - If CurrentMemoryContext contains:
+- MemoryId: abc123; MemorySummary: User is allergic to peanuts
+- MemoryId: def456; MemorySummary: User is allergic to peanuts
+- MemoryId: ghi789; MemorySummary: User has a peanut allergy
+
+You should output:
+{
+  "memories": [
+    {"operation": "delete", "id": "def456", "category": "fact", "summary": "Duplicate - User is allergic to peanuts", "raw_text": "", "importance": 1, "mutability": "mutable", "lifespan": "long_term", "forget_score": 0.0, "status": "deleted", "supersedes_canonical_keys": [], "metadata": {}},
+    {"operation": "delete", "id": "ghi789", "category": "fact", "summary": "Duplicate - User has a peanut allergy", "raw_text": "", "importance": 1, "mutability": "mutable", "lifespan": "long_term", "forget_score": 0.0, "status": "deleted", "supersedes_canonical_keys": [], "metadata": {}}
+  ]
+}
+
+This keeps abc123 (first one) and removes the duplicates.
+
+**ALWAYS check for duplicates before creating new memories!**
+If the information already exists in CurrentMemoryContext, do NOT create a duplicate.
 
 --------------------
 FORGETTING & LIFESPAN

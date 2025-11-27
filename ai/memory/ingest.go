@@ -64,6 +64,18 @@ If no memories should be stored, return: {"memories": []}`, convo.CurrentMemoryC
 	for _, memory := range wrapper.Memories {
 		now := time.Now()
 
+		memoryId := utils.GenerateID(7)
+		if memory.Operation == "delete" || memory.Operation == "update" {
+			if memory.Id != nil && *memory.Id != "" {
+				memoryId = *memory.Id
+			} else {
+				k.logger.Warn("karmaMemory: delete/update operation without ID, skipping",
+					zap.String("operation", memory.Operation),
+					zap.String("summary", memory.Summary))
+				continue
+			}
+		}
+
 		mem := &Memory{
 			Category:                memory.Category,
 			Summary:                 memory.Summary,
@@ -75,12 +87,20 @@ If no memories should be stored, return: {"memories": []}`, convo.CurrentMemoryC
 			Status:                  memory.Status,
 			SupersedesCanonicalKeys: memory.SupersedesCanonicalKeys,
 			Metadata:                memory.Metadata,
-			Id:                      utils.GenerateID(7),
+			Id:                      memoryId,
 			CreatedAt:               now,
 			UpdatedAt:               now,
 			ExpiresAt:               computeExpiry(now, memory.Lifespan, memory.ForgetScore),
 			Namespace:               k.scope,
 			SubjectKey:              k.userID,
+		}
+
+		if memory.Operation == "delete" {
+			vd = append(vd, memoryId)
+			k.logger.Debug("karmaMemory: queued memory for deletion",
+				zap.String("id", memoryId),
+				zap.String("summary", memory.Summary))
+			continue
 		}
 
 		embeddingText := memory.Summary
@@ -104,8 +124,6 @@ If no memories should be stored, return: {"memories": []}`, convo.CurrentMemoryC
 				})
 			} else if memory.Operation == "update" {
 				k.memorydb.client.updateVector(*mem, embeddings)
-			} else if memory.Operation == "delete" {
-				vd = append(vd, mem.Id)
 			}
 
 		case VectorServicePinecone:
@@ -115,8 +133,6 @@ If no memories should be stored, return: {"memories": []}`, convo.CurrentMemoryC
 				})
 			} else if memory.Operation == "update" {
 				k.memorydb.client.updateVector(*mem)
-			} else if memory.Operation == "delete" {
-				vd = append(vd, mem.Id)
 			}
 		}
 	}
