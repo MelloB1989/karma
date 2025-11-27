@@ -71,11 +71,94 @@ func metadataToMemory(metadata map[string]any, id string) Memory {
 	if v, ok := metadata["id"].(string); ok && id == "" {
 		mem.Id = v
 	}
+	if v, ok := metadata["_id"].(string); ok && mem.Id == "" {
+		mem.Id = v
+	}
+	if v, ok := metadata["subject_key"].(string); ok {
+		mem.SubjectKey = v
+	}
+	if v, ok := metadata["namespace"].(string); ok {
+		mem.Namespace = v
+	}
+	// Check both "summary" and "text" fields (Pinecone uses "text" for integrated records)
 	if v, ok := metadata["summary"].(string); ok {
+		mem.Summary = v
+	}
+	if v, ok := metadata["text"].(string); ok && mem.Summary == "" {
 		mem.Summary = v
 	}
 	if v, ok := metadata["category"].(string); ok {
 		mem.Category = MemoryCategory(v)
+	}
+	if v, ok := metadata["raw_text"].(string); ok {
+		mem.RawText = v
+	}
+	if v, ok := metadata["forget_score"].(float64); ok {
+		mem.ForgetScore = v
+	}
+	// Handle metadata as string (from Pinecone) or json.RawMessage
+	if v, ok := metadata["metadata"].(string); ok {
+		mem.Metadata = json.RawMessage(v)
+	} else if v, ok := metadata["metadata_json"].(string); ok {
+		mem.Metadata = json.RawMessage(v)
+	} else if v, ok := metadata["metadata"].(json.RawMessage); ok {
+		mem.Metadata = v
+	}
+	if v, ok := metadata["mutability"].(string); ok {
+		mem.Mutability = MemoryMutability(v)
+	}
+	// Handle supersedes_canonical_keys as JSON string or slice
+	if v, ok := metadata["supersedes_canonical_keys"].(string); ok {
+		var keys []string
+		if err := json.Unmarshal([]byte(v), &keys); err == nil {
+			mem.SupersedesCanonicalKeys = keys
+		}
+	} else if v, ok := metadata["supersedes_canonical_keys_json"].(string); ok {
+		var keys []string
+		if err := json.Unmarshal([]byte(v), &keys); err == nil {
+			mem.SupersedesCanonicalKeys = keys
+		}
+	} else if v, ok := metadata["supersedes_canonical_keys"].([]string); ok {
+		mem.SupersedesCanonicalKeys = v
+	} else if v, ok := metadata["supersedes_canonical_keys"].([]interface{}); ok {
+		keys := make([]string, 0, len(v))
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				keys = append(keys, s)
+			}
+		}
+		mem.SupersedesCanonicalKeys = keys
+	}
+	// Handle time fields - can be time.Time or RFC3339 string
+	if v, ok := metadata["created_at"].(time.Time); ok {
+		mem.CreatedAt = v
+	} else if v, ok := metadata["created_at"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			mem.CreatedAt = t
+		}
+	}
+	if v, ok := metadata["updated_at"].(time.Time); ok {
+		mem.UpdatedAt = v
+	} else if v, ok := metadata["updated_at"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			mem.UpdatedAt = t
+		}
+	}
+	if v, ok := metadata["expires_at"].(*time.Time); ok {
+		mem.ExpiresAt = v
+	} else if v, ok := metadata["expires_at"].(string); ok {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			mem.ExpiresAt = &t
+		}
+	}
+	// Handle entity_relationships as string or slice
+	if v, ok := metadata["entity_relationships_json"].(string); ok {
+		var rels []EntityRelationship
+		if err := json.Unmarshal([]byte(v), &rels); err == nil {
+			mem.EntityRelationships = rels
+		}
+	} else if v, ok := metadata["entity_relationships"].([]EntityRelationship); ok {
+		mem.EntityRelationships = v
 	}
 	if v, ok := metadata["status"].(string); ok {
 		mem.Status = MemoryStatus(v)
@@ -84,6 +167,8 @@ func metadataToMemory(metadata map[string]any, id string) Memory {
 	}
 	if v, ok := metadata["importance"].(float64); ok {
 		mem.Importance = int(v)
+	} else if v, ok := metadata["importance"].(int); ok {
+		mem.Importance = v
 	}
 	if v, ok := metadata["lifespan"].(string); ok {
 		mem.Lifespan = MemoryLifespan(v)
@@ -205,17 +290,9 @@ func (m *Memory) ToMap() (map[string]any, error) {
 
 	var supersedes any
 	if len(m.SupersedesCanonicalKeys) > 0 {
-		if err := json.Unmarshal(m.SupersedesCanonicalKeys, &supersedes); err != nil {
-			return nil, fmt.Errorf("invalid SupersedesCanonicalKeys JSON: %w", err)
-		}
+		supersedes = m.SupersedesCanonicalKeys
 	}
 	out["supersedes_canonical_keys"] = supersedes
-
-	if m.SupersededById != nil {
-		out["superseded_by_id"] = *m.SupersededById
-	} else {
-		out["superseded_by_id"] = nil
-	}
 
 	var metadata any
 	if len(m.Metadata) > 0 {

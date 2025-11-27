@@ -3,14 +3,25 @@ package memory
 import (
 	"github.com/MelloB1989/karma/ai"
 	"github.com/MelloB1989/karma/models"
+	"github.com/upstash/vector-go"
 	"go.uber.org/zap"
 )
 
+// RetrievalMode defines how memory context is retrieved
 type RetrievalMode string
 
 const (
+	// RetrievalModeConscious uses AI to generate dynamic search queries based on user prompt.
+	// It analyzes the prompt to determine relevant categories, lifespan, and search terms.
+	// Best for: Complex queries where context matters, conversational AI.
+	// Tradeoff: Higher latency due to LLM call, more tokens used.
 	RetrievalModeConscious RetrievalMode = "conscious"
-	RetrievalModeAuto      RetrievalMode = "auto"
+
+	// RetrievalModeAuto uses a fixed query strategy with the user prompt as the search text.
+	// Always includes non-expired facts, preferences, rules, entities, and context.
+	// Best for: Fast retrieval, predictable behavior, lower cost.
+	// Tradeoff: Less intelligent filtering, may retrieve less relevant memories.
+	RetrievalModeAuto RetrievalMode = "auto"
 )
 
 type CachingModes string
@@ -179,40 +190,90 @@ func (k *KarmaMemory) GetContext(userPrompt string) (string, error) {
 
 	var maxTokens int
 	var topK int
+	var searchQuery filters
+	var sq string
+	var err error
 
 	switch mode {
 	case RetrievalModeConscious:
 		maxTokens = 400
 		topK = 3
+
+		searchQuery, err = k.generateSearchQuery(userPrompt)
+		sq = searchQuery.SearchQuery
+		if err != nil {
+			k.logger.Warn("karmaMemory: search query generation failed, using original prompt",
+				zap.Error(err))
+			sq = userPrompt
+			searchQuery.SearchQuery = sq
+		}
+
 	case RetrievalModeAuto:
 		maxTokens = 800
 		topK = 5
+
+		sq = userPrompt
+		activeStatus := StatusActive
+		searchQuery = filters{
+			SearchQuery: userPrompt,
+			Category:    ptrStr("fact, preference, rule, entity, context"),
+			Lifespan:    ptrStr("lifelong, long_term, mid_term"),
+			Status:      &activeStatus,
+		}
+
 	default:
 		maxTokens = 300
 		topK = 5
-	}
 
-	searchQuery, err := k.generateSearchQuery(userPrompt)
-	sq := searchQuery.SearchQuery
-	if err != nil {
-		k.logger.Warn("karmaMemory: search query generation failed, using original prompt",
-			zap.Error(err))
 		sq = userPrompt
+		activeStatus := StatusActive
+		searchQuery = filters{
+			SearchQuery: userPrompt,
+			Category:    ptrStr("fact, preference, rule, entity"),
+			Status:      &activeStatus,
+		}
 	}
 
-	embeddings, err := k.getEmbeddings(sq)
-	if err != nil {
-		k.logger.Error("karmaMemory: failed to generate embeddings",
-			zap.Error(err))
-		return "", err
+	var vectorResults []vector.VectorScore
+
+	// Use different query strategies based on service type
+	switch k.memorydb.currentService {
+	case VectorServicePinecone:
+		// Pinecone with integrated records uses text-based search (no external embeddings)
+		vectorResults, err = k.memorydb.client.queryVector(nil, topK, searchQuery)
+		if err != nil {
+			k.logger.Warn("karmaMemory: vector search failed",
+				zap.Error(err))
+		}
+	case VectorServiceUpstash:
+		// Upstash requires external embeddings
+		embeddings, embErr := k.getEmbeddings(sq)
+		if embErr != nil {
+			k.logger.Error("karmaMemory: failed to generate embeddings",
+				zap.Error(embErr))
+			return "", embErr
+		}
+		vectorResults, err = k.memorydb.client.queryVector(embeddings, topK, searchQuery)
+		if err != nil {
+			k.logger.Warn("karmaMemory: vector search failed",
+				zap.Error(err))
+		}
+	default:
+		// Default: try with embeddings
+		embeddings, embErr := k.getEmbeddings(sq)
+		if embErr != nil {
+			k.logger.Error("karmaMemory: failed to generate embeddings",
+				zap.Error(embErr))
+			return "", embErr
+		}
+		vectorResults, err = k.memorydb.client.queryVector(embeddings, topK, searchQuery)
+		if err != nil {
+			k.logger.Warn("karmaMemory: vector search failed",
+				zap.Error(err))
+		}
 	}
 
-	vectorResults, err := k.memorydb.client.queryVector(embeddings, topK, searchQuery)
-	if err != nil {
-		k.logger.Warn("karmaMemory: vector search failed",
-			zap.Error(err))
-	}
-
+	// Always fetch rules separately to ensure they're included
 	rules, err := k.memorydb.client.queryVectorByMetadata(filters{
 		Category: ptrStr("rule"),
 	})

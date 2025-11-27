@@ -62,14 +62,6 @@ If no memories should be stored, return: {"memories": []}`, convo.CurrentMemoryC
 	var vd []string
 
 	for _, memory := range wrapper.Memories {
-		// Convert SupersedesCanonicalKeys to JSON
-		supersedesJSON, err := json.Marshal(memory.SupersedesCanonicalKeys)
-		if err != nil {
-			k.logger.Error("karmaMemory: failed to marshal supersedes_canonical_keys",
-				zap.Error(err))
-			continue
-		}
-
 		now := time.Now()
 
 		mem := &Memory{
@@ -81,7 +73,7 @@ If no memories should be stored, return: {"memories": []}`, convo.CurrentMemoryC
 			Lifespan:                memory.Lifespan,
 			ForgetScore:             memory.ForgetScore,
 			Status:                  memory.Status,
-			SupersedesCanonicalKeys: json.RawMessage(supersedesJSON),
+			SupersedesCanonicalKeys: memory.SupersedesCanonicalKeys,
 			Metadata:                memory.Metadata,
 			Id:                      utils.GenerateID(7),
 			CreatedAt:               now,

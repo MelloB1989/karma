@@ -19,7 +19,7 @@ func setupTestMemory(t *testing.T) *KarmaMemory {
 		t.Skip("OPENAI_KEY not set")
 	}
 
-	kai := ai.NewKarmaAI(ai.GPT4oMini, ai.OpenAI)
+	kai := ai.NewKarmaAI(ai.Llama33_70B, ai.Groq)
 	mem := NewKarmaMemory(kai, "test_user_123", "test_scope")
 	mem.UseMemoryLLM(ai.Llama31_8B, ai.Groq)
 	mem.UseService(VectorServicePinecone)
@@ -311,7 +311,7 @@ func TestMemoryPersistence(t *testing.T) {
 	mem1 := setupTestMemory(t)
 
 	messages := []models.AIMessage{
-		{Role: models.User, Message: "I'm allergic to peanuts!", Timestamp: time.Now(), UniqueId: "1"},
+		{Role: models.User, Message: "I'm allergic to peanuts", Timestamp: time.Now(), UniqueId: "1"},
 		{Role: models.Assistant, Message: "I'll remember your peanut allergy.", Timestamp: time.Now(), UniqueId: "2"},
 	}
 	mem1.UpdateMessageHistory(messages)

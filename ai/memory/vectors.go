@@ -63,8 +63,7 @@ type Memory struct {
 	Lifespan                MemoryLifespan       `json:"lifespan"`
 	ForgetScore             float64              `json:"forget_score"`
 	Status                  MemoryStatus         `json:"status"`
-	SupersedesCanonicalKeys json.RawMessage      `json:"supersedes_canonical_keys"`
-	SupersededById          *string              `json:"superseded_by_id,omitempty"`
+	SupersedesCanonicalKeys []string             `json:"supersedes_canonical_keys"`
 	Metadata                json.RawMessage      `json:"metadata"`
 	CreatedAt               time.Time            `json:"created_at"`
 	UpdatedAt               time.Time            `json:"updated_at"`

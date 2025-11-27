@@ -71,13 +71,14 @@ func (d *pineconeVectorClient) upsertVectors(vectors []v) error {
 
 		for _, v := range vectors {
 			record := &pinecone.IntegratedRecord{
-				"_id":        v.memories.Id,
-				"chunk_text": v.memories.Summary,
+				"_id":  v.memories.Id,
+				"text": v.memories.Summary,
 			}
 
 			// Add sanitized metadata fields (only primitive types supported)
 			(*record)["subject_key"] = v.memories.SubjectKey
 			(*record)["namespace"] = v.memories.Namespace
+			(*record)["summary"] = v.memories.Summary
 			(*record)["category"] = string(v.memories.Category)
 			(*record)["importance"] = v.memories.Importance
 			(*record)["mutability"] = string(v.memories.Mutability)
@@ -90,17 +91,14 @@ func (d *pineconeVectorClient) upsertVectors(vectors []v) error {
 			if v.memories.RawText != "" {
 				(*record)["raw_text"] = v.memories.RawText
 			}
-			if v.memories.SupersededById != nil {
-				(*record)["superseded_by_id"] = *v.memories.SupersededById
-			}
 			if v.memories.ExpiresAt != nil {
 				(*record)["expires_at"] = v.memories.ExpiresAt.Format(time.RFC3339)
 			}
 			if len(v.memories.Metadata) > 0 {
-				(*record)["metadata_json"] = string(v.memories.Metadata)
+				(*record)["metadata"] = string(v.memories.Metadata)
 			}
 			if len(v.memories.SupersedesCanonicalKeys) > 0 {
-				(*record)["supersedes_canonical_keys_json"] = string(v.memories.SupersedesCanonicalKeys)
+				(*record)["supersedes_canonical_keys"] = v.memories.SupersedesCanonicalKeys
 			}
 			if len(v.memories.EntityRelationships) > 0 {
 				relBytes, err := json.Marshal(v.memories.EntityRelationships)
@@ -160,6 +158,12 @@ func (d *pineconeVectorClient) queryVector(v []float32, topK int, fs ...filters)
 		f = &fs[0]
 	}
 
+	useIntegratedSearch := len(v) == 0
+
+	if useIntegratedSearch && f != nil && f.SearchQuery != "" {
+		return d.queryByText(f.SearchQuery, topK, fs...)
+	}
+
 	var metadataFilter map[string]any
 
 	if f == nil || f.IncludeAllScopes == nil || !*f.IncludeAllScopes {
@@ -191,9 +195,13 @@ func (d *pineconeVectorClient) queryVector(v []float32, topK int, fs ...filters)
 					},
 				})
 			} else {
+				catInterface := make([]any, len(categories))
+				for i, c := range categories {
+					catInterface[i] = c
+				}
 				filterConditions = append(filterConditions, map[string]any{
 					"category": map[string]any{
-						"$in": categories,
+						"$in": catInterface,
 					},
 				})
 			}
@@ -210,9 +218,14 @@ func (d *pineconeVectorClient) queryVector(v []float32, topK int, fs ...filters)
 					},
 				})
 			} else {
+				// Convert to []any for protobuf compatibility
+				lsInterface := make([]any, len(lifespans))
+				for i, l := range lifespans {
+					lsInterface[i] = l
+				}
 				filterConditions = append(filterConditions, map[string]any{
 					"lifespan": map[string]any{
-						"$in": lifespans,
+						"$in": lsInterface,
 					},
 				})
 			}
@@ -322,9 +335,14 @@ func (d *pineconeVectorClient) queryVectorByMetadata(f filters) ([]map[string]an
 				},
 			})
 		} else {
+			// Convert to []any for protobuf compatibility
+			catInterface := make([]any, len(categories))
+			for i, c := range categories {
+				catInterface[i] = c
+			}
 			filterConditions = append(filterConditions, map[string]any{
 				"category": map[string]any{
-					"$in": categories,
+					"$in": catInterface,
 				},
 			})
 		}
@@ -341,9 +359,14 @@ func (d *pineconeVectorClient) queryVectorByMetadata(f filters) ([]map[string]an
 				},
 			})
 		} else {
+			// Convert to []any for protobuf compatibility
+			lsInterface := make([]any, len(lifespans))
+			for i, l := range lifespans {
+				lsInterface[i] = l
+			}
 			filterConditions = append(filterConditions, map[string]any{
 				"lifespan": map[string]any{
-					"$in": lifespans,
+					"$in": lsInterface,
 				},
 			})
 		}
@@ -548,9 +571,60 @@ func (d *pineconeVectorClient) matchesSingleCondition(metadataMap map[string]any
 }
 
 func (d *pineconeVectorClient) updateVector(memory Memory, v ...[]float32) (bool, error) {
-	if len(v) == 0 {
-		d.logger.Warn("no vector provided to updateVector")
-		return false, fmt.Errorf("no vector provided")
+	useIntegratedRecords := len(v) == 0 || len(v[0]) == 0
+
+	if useIntegratedRecords {
+		err := d.idx.DeleteVectorsById(d.ctx, []string{memory.Id})
+		if err != nil {
+			d.logger.Warn("Failed to delete old vector for update", zap.Error(err), zap.String("id", memory.Id))
+		}
+
+		record := &pinecone.IntegratedRecord{
+			"_id":  memory.Id,
+			"text": memory.Summary,
+		}
+
+		(*record)["subject_key"] = memory.SubjectKey
+		(*record)["namespace"] = memory.Namespace
+		(*record)["category"] = string(memory.Category)
+		(*record)["importance"] = memory.Importance
+		(*record)["mutability"] = string(memory.Mutability)
+		(*record)["lifespan"] = string(memory.Lifespan)
+		(*record)["forget_score"] = memory.ForgetScore
+		(*record)["status"] = string(memory.Status)
+		(*record)["created_at"] = memory.CreatedAt.Format(time.RFC3339)
+		(*record)["updated_at"] = memory.UpdatedAt.Format(time.RFC3339)
+
+		if memory.RawText != "" {
+			(*record)["raw_text"] = memory.RawText
+		}
+		if memory.ExpiresAt != nil {
+			(*record)["expires_at"] = memory.ExpiresAt.Format(time.RFC3339)
+		}
+		if len(memory.Metadata) > 0 {
+			(*record)["metadata_json"] = string(memory.Metadata)
+		}
+		if len(memory.SupersedesCanonicalKeys) > 0 {
+			keysBytes, err := json.Marshal(memory.SupersedesCanonicalKeys)
+			if err == nil {
+				(*record)["supersedes_canonical_keys_json"] = string(keysBytes)
+			}
+		}
+		if len(memory.EntityRelationships) > 0 {
+			relBytes, err := json.Marshal(memory.EntityRelationships)
+			if err == nil {
+				(*record)["entity_relationships_json"] = string(relBytes)
+			}
+		}
+
+		err = d.idx.UpsertRecords(d.ctx, []*pinecone.IntegratedRecord{record})
+		if err != nil {
+			d.logger.Error("Pinecone integrated record update failed", zap.Error(err))
+			return false, fmt.Errorf("pinecone integrated record update failed: %w", err)
+		}
+
+		d.logger.Info("Pinecone integrated record updated", zap.String("id", memory.Id))
+		return true, nil
 	}
 
 	m, err := memory.ToMap()
@@ -606,6 +680,134 @@ func (d *pineconeVectorClient) shiftUser(userId string) string {
 
 	d.idx = idxConnection
 	return d.userId
+}
+
+// queryByText queries using Pinecone's integrated inference (for indexes with integrated embeddings)
+func (d *pineconeVectorClient) queryByText(query string, topK int, fs ...filters) ([]vector.VectorScore, error) {
+	var f *filters
+	if len(fs) > 0 {
+		f = &fs[0]
+	}
+
+	var metadataFilter map[string]any
+
+	if f == nil || f.IncludeAllScopes == nil || !*f.IncludeAllScopes {
+		metadataFilter = map[string]any{
+			"namespace": map[string]any{
+				"$eq": d.scope,
+			},
+		}
+	}
+
+	if f != nil {
+		filterConditions := []any{}
+		if metadataFilter != nil {
+			if namespaceFilter, ok := metadataFilter["namespace"]; ok {
+				filterConditions = append(filterConditions, map[string]any{
+					"namespace": namespaceFilter,
+				})
+			}
+		}
+		if f.Category != nil && *f.Category != "" {
+			categories := strings.Split(*f.Category, ",")
+			for i := range categories {
+				categories[i] = strings.TrimSpace(categories[i])
+			}
+			if len(categories) == 1 {
+				filterConditions = append(filterConditions, map[string]any{
+					"category": map[string]any{
+						"$eq": categories[0],
+					},
+				})
+			} else {
+				catInterface := make([]any, len(categories))
+				for i, c := range categories {
+					catInterface[i] = c
+				}
+				filterConditions = append(filterConditions, map[string]any{
+					"category": map[string]any{
+						"$in": catInterface,
+					},
+				})
+			}
+		}
+		if f.Lifespan != nil && *f.Lifespan != "" {
+			lifespans := strings.Split(*f.Lifespan, ",")
+			for i := range lifespans {
+				lifespans[i] = strings.TrimSpace(lifespans[i])
+			}
+			if len(lifespans) == 1 {
+				filterConditions = append(filterConditions, map[string]any{
+					"lifespan": map[string]any{
+						"$eq": lifespans[0],
+					},
+				})
+			} else {
+				lsInterface := make([]any, len(lifespans))
+				for i, l := range lifespans {
+					lsInterface[i] = l
+				}
+				filterConditions = append(filterConditions, map[string]any{
+					"lifespan": map[string]any{
+						"$in": lsInterface,
+					},
+				})
+			}
+		}
+		if f.Status != nil && *f.Status != "" {
+			filterConditions = append(filterConditions, map[string]any{
+				"status": map[string]any{
+					"$eq": string(*f.Status),
+				},
+			})
+		}
+		if len(filterConditions) > 1 {
+			metadataFilter = map[string]any{
+				"$and": filterConditions,
+			}
+		} else if len(filterConditions) == 1 {
+			metadataFilter = filterConditions[0].(map[string]any)
+		}
+	}
+
+	// Use SearchRecords for integrated inference
+	inputs := map[string]any{
+		"text": query,
+	}
+	var filterMap *map[string]any
+	if metadataFilter != nil {
+		sanitized := d.sanitizeFilterForProto(metadataFilter)
+		filterMap = &sanitized
+	}
+	searchReq := &pinecone.SearchRecordsRequest{
+		Query: pinecone.SearchRecordsQuery{
+			TopK:   int32(topK),
+			Inputs: &inputs,
+			Filter: filterMap,
+		},
+	}
+
+	res, err := d.idx.SearchRecords(d.ctx, searchReq)
+	if err != nil {
+		return nil, fmt.Errorf("pinecone text search failed: %w", err)
+	}
+
+	scores := make([]vector.VectorScore, 0, len(res.Result.Hits))
+	for _, hit := range res.Result.Hits {
+		metadataMap := make(map[string]any)
+		if hit.Fields != nil {
+			for k, v := range hit.Fields {
+				metadataMap[k] = v
+			}
+		}
+		scores = append(scores, vector.VectorScore{
+			Id:       hit.Id,
+			Score:    float32(hit.Score),
+			Metadata: metadataMap,
+		})
+	}
+
+	return scores, nil
 }
 
 // sanitizeFilterForProto converts filter map to a format compatible with structpb.NewStruct
