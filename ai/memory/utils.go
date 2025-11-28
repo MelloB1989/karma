@@ -1,6 +1,7 @@
 package memory
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/MelloB1989/karma/ai/parser"
 	"github.com/upstash/vector-go"
+	"go.uber.org/zap"
 )
 
 func normalizeSummary(s string) string {
@@ -279,12 +281,25 @@ func (k *KarmaMemory) formatContextForIngest(memories []Memory) string {
 
 	var ms []string
 
+	ms = append(ms, "EXISTING_MEMORIES (use these IDs for updates/supersedes):")
+
 	for _, mem := range memories {
+		var entry string
 		if mem.ExpiresAt == nil {
-			ms = append(ms, fmt.Sprintf("MemoryId: %s; MemoryCreatedAt: %s; MemoryExpiry: noExpiry; MemorySummary: %s", mem.Id, mem.CreatedAt.Format(time.RFC3339), strings.TrimSpace(mem.Summary)))
+			entry = fmt.Sprintf("[ID:%s] [Category:%s] [Status:%s] %s",
+				mem.Id,
+				string(mem.Category),
+				string(mem.Status),
+				strings.TrimSpace(mem.Summary))
 		} else {
-			ms = append(ms, fmt.Sprintf("MemoryId: %s; MemoryCreatedAt: %s; MemoryExpiry: %s; MemorySummary: %s", mem.Id, mem.CreatedAt.Format(time.RFC3339), mem.ExpiresAt.Format(time.RFC3339), strings.TrimSpace(mem.Summary)))
+			entry = fmt.Sprintf("[ID:%s] [Category:%s] [Status:%s] [Expires:%s] %s",
+				mem.Id,
+				string(mem.Category),
+				string(mem.Status),
+				mem.ExpiresAt.Format("2006-01-02"),
+				strings.TrimSpace(mem.Summary))
 		}
+		ms = append(ms, entry)
 	}
 
 	return strings.Join(ms, "\n")
@@ -364,4 +379,130 @@ func (m *Memory) ToMap() (map[string]any, error) {
 
 func ptrStr(s string) *string {
 	return &s
+}
+
+func (k *KarmaMemory) findSimilarMemory(summary string, category MemoryCategory) string {
+	categoryStr := string(category)
+	existingMemories, err := k.memorydb.client.queryVectorByMetadata(filters{
+		Category: &categoryStr,
+	})
+	if err != nil {
+		k.logger.Debug("karmaMemory: failed to query existing memories for similarity check",
+			zap.Error(err))
+		return ""
+	}
+
+	normalizedNew := normalizeSummary(summary)
+
+	for _, mem := range existingMemories {
+		existingSummary, ok := mem["summary"].(string)
+		if !ok {
+			continue
+		}
+
+		normalizedExisting := normalizeSummary(existingSummary)
+
+		if isSimilarMemory(normalizedNew, normalizedExisting) {
+			if id, ok := mem["id"].(string); ok && id != "" {
+				return id
+			}
+			if id, ok := mem["_id"].(string); ok && id != "" {
+				return id
+			}
+		}
+	}
+
+	return ""
+}
+
+func isSimilarMemory(new, existing string) bool {
+	if new == existing {
+		return true
+	}
+
+	if strings.Contains(new, existing) || strings.Contains(existing, new) {
+		return true
+	}
+
+	newWords := extractKeyWords(new)
+	existingWords := extractKeyWords(existing)
+
+	if len(newWords) == 0 || len(existingWords) == 0 {
+		return false
+	}
+
+	overlap := 0
+	for _, word := range newWords {
+		for _, existingWord := range existingWords {
+			if word == existingWord {
+				overlap++
+				break
+			}
+		}
+	}
+
+	minLen := len(newWords)
+	if len(existingWords) < minLen {
+		minLen = len(existingWords)
+	}
+
+	if minLen > 0 && float64(overlap)/float64(minLen) >= 0.6 {
+		return true
+	}
+
+	return false
+}
+
+//go:embed stopwords
+var stopwordsFile string
+
+func loadStopWords() map[string]bool {
+	stopWords := make(map[string]bool)
+	lines := strings.Split(stopwordsFile, "\n")
+	for _, w := range lines {
+		w = strings.TrimSpace(w)
+		if w != "" {
+			stopWords[w] = true
+		}
+	}
+	return stopWords
+}
+
+func extractKeyWords(s string) []string {
+	stopWords := loadStopWords()
+
+	words := strings.Fields(s)
+	var keyWords []string
+
+	for _, word := range words {
+		word = strings.TrimSpace(strings.ToLower(word))
+		if len(word) > 2 && !stopWords[word] {
+			keyWords = append(keyWords, word)
+		}
+	}
+
+	return keyWords
+}
+
+func (k *KarmaMemory) markMemoryAsSuperseded(memoryId string) error {
+	supersededMem := Memory{
+		Id:        memoryId,
+		Status:    StatusSuperseded,
+		UpdatedAt: time.Now(),
+	}
+
+	switch k.memorydb.currentService {
+	case VectorServiceUpstash:
+		_, err := k.memorydb.client.updateVector(supersededMem)
+		return err
+	case VectorServicePinecone:
+		_, err := k.memorydb.client.updateVector(supersededMem)
+		return err
+	}
+
+	return nil
+}
+
+func intPtr(i int) *int {
+	return &i
 }

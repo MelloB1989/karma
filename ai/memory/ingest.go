@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -11,22 +12,23 @@ import (
 )
 
 type m struct {
-	Operation               string           `json:"operation" description:"Operation type of the memory. One of: 'create', 'update', 'delete'.\n- create: new memory being added.\n- update: existing memory being modified.\n- delete: memory being removed."`
-	Id                      *string          `json:"id" description:"Unique identifier for the memory object. Include this when using update or delete operations to specify which memory to modify or remove."`
-	Category                MemoryCategory   `json:"category" description:"High-level category of the memory. One of: 'fact', 'preference', 'skill', 'context', 'rule', 'entity', 'episodic'.\n- fact: objective info about the subject (e.g. 'I use PostgreSQL for databases').\n- preference: likes/dislikes or choices (e.g. 'I prefer clean, readable code', 'I like Adidas').\n- skill: abilities and expertise (e.g. 'Experienced with FastAPI').\n- context: project or situation info (e.g. 'Working on e-commerce platform').\n- rule: behavioral guidelines or constraints (e.g. 'Always write tests first', 'Never reply in Telugu').\n- entity: people/organizations in subject's life (e.g. 'Jane is my mom', 'Karthik is my lead developer').\n- episodic: specific events in time (e.g. 'Yesterday we deployed the new version')."`
-	Summary                 string           `json:"summary" description:"Short, normalized natural-language summary of the memory. This should capture the essence in one concise sentence. Example: 'User uses PostgreSQL as their primary database.' or 'User no longer likes Adidas.'"`
-	RawText                 string           `json:"raw_text" description:"Original or minimally normalized text span from which this memory was derived. Useful for audit and re-embedding. Example: 'I use PostgreSQL for databases' or 'I don't like Adidas anymore'."`
-	Importance              int              `json:"importance" description:"Importance score from 1 to 5 indicating how critical this memory is for personalization and future recall.\n1 = low value, rarely needed.\n3 = normal.\n5 = very important, central to subject identity, long-term goals, or behavior.\nExamples: 'Never reply in Telugu' → 5; 'I like this one song' → 2 or 3."`
-	Mutability              MemoryMutability `json:"mutability" description:"Indicates whether this memory is expected to change over time.\nCommon values (via MemoryMutability enum):\n- 'immutable': Core facts that typically do not change (e.g. 'I was born in 1995').\n- 'mutable': Preferences or settings that may change (e.g. 'I like Adidas', 'I prefer TypeScript').\nUsed to decide how to handle updates and conflict resolution."`
-	Lifespan                MemoryLifespan   `json:"lifespan" description:"Intended lifespan category for this memory, typically via MemoryLifespan enum. One of:\n- 'short_term': ephemeral or near-term context (e.g. 'This week I am traveling').\n- 'mid_term': medium-lived preferences or context (e.g. 'Currently using Tailwind for styling').\n- 'long_term': persistent facts/skills (e.g. 'I use PostgreSQL', 'Experienced with FastAPI').\n- 'lifelong': identity-level traits (e.g. 'I love coding', 'I enjoy cooking').\nCombined with ForgetScore and ExpiresAt for decay and garbage collection strategies."`
-	ForgetScore             float64          `json:"forget_score" description:"Float from 0.0 to 1.0 indicating how forgettable this memory is.\n0.0 = effectively never forget (highly critical).\n1.0 = very forgettable (highly ephemeral).\nGuidelines: identity-level traits and core rules ≈ 0.0–0.1; stable facts/skills ≈ 0.1–0.3; changing preferences ≈ 0.4–0.7; short-lived context ≈ 0.7–1.0."`
-	Status                  MemoryStatus     `json:"status" description:"Current lifecycle state of the memory, usually via MemoryStatus enum. Typical values:\n- 'active': Memory is current and should be considered during retrieval.\n- 'superseded': Memory has been replaced by a newer memory for the same canonical_key (e.g. old preference 'I like Adidas' after 'I don't like Adidas anymore').\n- 'deleted': Soft-deleted or logically removed memory.\nRetrieval layers generally filter to active memories by default."`
-	SupersedesCanonicalKeys []string         `json:"supersedes_canonical_keys" db:"supersedes_canonical_keys" description:"List of canonical_keys that this memory explicitly supersedes. Used primarily for mutable categories like preferences.\nExample: when creating a new preference 'I don't like Adidas anymore', this memory might have canonical_key 'brand.adidas' and SupersedesCanonicalKeys containing ['brand.adidas'], signaling that any previous Adidas preference should be marked as superseded."`
-	Metadata                json.RawMessage  `json:"metadata" db:"metadata" description:"Arbitrary additional metadata stored as raw JSON. Can include tags, source, tool information, timestamps, app-specific fields, or vector service IDs. Examples: {\"tags\":[\"database\",\"technology\"],\"source\":\"chat\"} or {\"tool_name\":\"github_agent\",\"message_id\":\"abc123\"}."`
+	Operation               string           `json:"operation"`
+	Id                      *string          `json:"id"`
+	Category                MemoryCategory   `json:"category"`
+	Summary                 string           `json:"summary"`
+	RawText                 string           `json:"raw_text"`
+	Importance              int              `json:"importance"`
+	Mutability              MemoryMutability `json:"mutability"`
+	Lifespan                MemoryLifespan   `json:"lifespan"`
+	ForgetScore             float64          `json:"forget_score"`
+	Status                  MemoryStatus     `json:"status"`
+	SupersedesCanonicalKeys []string         `json:"supersedes_canonical_keys"`
+	Metadata                json.RawMessage  `json:"metadata"`
+	SupersedesMemoryId      *string          `json:"supersedes_memory_id,omitempty"`
 }
 
 type memoriesWrapper struct {
-	Memories []m `json:"memories" description:"Array of extracted memories from the conversation"`
+	Memories []m `json:"memories"`
 }
 
 func (k *KarmaMemory) ingest(convo struct {
@@ -45,35 +47,55 @@ If no memories should be stored, return: {"memories": []}`, convo.CurrentMemoryC
 
 	var wrapper memoriesWrapper
 	if _, _, err := p.Parse(prompt, "", &wrapper); err != nil {
-		k.logger.Error("karmaMemory: failed to parse memories",
-			zap.Error(err))
+		k.logger.Error("karma_memory: failed to parse memories", zap.Error(err))
 		return err
 	}
 
 	if len(wrapper.Memories) == 0 {
-		k.logger.Debug("karmaMemory: no memories extracted from conversation")
+		k.logger.Debug("karma_memory: no memories extracted from conversation")
 		return nil
 	}
 
-	k.logger.Debug("karmaMemory: extracted memories",
-		zap.Int("count", len(wrapper.Memories)))
+	k.logger.Debug("karma_memory: extracted memories", zap.Int("count", len(wrapper.Memories)))
 
 	var vc []v
 	var vd []string
+	var memoriesIdsToSupersede []string
+	var newMemories []Memory
+
+	categoriesToInvalidate := make(map[MemoryCategory]bool)
 
 	for _, memory := range wrapper.Memories {
 		now := time.Now()
-
 		memoryId := utils.GenerateID(7)
+
 		if memory.Operation == "delete" || memory.Operation == "update" {
 			if memory.Id != nil && *memory.Id != "" {
 				memoryId = *memory.Id
 			} else {
-				k.logger.Warn("karmaMemory: delete/update operation without ID, skipping",
-					zap.String("operation", memory.Operation),
-					zap.String("summary", memory.Summary))
-				continue
+				foundId := k.findSimilarMemory(memory.Summary, memory.Category)
+				if foundId != "" {
+					if memory.Operation == "delete" {
+						memoryId = foundId
+					} else {
+						memory.Operation = "create"
+						memoriesIdsToSupersede = append(memoriesIdsToSupersede, foundId)
+						k.logger.Debug("karma_memory: converting update to create+supersede",
+							zap.String("supersededId", foundId))
+					}
+				} else {
+					if memory.Operation == "delete" {
+						k.logger.Warn("karma_memory: delete operation without ID and no similar memory found",
+							zap.String("summary", memory.Summary))
+						continue
+					}
+					memory.Operation = "create"
+				}
 			}
+		}
+
+		if memory.SupersedesMemoryId != nil && *memory.SupersedesMemoryId != "" {
+			memoriesIdsToSupersede = append(memoriesIdsToSupersede, *memory.SupersedesMemoryId)
 		}
 
 		mem := &Memory{
@@ -95,9 +117,15 @@ If no memories should be stored, return: {"memories": []}`, convo.CurrentMemoryC
 			SubjectKey:              k.userID,
 		}
 
+		if mem.Status == "" {
+			mem.Status = StatusActive
+		}
+
+		categoriesToInvalidate[memory.Category] = true
+
 		if memory.Operation == "delete" {
 			vd = append(vd, memoryId)
-			k.logger.Debug("karmaMemory: queued memory for deletion",
+			k.logger.Debug("karma_memory: queued memory for deletion",
 				zap.String("id", memoryId),
 				zap.String("summary", memory.Summary))
 			continue
@@ -112,44 +140,108 @@ If no memories should be stored, return: {"memories": []}`, convo.CurrentMemoryC
 		case VectorServiceUpstash:
 			embeddings, err := k.getEmbeddings(embeddingText)
 			if err != nil {
-				k.logger.Error("karmaMemory: failed to generate embeddings for memory",
+				k.logger.Error("karma_memory: failed to generate embeddings",
 					zap.String("memoryID", mem.Id),
 					zap.Error(err))
 				continue
 			}
 			if memory.Operation == "create" {
-				vc = append(vc, v{
-					memories: *mem,
-					vector:   embeddings,
-				})
+				vc = append(vc, v{memories: *mem, vector: embeddings})
+				newMemories = append(newMemories, *mem)
 			} else if memory.Operation == "update" {
 				k.memorydb.client.updateVector(*mem, embeddings)
+				newMemories = append(newMemories, *mem)
 			}
 
 		case VectorServicePinecone:
 			if memory.Operation == "create" {
-				vc = append(vc, v{
-					memories: *mem,
-				})
+				vc = append(vc, v{memories: *mem})
+				newMemories = append(newMemories, *mem)
 			} else if memory.Operation == "update" {
 				k.memorydb.client.updateVector(*mem)
+				newMemories = append(newMemories, *mem)
 			}
+		}
+	}
+
+	for _, supersededId := range memoriesIdsToSupersede {
+		if err := k.markMemoryAsSuperseded(supersededId); err != nil {
+			k.logger.Warn("karma_memory: failed to mark memory as superseded",
+				zap.String("memoryId", supersededId),
+				zap.Error(err))
 		}
 	}
 
 	if len(vc) > 0 {
 		if err := k.memorydb.client.upsertVectors(vc); err != nil {
-			k.logger.Error("karmaMemory: failed to upsert vector for memory",
-				zap.Error(err))
+			k.logger.Error("karma_memory: failed to upsert vectors", zap.Error(err))
+		} else {
+			k.logger.Info("karma_memory: upserted memories", zap.Int("count", len(vc)))
 		}
 	}
 
 	if len(vd) > 0 {
-		if _, err := k.memorydb.client.deleteVectors(vd); err != nil {
-			k.logger.Error("karmaMemory: failed to delete vector for memory",
-				zap.Error(err))
+		if count, err := k.memorydb.client.deleteVectors(vd); err != nil {
+			k.logger.Error("karma_memory: failed to delete vectors", zap.Error(err))
+		} else {
+			k.logger.Info("karma_memory: deleted memories", zap.Int("count", count))
+		}
+	}
+
+	if k.IsCacheEnabled() {
+		ctx := context.Background()
+
+		for category := range categoriesToInvalidate {
+			if err := k.cache.InvalidateCategoryCache(ctx, k.userID, k.scope, category); err != nil {
+				k.logger.Warn("karma_memory: failed to invalidate category cache",
+					zap.String("category", string(category)),
+					zap.Error(err))
+			} else {
+				k.logger.Debug("karma_memory: invalidated category cache",
+					zap.String("category", string(category)))
+			}
+		}
+
+		if len(newMemories) > 0 {
+			k.cacheNewMemories(ctx, newMemories)
 		}
 	}
 
 	return nil
+}
+
+func (k *KarmaMemory) cacheNewMemories(ctx context.Context, memories []Memory) {
+	categoryMap := make(map[MemoryCategory][]Memory)
+
+	for _, mem := range memories {
+		switch mem.Category {
+		case CategoryRule, CategoryFact, CategorySkill, CategoryContext:
+			categoryMap[mem.Category] = append(categoryMap[mem.Category], mem)
+		}
+	}
+
+	for category, mems := range categoryMap {
+		if len(mems) > 0 {
+			if err := k.cache.CacheMemoriesByCategory(ctx, k.userID, k.scope, category, mems); err != nil {
+				k.logger.Warn("karma_memory: failed to cache new memories",
+					zap.String("category", string(category)),
+					zap.Error(err))
+			} else {
+				k.logger.Debug("karma_memory: cached new memories",
+					zap.String("category", string(category)),
+					zap.Int("count", len(mems)))
+			}
+		}
+	}
+
+	// Also cache all memories for dynamic filtering in conscious mode
+	if len(memories) > 0 {
+		if err := k.cache.CacheAllMemories(ctx, k.userID, k.scope, memories); err != nil {
+			k.logger.Warn("karma_memory: failed to cache all memories for dynamic filtering",
+				zap.Error(err))
+		} else {
+			k.logger.Debug("karma_memory: cached all memories for dynamic filtering",
+				zap.Int("count", len(memories)))
+		}
+	}
 }

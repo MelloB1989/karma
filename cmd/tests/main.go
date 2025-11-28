@@ -13,8 +13,8 @@ func main() {
 	// 	panic(error)
 	// }
 	// fmt.Print(embeddings)
-	// tests.TestKai()
-	tests.TestKAIEmbeddingGeneration()
+	tests.TestKai()
+	// tests.TestKAIEmbeddingGeneration()
 	// tests.TestImageGen()
 	// tests.TestMCPServer()
 	// tests.TestSendingSingleMail()

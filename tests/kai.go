@@ -23,8 +23,8 @@ func TestKai() {
 	// fmt.Println(ai.Llama3_8B.IsBedrockModel())
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
-	testChatCompletion()
-	// testGenerateFromSinglePrompt()
+	// testChatCompletion()
+	testGenerateFromSinglePrompt()
 	// testChatCompletionStream()
 	// testWithMcpServer()
 	// Set up the HTTP router
@@ -243,12 +243,12 @@ func testChatCompletion() {
 }
 
 func testGenerateFromSinglePrompt() {
-	kai := ai.NewKarmaAI(ai.Llama4_Scout_17B, ai.Groq,
+	kai := ai.NewKarmaAI(ai.Llama4_Guard_12B, ai.Groq,
 		ai.WithSystemMessage("Act as a AI assistant, respond in clear text"),
 		ai.WithTemperature(0.5),
-		ai.WithMaxTokens(100),
+		ai.WithMaxTokens(800),
 		ai.WithTopP(0.9))
-	response, err := kai.GenerateFromSinglePrompt("Hello!")
+	response, err := kai.GenerateFromSinglePrompt("Hello! How are you?")
 	if err != nil {
 		panic(err)
 	}
