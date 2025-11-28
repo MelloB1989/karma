@@ -28,7 +28,7 @@ const config = ref({
 });
 
 // API Base URL (assuming backend runs on 8080)
-const API_URL = "http://localhost:8080/api";
+const API_URL = "https://kmai.apps.mellob.in/api";
 
 // Initialize Session
 onMounted(() => {
