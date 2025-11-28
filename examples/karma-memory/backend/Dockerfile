@@ -1,31 +1,34 @@
-FROM golang:1.24-alpine AS builder
-
-WORKDIR /app
-
-# Copy the entire repository to preserve the directory structure
-# required by the 'replace' directive in go.mod
-COPY . .
-
-WORKDIR /app/examples/karma-ui/backend
-
-# Download dependencies
-RUN go mod download
-
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -o server main.go
-
-# Final stage
+# Use lightweight Alpine Linux as base image
 FROM alpine:latest
 
-WORKDIR /root/
+# Install runtime dependencies
+RUN apk --no-cache add \
+    ca-certificates \
+    tzdata \
+    && rm -rf /var/cache/apk/*
 
-# Install ca-certificates for HTTPS requests (needed for OpenAI/Groq/etc)
-RUN apk --no-cache add ca-certificates
+# Set the Current Working Directory inside the container
+WORKDIR /app
 
-COPY --from=builder /app/examples/karma-ui/backend/server .
+# Copy the pre-built binary from host
+COPY backend .
 
-# Expose the port
+# Copy configuration files
+COPY .env .
+
+# Make the binary executable
+RUN chmod +x backend
+
+# Create a non-root user for security
+RUN addgroup -g 1001 appgroup && \
+    adduser -D -u 1001 -G appgroup appuser && \
+    chown -R appuser:appgroup /app
+
+# Switch to non-root user
+USER appuser
+
+# Expose port for Go app
 EXPOSE 8080
 
-# Run the server
-CMD ["./server"]
+# Run the Go app
+CMD ["./backend"]
