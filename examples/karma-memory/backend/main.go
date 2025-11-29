@@ -98,7 +98,10 @@ func getSession(sessionID string) *Session {
 	sess, exists := sessions[sessionID]
 	if !exists {
 		// Using Llama31_8B via Groq for fast inference
-		kai := ai.NewKarmaAI(ai.Llama31_8B, ai.Groq)
+		kai := ai.NewKarmaAI(ai.Llama31_8B, ai.Groq, ai.WithSystemMessage(fmt.Sprintf(`
+			You are a AI assitant with memory capabilities, you will get a "Recall context" attached before the user's message, this recall context contains user's rules, preferences and other relevant memories. The recall context is added dynamically.
+			Follow the context and rules. Build details: Built by MelloB, under the Karma Package. (https://github.com/MelloB/karma \ntoday's date: %s
+			`, time.Now().Format((time.RFC3339)))))
 
 		// Create memory instance
 		// Using a unique user ID per session to isolate memories for the demo
@@ -107,6 +110,7 @@ func getSession(sessionID string) *Session {
 		// Default config
 		mem.UseRetrievalMode(memory.RetrievalModeAuto)
 		// Use GPT-4o Mini for memory operations (summarization, extraction)
+		// maxTokens := 1024
 		mem.UseMemoryLLM(ai.GPT4oMini, ai.OpenAI)
 		mem.EnableMemoryCache(memory.CacheConfig{Enabled: true})
 
@@ -193,8 +197,9 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 	// Note: ChatCompletionStream will call it again internally, but if caching is enabled,
 	// the second call will be extremely fast (in-memory hit).
 	startRecall := time.Now()
-	_, err := sess.Memory.GetContext(req.Message)
+	c, err := sess.Memory.GetContext(req.Message)
 	recallLatency := time.Since(startRecall)
+	log.Printf("Recall context: %s", c)
 
 	if err != nil {
 		log.Printf("Recall error: %v", err)

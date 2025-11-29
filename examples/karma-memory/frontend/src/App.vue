@@ -27,8 +27,9 @@ const config = ref({
     cacheMode: "memory", // 'none' | 'memory' | 'redis'
 });
 
-// API Base URL (assuming backend runs on 8080)
-const API_URL = "https://kmai.apps.mellob.in/api";
+// API Base URL
+// const API_URL = "https://kmai.apps.mellob.in/api";
+const API_URL = "http://localhost:8080/api";
 
 // Initialize Session
 onMounted(() => {
@@ -146,7 +147,7 @@ const sendMessage = async () => {
     } catch (error) {
         console.error("Chat error:", error);
         messages.value[assistantMsgIndex].content =
-            "Error: Failed to connect to server.";
+            "Error: You sent too many messages, please wait a moment.";
     } finally {
         isLoading.value = false;
         isStreaming.value = false;
@@ -203,7 +204,7 @@ const formatTime = (date) => {
 
 <template>
     <div
-        class="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans selection:bg-primary-500/30"
+        class="h-[100dvh] bg-gray-950 text-gray-100 flex flex-col font-sans selection:bg-primary-500/30 overflow-hidden"
     >
         <!-- Header -->
         <header
@@ -222,7 +223,7 @@ const formatTime = (date) => {
                         <h1 class="font-bold text-xl tracking-tight">
                             Karma<span class="text-primary-500">Memory</span>
                         </h1>
-                        <p class="text-xs text-gray-400">
+                        <p class="text-xs text-gray-400 hidden sm:block">
                             Long-term Memory for AI Agents
                         </p>
                     </div>
@@ -233,8 +234,8 @@ const formatTime = (date) => {
                     <div
                         class="w-2 h-2 rounded-full bg-green-500 animate-pulse"
                     ></div>
-                    <span>System Online</span>
-                    <span class="mx-1">|</span>
+                    <span class="hidden sm:inline">System Online</span>
+                    <span class="mx-1 hidden sm:inline">|</span>
                     <span class="font-mono"
                         >{{ sessionId.substr(0, 8) }}...</span
                     >
@@ -243,7 +244,7 @@ const formatTime = (date) => {
         </header>
 
         <main
-            class="flex-1 max-w-7xl w-full mx-auto p-4 flex gap-6 overflow-hidden h-[calc(100vh-4rem)]"
+            class="flex-1 max-w-7xl w-full mx-auto p-4 flex gap-6 overflow-hidden"
         >
             <!-- Sidebar / Settings -->
             <aside
