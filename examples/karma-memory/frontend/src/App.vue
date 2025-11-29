@@ -28,8 +28,8 @@ const config = ref({
 });
 
 // API Base URL
-// const API_URL = "https://kmai.apps.mellob.in/api";
-const API_URL = "http://localhost:8080/api";
+const API_URL = "https://kmai.apps.mellob.in/api";
+// const API_URL = "http://localhost:8080/api";
 
 // Initialize Session
 onMounted(() => {
