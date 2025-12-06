@@ -17,17 +17,17 @@ import (
 	"golang.org/x/text/language"
 )
 
-// TypeRegistry maps interface{} field names to their expected concrete types
+// TypeRegistry maps any field names to their expected concrete types
 var TypeRegistry = make(map[string]reflect.Type)
 var typeRegistryMutex sync.RWMutex
 
-func RegisterType(fieldName string, sampleValue interface{}) {
+func RegisterType(fieldName string, sampleValue any) {
 	typeRegistryMutex.Lock()
 	defer typeRegistryMutex.Unlock()
 	TypeRegistry[fieldName] = reflect.TypeOf(sampleValue)
 }
 
-func inferTypeFromJSON(data []byte, fieldName string) (interface{}, error) {
+func inferTypeFromJSON(data []byte, fieldName string) (any, error) {
 	if registeredType, exists := TypeRegistry[fieldName]; exists {
 		newValue := reflect.New(registeredType).Interface()
 		if err := json.Unmarshal(data, newValue); err == nil {
@@ -35,12 +35,12 @@ func inferTypeFromJSON(data []byte, fieldName string) (interface{}, error) {
 		}
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal(data, &result); err == nil {
 		return result, nil
 	}
 
-	var genericResult interface{}
+	var genericResult any
 	if err := json.Unmarshal(data, &genericResult); err == nil {
 		return genericResult, nil
 	}
@@ -70,7 +70,7 @@ func FetchColumnNames(db *sqlx.DB, tableName string) ([]string, error) {
 	return columns, nil
 }
 
-func ParseRows(rows *sql.Rows, dest interface{}) error {
+func ParseRows(rows *sql.Rows, dest any) error {
 	destValue := reflect.ValueOf(dest)
 	if destValue.Kind() != reflect.Ptr || destValue.Elem().Kind() != reflect.Slice {
 		return errors.New("destination must be a pointer to a slice")
@@ -95,8 +95,8 @@ func ParseRows(rows *sql.Rows, dest interface{}) error {
 	columnToFieldMap := buildColumnFieldMap(elemType)
 
 	for rows.Next() {
-		columnValues := make([]interface{}, len(columns))
-		columnPointers := make([]interface{}, len(columns))
+		columnValues := make([]any, len(columns))
+		columnPointers := make([]any, len(columns))
 		for i := range columnValues {
 			columnPointers[i] = &columnValues[i]
 		}
@@ -183,7 +183,7 @@ func findFieldInfo(column string, columnToFieldMap map[string]reflect.StructFiel
 	return nil
 }
 
-func setFieldValue(field reflect.Value, fieldInfo reflect.StructField, value interface{}) error {
+func setFieldValue(field reflect.Value, fieldInfo reflect.StructField, value any) error {
 	if value == nil {
 		field.Set(reflect.Zero(field.Type()))
 		return nil
@@ -320,7 +320,7 @@ func camelToSnake(s string) string {
 }
 
 type dbExecutor interface {
-	Exec(query string, args ...interface{}) (sql.Result, error)
+	Exec(query string, args ...any) (sql.Result, error)
 }
 
 func InsertStruct(db *sqlx.DB, tableName string, data any) error {
@@ -487,6 +487,11 @@ func validateAndDereference(data any) (reflect.Value, error) {
 }
 
 func getColumnName(field reflect.StructField) (string, bool) {
+	karmaTag := field.Tag.Get("karma")
+	if strings.Contains(karmaTag, "ignore") {
+		return "", true
+	}
+
 	jsonTag := field.Tag.Get("json")
 	if jsonTag == "-" {
 		return "", true
