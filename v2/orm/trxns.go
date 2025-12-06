@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/MelloB1989/karma/database"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -100,7 +101,15 @@ func (o *ORM) ExecuteRaw(query string, args ...any) (sql.Result, error) {
 	if o.tx != nil {
 		return o.tx.Exec(query, args...)
 	}
-	return o.db.Exec(query, args...)
+	if o.db == nil {
+		db, err := database.PostgresConn()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get database connection: %w", err)
+		}
+		return db.Exec(query, args...)
+	} else {
+		return o.db.Exec(query, args...)
+	}
 }
 
 // Add a helper function for transaction execution with automatic rollback on error
