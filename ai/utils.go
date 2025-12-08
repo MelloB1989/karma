@@ -58,7 +58,7 @@ func (kai *KarmaAI) addUserPreprompt(chat models.AIChatHistory) models.AIChatHis
 	if len(chat.Messages) == 0 {
 		return chat
 	}
-	chat.Messages[len(chat.Messages)-1].Message += kai.UserPrePrompt
+	chat.Messages[len(chat.Messages)-1].Message = kai.UserPrePrompt + "\n" + chat.Messages[len(chat.Messages)-1].Message
 	return chat
 }
 
