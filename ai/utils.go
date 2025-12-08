@@ -62,6 +62,18 @@ func (kai *KarmaAI) addUserPreprompt(chat models.AIChatHistory) models.AIChatHis
 	return chat
 }
 
+func (kai *KarmaAI) removeUserPrePrompt(chat models.AIChatHistory) models.AIChatHistory {
+	if len(chat.Messages) == 0 {
+		return chat
+	}
+
+	last := &chat.Messages[len(chat.Messages)-1]
+	prefix := kai.UserPrePrompt + "\n"
+
+	last.Message, _ = strings.CutPrefix(last.Message, prefix)
+	return chat
+}
+
 func (kai *KarmaAI) processMessagesForLlamaBedrockSystemPrompt(chat models.AIChatHistory) string {
 	var finalPrompt strings.Builder
 	finalPrompt.WriteString(fmt.Sprintf(llama_system_prompt_format, time.Now().String(), kai.SystemMessage))

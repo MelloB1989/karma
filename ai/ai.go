@@ -39,6 +39,8 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 		kai.SendErrorEvent(err)
 	}
 
+	kai.removeUserPrePrompt(messages)
+
 	return response, err
 }
 
@@ -118,6 +120,8 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 	if err != nil {
 		kai.SendErrorEvent(err)
 	}
+
+	kai.removeUserPrePrompt(messages)
 
 	return response, err
 }
