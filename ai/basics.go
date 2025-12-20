@@ -6,6 +6,7 @@ import (
 
 	"github.com/MelloB1989/karma/config"
 	internalopenai "github.com/MelloB1989/karma/internal/openai"
+	"github.com/openai/openai-go/v3/shared"
 	"github.com/posthog/posthog-go"
 )
 
@@ -332,7 +333,7 @@ type KarmaAI struct {
 	TopP            float32                         `json:"top_p"`
 	TopK            int                             `json:"top_k"`
 	MaxTokens       int                             `json:"max_tokens"`
-	ReasoningEffort int                             `json:"reasoning_effort"`
+	ReasoningEffort *shared.ReasoningEffort         `json:"reasoning_effort"`
 	ResponseType    string                          `json:"response_type"`
 	MCPConfig       map[string]MCPTool              `json:"mcp_config"`
 	MCPUrl          string                          `json:"mcp_url"`
@@ -405,9 +406,9 @@ func WithTopK(topK int) Option {
 }
 
 // WithReasoningEffort sets the reasoning effort for supported models
-func WithReasoningEffort(effort int) Option {
+func WithReasoningEffort(effort shared.ReasoningEffort) Option {
 	return func(kai *KarmaAI) {
-		kai.ReasoningEffort = effort
+		kai.ReasoningEffort = &effort
 	}
 }
 

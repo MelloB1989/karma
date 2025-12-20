@@ -8,6 +8,7 @@ import (
 	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/models"
 	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/shared"
 )
 
 type OpenAI struct {
@@ -20,6 +21,7 @@ type OpenAI struct {
 	MCPManager      *mcp.Manager
 	MultiMCPManager *mcp.MultiManager
 	FunctionTools   map[string]GoFunctionTool
+	ReasoningEffort *shared.ReasoningEffort
 	maxToolPasses   int
 }
 

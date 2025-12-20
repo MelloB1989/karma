@@ -178,6 +178,9 @@ func (o *OpenAI) buildParams(messages models.AIChatHistory, enableTools bool) op
 		}
 		params.Tools = tools
 	}
+	if o.ReasoningEffort != nil {
+		params.ReasoningEffort = *o.ReasoningEffort
+	}
 	return params
 }
 
