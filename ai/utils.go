@@ -117,6 +117,21 @@ func (kai *KarmaAI) configureOpenaiClientForMCP(o *openai.OpenAI) {
 			}
 		}
 	}
+	if kai.MaxToolPasses > 0 {
+		o.SetMaxToolPasses(kai.MaxToolPasses)
+	}
+	for _, fnTool := range kai.GoFunctionTools {
+		tool := openai.GoFunctionTool{
+			Name:        fnTool.Name,
+			Description: fnTool.Description,
+			Parameters:  fnTool.Parameters,
+			Strict:      fnTool.Strict,
+			Handler:     fnTool.Handler,
+		}
+		if err := o.AddGoFunctionTool(tool); err != nil {
+			log.Printf("Failed to add Go function tool: %v", err)
+		}
+	}
 }
 
 func (kai *KarmaAI) configureMultiMCPForOpenAI(o *openai.OpenAI) {

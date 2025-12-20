@@ -11,7 +11,7 @@ import (
 
 	"github.com/MelloB1989/karma/models"
 	"github.com/MelloB1989/karma/utils"
-	"github.com/openai/openai-go/v2"
+	"github.com/openai/openai-go/v3"
 )
 
 func GenImage(prompt, model, destination_dir string, com ...CompatibleOptions) (*models.AIImageResponse, error) {

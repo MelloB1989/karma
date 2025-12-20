@@ -14,7 +14,7 @@ import (
 	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
 	"github.com/anthropics/anthropic-sdk-go"
-	oai "github.com/openai/openai-go/v2"
+	oai "github.com/openai/openai-go/v3"
 	"google.golang.org/genai"
 )
 

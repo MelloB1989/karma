@@ -3,13 +3,15 @@ package openai
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/models"
-	"github.com/openai/openai-go/v2"
-	"github.com/openai/openai-go/v2/option"
+	"github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
 )
 
 type CompatibleOptions struct {
@@ -86,7 +88,8 @@ func (o *OpenAI) convertMCPToolsToOpenAI() []openai.ChatCompletionToolUnionParam
 	for i, mcpTool := range mcpTools {
 		// Convert MCP tool schema to OpenAI format
 		parameters := openai.FunctionParameters{
-			"type": "object",
+			"type":       "object",
+			"properties": map[string]any{},
 		}
 
 		// Extract properties from the MCP tool schema
@@ -145,4 +148,126 @@ func generateShortToolCallID(originalID string) string {
 	hashStr := fmt.Sprintf("%x", hash)[:24] // Take first 24 chars of hash
 	prefix := originalID[:8]                // Take first 8 chars of original
 	return prefix + "_" + hashStr[:23]      // Total: 8 + 1 + 23 = 32 chars (well under 40)
+}
+
+func (o *OpenAI) buildParams(messages models.AIChatHistory, enableTools bool) openai.ChatCompletionNewParams {
+	mgs := formatMessages(messages, o.SystemMessage)
+	params := openai.ChatCompletionNewParams{
+		Model:    o.Model,
+		Messages: mgs,
+		Seed:     openai.Int(69),
+	}
+	params.SetExtraFields(o.ExtraFields)
+	if o.Temperature > 0 {
+		params.Temperature = openai.Float(o.Temperature)
+	}
+	if o.MaxTokens > 0 {
+		if strings.Contains(o.Model, "gpt-5") {
+			params.MaxCompletionTokens = openai.Int(o.MaxTokens)
+		} else {
+			params.MaxTokens = openai.Int(o.MaxTokens)
+		}
+	}
+	if enableTools {
+		var tools []openai.ChatCompletionToolUnionParam
+		if o.hasMCPTools() {
+			tools = append(tools, o.convertMCPToolsToOpenAI()...)
+		}
+		if o.hasGoFunctionTools() {
+			tools = append(tools, o.convertGoFunctionToolsToOpenAI()...)
+		}
+		params.Tools = tools
+	}
+	return params
+}
+
+func (o *OpenAI) shouldExecuteTools(chatCompletion *openai.ChatCompletion, enableTools bool, useMCPExecution bool) bool {
+	return enableTools && useMCPExecution && chatCompletion != nil && len(chatCompletion.Choices) > 0 && len(chatCompletion.Choices[0].Message.ToolCalls) > 0
+}
+
+func (o *OpenAI) toolPassLimit() int {
+	if o.maxToolPasses > 0 {
+		return o.maxToolPasses
+	}
+	return defaultMaxToolPasses
+}
+
+func (o *OpenAI) callAnyTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
+	if fn, ok := o.FunctionTools[name]; ok && fn.Handler != nil {
+		return fn.Handler(ctx, arguments)
+	}
+	return o.callMCPTool(ctx, name, arguments)
+}
+
+func coerceFunctionParameters(params any) openai.FunctionParameters {
+	switch p := params.(type) {
+	case openai.FunctionParameters:
+		return normalizeFunctionParameters(p)
+	case map[string]any:
+		return normalizeFunctionParameters(openai.FunctionParameters(p))
+	default:
+		data, err := json.Marshal(p)
+		if err != nil {
+			return normalizeFunctionParameters(nil)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(data, &m); err != nil {
+			return normalizeFunctionParameters(nil)
+		}
+		return normalizeFunctionParameters(openai.FunctionParameters(m))
+	}
+}
+
+func normalizeFunctionParameters(params openai.FunctionParameters) openai.FunctionParameters {
+	if params == nil {
+		return openai.FunctionParameters{
+			"type":       "object",
+			"properties": map[string]any{},
+		}
+	}
+	if _, ok := params["type"]; !ok {
+		params["type"] = "object"
+	}
+	if _, ok := params["properties"]; !ok {
+		params["properties"] = map[string]any{}
+	}
+	return params
+}
+
+func (tool GoFunctionTool) toFunctionDefinitionParam() openai.FunctionDefinitionParam {
+	return openai.FunctionDefinitionParam{
+		Name:        tool.Name,
+		Description: openai.String(tool.Description),
+		Parameters:  normalizeFunctionParameters(tool.Parameters),
+		Strict:      openai.Bool(tool.Strict),
+	}
+}
+
+func (o *OpenAI) streamAndAccumulate(ctx context.Context, params openai.ChatCompletionNewParams, chunkHandler func(openai.ChatCompletionChunk)) (*openai.ChatCompletionAccumulator, error) {
+	stream := o.Client.Chat.Completions.NewStreaming(ctx, params)
+	acc := openai.ChatCompletionAccumulator{}
+	for stream.Next() {
+		chunk := stream.Current()
+		acc.AddChunk(chunk)
+		if chunkHandler != nil {
+			chunkHandler(chunk)
+		}
+	}
+	if err := stream.Err(); err != nil {
+		return nil, err
+	}
+	return &acc, nil
+}
+
+func (o *OpenAI) hasGoFunctionTools() bool {
+	return len(o.FunctionTools) > 0
+}
+
+func (o *OpenAI) convertGoFunctionToolsToOpenAI() []openai.ChatCompletionToolUnionParam {
+	tools := make([]openai.ChatCompletionToolUnionParam, 0, len(o.FunctionTools))
+	for _, tool := range o.FunctionTools {
+		def := tool.toFunctionDefinitionParam()
+		tools = append(tools, openai.ChatCompletionFunctionTool(def))
+	}
+	return tools
 }

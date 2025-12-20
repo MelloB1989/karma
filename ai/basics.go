@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/MelloB1989/karma/config"
+	internalopenai "github.com/MelloB1989/karma/internal/openai"
 	"github.com/posthog/posthog-go"
 )
 
@@ -323,25 +324,28 @@ type Analytics struct {
 
 // KarmaAI represents the main AI configuration
 type KarmaAI struct {
-	Model         ModelConfig        `json:"model"`
-	SystemMessage string             `json:"system_message"`
-	Context       string             `json:"context"`
-	UserPrePrompt string             `json:"user_pre_prompt"`
-	Temperature   float32            `json:"temperature"`
-	TopP          float32            `json:"top_p"`
-	TopK          int                `json:"top_k"`
-	MaxTokens     int                `json:"max_tokens"`
-	ResponseType  string             `json:"response_type"`
-	MCPConfig     map[string]MCPTool `json:"mcp_config"`
-	MCPUrl        string             `json:"mcp_url"`
-	AuthToken     string             `json:"auth_token"`
-	MCPTools      []MCPTool          `json:"mcp_tools"`
+	Model           ModelConfig                     `json:"model"`
+	SystemMessage   string                          `json:"system_message"`
+	Context         string                          `json:"context"`
+	UserPrePrompt   string                          `json:"user_pre_prompt"`
+	Temperature     float32                         `json:"temperature"`
+	TopP            float32                         `json:"top_p"`
+	TopK            int                             `json:"top_k"`
+	MaxTokens       int                             `json:"max_tokens"`
+	ReasoningEffort int                             `json:"reasoning_effort"`
+	ResponseType    string                          `json:"response_type"`
+	MCPConfig       map[string]MCPTool              `json:"mcp_config"`
+	MCPUrl          string                          `json:"mcp_url"`
+	AuthToken       string                          `json:"auth_token"`
+	MCPTools        []MCPTool                       `json:"mcp_tools"`
+	GoFunctionTools []internalopenai.GoFunctionTool `json:"go_function_tools"`
+	ToolsEnabled    bool                            `json:"tools_enabled"`
+	UseMCPExecution bool                            `json:"use_mcp_execution"`
+	Analytics       *Analytics                      `json:"analytics"`
+	Features        *F                              `json:"features"`
+	MaxToolPasses   int                             `json:"max_tool_passes"`
 	// Deprecated: Use MCPServers instead
-	MCPServers      []MCPServer `json:"mcp_servers"`
-	ToolsEnabled    bool        `json:"tools_enabled"`
-	UseMCPExecution bool        `json:"use_mcp_execution"`
-	Analytics       *Analytics  `json:"analytics"`
-	Features        *F          `json:"features"`
+	MCPServers []MCPServer `json:"mcp_servers"`
 }
 
 type F struct {
@@ -400,10 +404,23 @@ func WithTopK(topK int) Option {
 	}
 }
 
+// WithReasoningEffort sets the reasoning effort for supported models
+func WithReasoningEffort(effort int) Option {
+	return func(kai *KarmaAI) {
+		kai.ReasoningEffort = effort
+	}
+}
+
 // WithResponseType sets the response type
 func WithResponseType(responseType string) Option {
 	return func(kai *KarmaAI) {
 		kai.ResponseType = responseType
+	}
+}
+
+func WithMaxToolPasses(max int) Option {
+	return func(kai *KarmaAI) {
+		kai.MaxToolPasses = max
 	}
 }
 
@@ -421,6 +438,18 @@ func SetMCPTools(tools []MCPTool) Option {
 		for i := range kai.MCPServers {
 			kai.MCPServers[i].Tools = tools
 		}
+	}
+}
+
+func SetGoFunctionTools(tools []internalopenai.GoFunctionTool) Option {
+	return func(kai *KarmaAI) {
+		kai.GoFunctionTools = tools
+	}
+}
+
+func AddGoFunctionTool(tool internalopenai.GoFunctionTool) Option {
+	return func(kai *KarmaAI) {
+		kai.GoFunctionTools = append(kai.GoFunctionTools, tool)
 	}
 }
 
@@ -550,6 +579,7 @@ func NewKarmaAI(baseModel BaseModel, provider Provider, options ...Option) *Karm
 		Features: &F{
 			optionalFields: make(map[string]any),
 		},
+		MaxToolPasses: 4,
 	}
 
 	for _, option := range options {
