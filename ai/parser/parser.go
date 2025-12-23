@@ -219,13 +219,47 @@ func typeDesc(t reflect.Type) string {
 }
 
 func cleanJSON(s string) string {
-	if re := regexp.MustCompile("```(?:json)?\n?(.*?)```"); re.MatchString(s) {
-		if m := re.FindAllStringSubmatch(s, -1); len(m) > 0 {
-			return strings.TrimSpace(m[len(m)-1][1])
+	s = strings.TrimSpace(s)
+
+	// Strategy 1: Extract from markdown code blocks (```json or ````)
+	// Match both ```json and plain ``` blocks
+	codeBlockRe := regexp.MustCompile("(?s)```(?:json)?\\s*([\\s\\S]*?)```")
+	if matches := codeBlockRe.FindAllStringSubmatch(s, -1); len(matches) > 0 {
+		// Take the last code block (in case there are multiple)
+		extracted := strings.TrimSpace(matches[len(matches)-1][1])
+		if extracted != "" {
+			s = extracted
 		}
 	}
-	if re := regexp.MustCompile(`(?s)\{.*\}`); re.MatchString(s) {
-		return strings.TrimSpace(re.FindString(s))
+
+	// Strategy 2: Remove any remaining backticks that might be left over
+	s = strings.ReplaceAll(s, "```json", "")
+	s = strings.ReplaceAll(s, "```", "")
+	s = strings.TrimSpace(s)
+
+	// Strategy 3: Extract JSON object or array from anywhere in the string
+	// This handles cases where there's text before/after the JSON
+	jsonRe := regexp.MustCompile(`(?s)(\{[\s\S]*\}|\[[\s\S]*\])`)
+	if match := jsonRe.FindString(s); match != "" {
+		s = match
 	}
+
+	// Strategy 4: Clean up common formatting issues
+	// Remove any leading/trailing whitespace again
+	s = strings.TrimSpace(s)
+
+	// Remove any text before the first { or [
+	if idx := strings.IndexAny(s, "{["); idx > 0 {
+		s = s[idx:]
+	}
+
+	// Remove any text after the last } or ]
+	lastBrace := strings.LastIndex(s, "}")
+	lastBracket := strings.LastIndex(s, "]")
+	lastIdx := max(lastBrace, lastBracket)
+	if lastIdx > 0 && lastIdx < len(s)-1 {
+		s = s[:lastIdx+1]
+	}
+
 	return strings.TrimSpace(s)
 }
