@@ -197,7 +197,7 @@ func (o *OpenAI) toolPassLimit() int {
 
 func (o *OpenAI) callAnyTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
 	if fn, ok := o.FunctionTools[name]; ok && fn.Handler != nil {
-		return fn.Handler(ctx, arguments)
+		return fn.Handler(ctx, FuncParams(arguments))
 	}
 	return o.callMCPTool(ctx, name, arguments)
 }

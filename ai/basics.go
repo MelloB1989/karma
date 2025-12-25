@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"fmt"
 	"log"
 	"sync"
 
@@ -452,6 +453,24 @@ func AddGoFunctionTool(tool internalopenai.GoFunctionTool) Option {
 	return func(kai *KarmaAI) {
 		kai.GoFunctionTools = append(kai.GoFunctionTools, tool)
 	}
+}
+
+// AddGoFunctionTool adds a Go function tool to the KarmaAI instance after construction.
+// Returns an error if the tool name or handler is missing.
+func (kai *KarmaAI) AddGoFunctionTool(tool internalopenai.GoFunctionTool) error {
+	if tool.Name == "" {
+		return fmt.Errorf("tool name required")
+	}
+	if tool.Handler == nil {
+		return fmt.Errorf("tool handler required")
+	}
+	kai.GoFunctionTools = append(kai.GoFunctionTools, tool)
+	return nil
+}
+
+// ClearGoFunctionTools removes all Go function tools from the KarmaAI instance.
+func (kai *KarmaAI) ClearGoFunctionTools() {
+	kai.GoFunctionTools = nil
 }
 
 // SetMCPServers sets the MCP servers

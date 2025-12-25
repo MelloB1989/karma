@@ -24,7 +24,8 @@ func TestKai() {
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
 	// testChatCompletion()
-	testGenerateFromSinglePrompt()
+	// testGenerateFromSinglePrompt()
+	testGoFunctionTools()
 	// testChatCompletionStream()
 	// testWithMcpServer()
 	// Set up the HTTP router
@@ -273,6 +274,113 @@ func testChatCompletionStream() {
 		panic(err)
 	}
 	fmt.Println(response.AIResponse)
+}
+
+func testGoFunctionTools() {
+	// Example: Using FuncParams helpers to define and use Go function tools
+	kai := ai.NewKarmaAI(ai.ChatModelGPT4o, ai.OpenAI,
+		ai.WithSystemMessage("You are a helpful assistant with access to tools. Use the tools when appropriate."),
+		ai.WithTemperature(0.7),
+		ai.WithMaxTokens(500),
+		ai.WithToolsEnabled(),
+	)
+
+	// Define a weather tool using FuncParams from the public ai package
+	weatherParams := ai.NewFuncParams().
+		SetString("location", "The city and state, e.g. San Francisco, CA").
+		SetStringEnum("unit", "Temperature unit", []string{"celsius", "fahrenheit"}).
+		SetRequired("location")
+
+	weatherTool := ai.NewGoFunctionTool(
+		"get_weather",
+		"Get the current weather in a given location",
+		weatherParams,
+		func(ctx context.Context, args ai.FuncParams) (string, error) {
+			log.Println("Weather function called.")
+			// Use method-based syntax for extracting values
+			location := args.GetStringDefault("location", "Unknown")
+			unit := args.GetStringDefault("unit", "celsius")
+
+			// Simulated weather response
+			temp := 22
+			if unit == "fahrenheit" {
+				temp = 72
+			}
+			return fmt.Sprintf(`{"location": "%s", "temperature": %d, "unit": "%s", "condition": "sunny", "humidity": 45}`, location, temp, unit), nil
+		},
+	)
+
+	// Define a calculator tool using FuncParams from the public ai package
+	calcParams := ai.NewFuncParams().
+		SetNumber("a", "First operand").
+		SetNumber("b", "Second operand").
+		SetStringEnum("operation", "Math operation to perform", []string{"add", "subtract", "multiply", "divide"}).
+		SetRequired("a", "b", "operation")
+
+	calcTool := ai.NewGoFunctionTool(
+		"calculate",
+		"Perform basic arithmetic operations",
+		calcParams,
+		func(ctx context.Context, args ai.FuncParams) (string, error) {
+			log.Println("Calculator function called.")
+			// Use method-based syntax for extracting values
+			a := args.GetFloatDefault("a", 0)
+			b := args.GetFloatDefault("b", 0)
+			op := args.GetStringDefault("operation", "add")
+
+			var result float64
+			switch op {
+			case "add":
+				result = a + b
+			case "subtract":
+				result = a - b
+			case "multiply":
+				result = a * b
+			case "divide":
+				if b == 0 {
+					return `{"error": "division by zero"}`, nil
+				}
+				result = a / b
+			}
+			return fmt.Sprintf(`{"operation": "%s", "a": %f, "b": %f, "result": %f}`, op, a, b, result), nil
+		},
+	)
+
+	// Add the tools to the AI instance
+	if err := kai.AddGoFunctionTool(weatherTool); err != nil {
+		log.Fatalf("Failed to add weather tool: %v", err)
+	}
+	if err := kai.AddGoFunctionTool(calcTool); err != nil {
+		log.Fatalf("Failed to add calculator tool: %v", err)
+	}
+
+	// Test with a message that should trigger tool use
+	messages := models.AIChatHistory{
+		Messages: []models.AIMessage{
+			{
+				Message:   "What's the weather like in New York? Also, can you calculate 769 * 69 * 67 * 96 for me?",
+				Role:      models.User,
+				Timestamp: time.Now(),
+				UniqueId:  "func-tools-test-1",
+			},
+		},
+		ChatId:    "func-tools-example",
+		CreatedAt: time.Now(),
+		Title:     "Go Function Tools Example",
+	}
+
+	fmt.Println("=== Testing Go Function Tools ===")
+	fmt.Println("User: What's the weather like in New York? Also, can you calculate 769 * 69 * 67 * 96 for me?")
+	fmt.Println()
+
+	response, err := kai.ChatCompletion(messages)
+	if err != nil {
+		log.Fatalf("Chat completion failed: %v", err)
+	}
+
+	fmt.Println("Assistant:", response.AIResponse)
+	fmt.Println()
+	fmt.Println("=== Test Complete ===")
 }
 
 func testRawApi() {
