@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/models"
@@ -51,17 +52,45 @@ func NewOpenAICompatible(model, sysmgs string, temperature float64, maxTokens in
 	}
 }
 
+// detectRawFunctionCall checks if the message content contains raw function call syntax
+func detectRawFunctionCall(content string) bool {
+	if content == "" {
+		return false
+	}
+	// Look for both opening and closing function tags to reduce false positives
+	hasOpening := strings.Contains(content, "<function")
+	hasClosing := strings.Contains(content, "</function")
+	return hasOpening || hasClosing
+}
+
 func (o *OpenAI) CreateChat(messages models.AIChatHistory, enableTools bool, useMCPExecution bool) (*openai.ChatCompletion, error) {
 	ctx := context.TODO()
 	params := o.buildParams(messages, enableTools)
+
 	for range o.toolPassLimit() {
 		chatCompletion, err := o.Client.Chat.Completions.New(ctx, params)
 		if err != nil {
 			return nil, err
 		}
+
+		// Check for raw function calls in the response
+		if len(chatCompletion.Choices) > 0 {
+			content := chatCompletion.Choices[0].Message.Content
+			if detectRawFunctionCall(content) {
+				// LLM used wrong format - add correction message and retry
+				params.Messages = append(params.Messages, chatCompletion.Choices[0].Message.ToParam())
+				params.Messages = append(params.Messages, openai.UserMessage(
+					"You used the wrong tool calling format. Do not output raw text like '<function(name)>()</function>'. "+
+						"Instead, use the proper tool calling mechanism provided by the API. Please try again with the correct format.",
+				))
+				continue
+			}
+		}
+
 		if !o.shouldExecuteTools(chatCompletion, enableTools, useMCPExecution) {
 			return chatCompletion, nil
 		}
+
 		params.Messages = append(params.Messages, chatCompletion.Choices[0].Message.ToParam())
 		idMapping := make(map[string]string)
 		for _, toolCall := range chatCompletion.Choices[0].Message.ToolCalls {
@@ -88,14 +117,31 @@ func (o *OpenAI) CreateChat(messages models.AIChatHistory, enableTools bool, use
 func (o *OpenAI) CreateChatStream(messages models.AIChatHistory, chunkHandler func(chunk openai.ChatCompletionChunk), enableTools bool, useMCPExecution bool) (*openai.ChatCompletion, error) {
 	ctx := context.TODO()
 	params := o.buildParams(messages, enableTools)
+
 	for range o.toolPassLimit() {
 		acc, err := o.streamAndAccumulate(ctx, params, chunkHandler)
 		if err != nil {
 			return nil, err
 		}
+
+		// Check for raw function calls in the accumulated response
+		if len(acc.Choices) > 0 {
+			content := acc.Choices[0].Message.Content
+			if detectRawFunctionCall(content) {
+				// LLM used wrong format - add correction message and retry
+				params.Messages = append(params.Messages, acc.Choices[0].Message.ToParam())
+				params.Messages = append(params.Messages, openai.UserMessage(
+					"You used the wrong tool calling format. Do not output raw text like '<function(name)>()</function>'. "+
+						"Instead, use the proper tool calling mechanism provided by the API. Please try again with the correct format.",
+				))
+				continue
+			}
+		}
+
 		if !o.shouldExecuteTools(&acc.ChatCompletion, enableTools, useMCPExecution) {
 			return &acc.ChatCompletion, nil
 		}
+
 		params.Messages = append(params.Messages, acc.Choices[0].Message.ToParam())
 		idMapping := make(map[string]string)
 		for _, toolCall := range acc.Choices[0].Message.ToolCalls {
