@@ -54,7 +54,34 @@ func formatMessages(messages models.AIChatHistory, sysmgs string) []openai.ChatC
 				mgs = append(mgs, openai.UserMessage(message.Message))
 			}
 		case "assistant":
-			mgs = append(mgs, openai.AssistantMessage(message.Message))
+			if len(message.ToolCalls) > 0 {
+				// Assistant message with tool calls
+				toolCalls := make([]openai.ChatCompletionMessageToolCallUnionParam, len(message.ToolCalls))
+				for i, tc := range message.ToolCalls {
+					toolCalls[i] = openai.ChatCompletionMessageToolCallUnionParam{
+						OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
+							ID: tc.ID,
+							Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
+								Name:      tc.Function.Name,
+								Arguments: tc.Function.Arguments,
+							},
+						},
+					}
+				}
+				assistantMsg := openai.ChatCompletionAssistantMessageParam{
+					ToolCalls: toolCalls,
+				}
+				if message.Message != "" {
+					assistantMsg.Content = openai.ChatCompletionAssistantMessageParamContentUnion{
+						OfString: openai.String(message.Message),
+					}
+				}
+				mgs = append(mgs, openai.ChatCompletionMessageParamUnion{
+					OfAssistant: &assistantMsg,
+				})
+			} else {
+				mgs = append(mgs, openai.AssistantMessage(message.Message))
+			}
 		case "system":
 			mgs = append(mgs, openai.SystemMessage(message.Message))
 		case "tool":
