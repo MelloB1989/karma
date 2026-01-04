@@ -2,9 +2,11 @@ package ai
 
 import (
 	"errors"
+	"time"
 
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/models"
+	"github.com/MelloB1989/karma/utils"
 )
 
 func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
@@ -124,6 +126,90 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 	kai.removeUserPrePrompt(messages)
 
 	return response, err
+}
+
+// ChatCompletionManaged performs a chat completion and automatically manages the chat history.
+// It appends the assistant's response (including any tool calls) to the provided history.
+func (kai *KarmaAI) ChatCompletionManaged(history *models.AIChatHistory) (*models.AIChatResponse, error) {
+	response, err := kai.ChatCompletion(*history)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the assistant message
+	assistantMsg := models.AIMessage{
+		Role:      models.Assistant,
+		Message:   response.AIResponse,
+		Timestamp: time.Now(),
+		UniqueId:  utils.GenerateID(16),
+	}
+
+	// If there are tool calls, convert them to OpenAIToolCall format
+	if len(response.ToolCalls) > 0 {
+		toolCalls := make([]models.OpenAIToolCall, len(response.ToolCalls))
+		for i, tc := range response.ToolCalls {
+			toolCalls[i] = models.OpenAIToolCall{
+				Index: tc.Index,
+				ID:    tc.ID,
+				Type:  tc.Type,
+				Function: struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				}{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			}
+		}
+		assistantMsg.ToolCalls = toolCalls
+	}
+
+	// Append the assistant message to history
+	history.Messages = append(history.Messages, assistantMsg)
+
+	return response, nil
+}
+
+// ChatCompletionStreamManaged performs a streaming chat completion and automatically manages the chat history.
+// It appends the assistant's response (including any tool calls) to the provided history.
+func (kai *KarmaAI) ChatCompletionStreamManaged(history *models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
+	response, err := kai.ChatCompletionStream(*history, callback)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the assistant message
+	assistantMsg := models.AIMessage{
+		Role:      models.Assistant,
+		Message:   response.AIResponse,
+		Timestamp: time.Now(),
+		UniqueId:  utils.GenerateID(16),
+	}
+
+	// If there are tool calls, convert them to OpenAIToolCall format
+	if len(response.ToolCalls) > 0 {
+		toolCalls := make([]models.OpenAIToolCall, len(response.ToolCalls))
+		for i, tc := range response.ToolCalls {
+			toolCalls[i] = models.OpenAIToolCall{
+				Index: tc.Index,
+				ID:    tc.ID,
+				Type:  tc.Type,
+				Function: struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				}{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			}
+		}
+		assistantMsg.ToolCalls = toolCalls
+	}
+
+	// Append the assistant message to history
+	history.Messages = append(history.Messages, assistantMsg)
+
+	return response, nil
 }
 
 func (kai *KarmaAI) GetEmbeddings(text string) (*models.AIEmbeddingResponse, error) {
