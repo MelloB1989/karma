@@ -18,7 +18,7 @@ import (
 	"google.golang.org/genai"
 )
 
-func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
+func (kai *KarmaAI) handleOpenAIChatCompletion(messages *models.AIChatHistory) (*models.AIChatResponse, error) {
 	start := time.Now()
 	o := openai.NewOpenAI(kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), int64(kai.MaxTokens))
 	kai.configureOpenAIClient(o)
@@ -31,7 +31,7 @@ func (kai *KarmaAI) handleOpenAIChatCompletion(messages models.AIChatHistory) (*
 	return buildOpenAIChatResponse(chat, start)
 }
 
-func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages models.AIChatHistory, base_url string, apikey string) (*models.AIChatResponse, error) {
+func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages *models.AIChatHistory, base_url string, apikey string) (*models.AIChatResponse, error) {
 	start := time.Now()
 	o := openai.NewOpenAICompatible(kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), int64(kai.MaxTokens), base_url, apikey)
 	kai.configureOpenAIClient(o)
@@ -119,7 +119,7 @@ func (kai *KarmaAI) handleAnthropicSinglePrompt(prompt string) (*models.AIChatRe
 	return response, nil
 }
 
-func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
+func (kai *KarmaAI) handleOpenAIStreamCompletion(messages *models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
 	start := time.Now()
 	o := openai.NewOpenAI(kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), int64(kai.MaxTokens))
 	kai.configureOpenAIClient(o)
@@ -133,7 +133,7 @@ func (kai *KarmaAI) handleOpenAIStreamCompletion(messages models.AIChatHistory, 
 	return buildOpenAIChatResponse(chat, start)
 }
 
-func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error, base_url string, apikey string) (*models.AIChatResponse, error) {
+func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages *models.AIChatHistory, callback func(chunk models.StreamedResponse) error, base_url string, apikey string) (*models.AIChatResponse, error) {
 	start := time.Now()
 	o := openai.NewOpenAICompatible(kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), int64(kai.MaxTokens), base_url, apikey)
 	kai.configureOpenAIClient(o)

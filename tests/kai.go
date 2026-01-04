@@ -14,6 +14,7 @@ import (
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/models"
+	"github.com/MelloB1989/karma/utils"
 )
 
 func TestKai() {
@@ -373,7 +374,7 @@ func testGoFunctionTools() {
 	fmt.Println("User: What's the weather like in New York? Also, can you calculate 769 * 69 * 67 * 96 for me?")
 	fmt.Println()
 
-	response, err := kai.ChatCompletion(messages)
+	response, err := kai.ChatCompletionManaged(&messages)
 	if err != nil {
 		log.Fatalf("Chat completion failed: %v", err)
 	}
@@ -381,6 +382,7 @@ func testGoFunctionTools() {
 	fmt.Println("Assistant:", response.AIResponse)
 	fmt.Println()
 	fmt.Println("=== Test Complete ===")
+	utils.PrintAsJson(messages)
 }
 
 func testRawApi() {
