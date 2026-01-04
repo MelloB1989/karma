@@ -41,7 +41,7 @@ type AIMessage struct {
 	ToolCalls  []OpenAIToolCall `json:"tools,omitempty"` // Tool calls based on OpenAI standards
 	ToolCallId string           `json:"tool_call_id,omitempty"`
 	Message    string           `json:"message"`
-	Metadata   string           `json:"metadata"` //Store metadata related to the message, you can also store stringified JSON data
+	Metadata   map[string]any   `json:"metadata"` //Store metadata related to the message, you can also store stringified JSON data
 	Role       AIRoles          `json:"role"`
 	Timestamp  time.Time        `json:"timestamp"`
 	UniqueId   string           `json:"unique_id"`

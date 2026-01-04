@@ -12,7 +12,7 @@ import (
 )
 
 func (km *KarmaMemory) ChatCompletion(prompt string) (*models.AIChatResponse, error) {
-	history := km.messagesHistory
+	history := &km.messagesHistory
 	memoryContext, err := km.GetContext(prompt)
 	if err != nil {
 		km.logger.Error("Memory retrieval failed, continuing without memory context", zap.Error(err))
@@ -32,25 +32,20 @@ func (km *KarmaMemory) ChatCompletion(prompt string) (*models.AIChatResponse, er
 		UniqueId:  utils.GenerateID(6),
 	})
 
-	res, err := km.kai.ChatCompletion(history)
+	res, err := km.kai.ChatCompletionManaged(history)
 	if err != nil {
 		return nil, err
 	}
 
+	// Restore original prompt without memory context
 	history.Messages[userMsgIndex].Message = prompt
-	history.Messages = append(history.Messages, models.AIMessage{
-		Message:   res.AIResponse,
-		Role:      models.Assistant,
-		Timestamp: time.Now(),
-		UniqueId:  utils.GenerateID(6),
-	})
 	km.UpdateMessageHistory(history.Messages)
 
 	return res, nil
 }
 
 func (km *KarmaMemory) ChatCompletionStream(prompt string, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
-	history := km.messagesHistory
+	history := &km.messagesHistory
 	// Add memory context
 	memoryContext, err := km.GetContext(prompt)
 	if err != nil {
@@ -72,19 +67,13 @@ func (km *KarmaMemory) ChatCompletionStream(prompt string, callback func(chunk m
 		UniqueId:  utils.GenerateID(6),
 	})
 
-	res, err := km.kai.ChatCompletionStream(history, callback)
+	res, err := km.kai.ChatCompletionStreamManaged(history, callback)
 	if err != nil {
 		return nil, err
 	}
 
+	// Restore original prompt without memory context
 	history.Messages[userMsgIndex].Message = prompt
-
-	history.Messages = append(history.Messages, models.AIMessage{
-		Message:   res.AIResponse,
-		Role:      models.Assistant,
-		Timestamp: time.Now(),
-		UniqueId:  utils.GenerateID(6),
-	})
 	// Update to trigger memory updates
 	km.UpdateMessageHistory(history.Messages)
 	return res, nil
