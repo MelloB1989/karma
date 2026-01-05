@@ -4,6 +4,7 @@ import (
 	"context"
 
 	internalopenai "github.com/MelloB1989/karma/internal/openai"
+	"github.com/MelloB1989/karma/models"
 	"github.com/openai/openai-go/v3"
 )
 
@@ -57,8 +58,11 @@ type GoFunctionTool = internalopenai.GoFunctionTool
 //		SetInt("age", "User's age in years").
 //		SetStringEnum("status", "Account status", []string{"active", "inactive", "pending"}).
 //		SetRequired("name", "age")
-func NewFuncParams() FuncParams {
-	return internalopenai.NewFuncParams()
+func NewFuncParams(history ...*models.AIChatHistory) FuncParams {
+	if len(history) != 0 {
+		return internalopenai.NewFuncParams(history[0])
+	}
+	return internalopenai.NewFuncParams(nil)
 }
 
 // --- Helper functions to create GoFunctionTool easily ---

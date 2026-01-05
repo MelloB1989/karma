@@ -14,11 +14,19 @@ const defaultMaxToolPasses = 5
 
 type FuncParams openai.FunctionParameters
 
-func NewFuncParams() FuncParams {
+func NewFuncParams(history *models.AIChatHistory) FuncParams {
 	return FuncParams{
 		"type":       "object",
 		"properties": map[string]any{},
+		"history":    history,
 	}
+}
+
+func (fp FuncParams) GetHistory() *models.AIChatHistory {
+	if h, ok := fp["history"].(*models.AIChatHistory); ok {
+		return h
+	}
+	return nil
 }
 
 func (fp FuncParams) ToOpenAI() openai.FunctionParameters {
