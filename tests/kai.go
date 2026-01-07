@@ -26,7 +26,8 @@ func TestKai() {
 	// testRawApi()
 	// testChatCompletion()
 	// testGenerateFromSinglePrompt()
-	testGoFunctionTools()
+	// testGoFunctionTools()
+	TestGeminiImageGen()
 	// testChatCompletionStream()
 	// testWithMcpServer()
 	// Set up the HTTP router
@@ -245,7 +246,7 @@ func testChatCompletion() {
 }
 
 func testGenerateFromSinglePrompt() {
-	kai := ai.NewKarmaAI(ai.Llama4_Guard_12B, ai.Groq,
+	kai := ai.NewKarmaAI(ai.Gemini20Flash, ai.Google,
 		ai.WithSystemMessage("Act as a AI assistant, respond in clear text"),
 		ai.WithTemperature(0.5),
 		ai.WithMaxTokens(800),
@@ -279,11 +280,16 @@ func testChatCompletionStream() {
 
 func testGoFunctionTools() {
 	// Example: Using FuncParams helpers to define and use Go function tools
-	kai := ai.NewKarmaAI(ai.ChatModelGPT4o, ai.OpenAI,
+	kai := ai.NewKarmaAI(ai.Gemini25Pro, ai.Google,
 		ai.WithSystemMessage("You are a helpful assistant with access to tools. Use the tools when appropriate."),
 		ai.WithTemperature(0.7),
-		ai.WithMaxTokens(500),
+		ai.WithMaxTokens(2000),
 		ai.WithToolsEnabled(),
+		ai.WithMaxToolPasses(6),
+		ai.WithSpecialConfig(map[ai.SpecialConfig]any{
+			// ai.GoogleLocation: "us-east5",
+			ai.GoogleLocation: "global",
+		}),
 	)
 
 	// Define a weather tool using FuncParams from the public ai package
@@ -359,7 +365,7 @@ func testGoFunctionTools() {
 	messages := models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
-				Message:   "What's the weather like in New York? Also, can you calculate 769 * 69 * 67 * 96 for me?",
+				Message:   "What's the weather like in New York? Also, can you calculate 769 * 69 * 67 * 96 for me? Reply in plain English.",
 				Role:      models.User,
 				Timestamp: time.Now(),
 				UniqueId:  "func-tools-test-1",

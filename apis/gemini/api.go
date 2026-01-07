@@ -11,8 +11,10 @@ import (
 func RunGemini(prompt, model, system_prompt string, temp, topP, topK float64, maxOutputTokens int64, response_type ...string) (*genai.GenerateContentResponse, error) {
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  config.GetEnvRaw("GEMINI_API_KEY"),
-		Backend: genai.BackendGeminiAPI,
+		// APIKey: config.GetEnvRaw("GOOGLE_API_KEY"),
+		Backend:  genai.BackendVertexAI,
+		Project:  config.GetEnvRaw("GOOGLE_PROJECT_ID"),
+		Location: config.GetEnvRaw("GOOGLE_LOCATION"),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Gemini client: %w", err)

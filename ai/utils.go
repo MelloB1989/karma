@@ -1,6 +1,9 @@
 package ai
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"strings"
@@ -8,8 +11,11 @@ import (
 
 	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/apis/claude"
+	"github.com/MelloB1989/karma/apis/gemini"
+	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
+	"google.golang.org/genai"
 )
 
 const llama_single_prompt_format = `
@@ -168,4 +174,262 @@ func (kai *KarmaAI) configureMultiMCPForClaude(cc *claude.ClaudeClient) {
 	}
 
 	cc.SetMultiMCPManager(multiManager)
+}
+
+// createGeminiClient creates a Gemini client using SpecialConfig or environment variables
+// Each SpecialConfig field is optional and overrides its corresponding environment variable
+func (kai *KarmaAI) createGeminiClient() (*gemini.Gemini, error) {
+	// Check for API key first (uses Gemini API backend)
+	if apiKey, ok := kai.SpecialConfig[GoogleAPIKey].(string); ok && apiKey != "" {
+		return gemini.NewGeminiWithAPIKey(
+			kai.Model.GetModelString(),
+			kai.SystemMessage,
+			float64(kai.Temperature),
+			float64(kai.TopP),
+			float64(kai.TopK),
+			int64(kai.MaxTokens),
+			apiKey,
+		)
+	}
+
+	// For Vertex AI, each field can be individually overridden
+	// Start with environment variables as defaults
+	projectID := config.GetEnvRaw("GOOGLE_PROJECT_ID")
+	location := config.GetEnvRaw("GOOGLE_LOCATION")
+
+	// Override with SpecialConfig if set
+	if configProjectID, ok := kai.SpecialConfig[GoogleProjectID].(string); ok && configProjectID != "" {
+		projectID = configProjectID
+	}
+	if configLocation, ok := kai.SpecialConfig[GoogleLocation].(string); ok && configLocation != "" {
+		location = configLocation
+	}
+
+	return gemini.NewGeminiWithVertexAI(
+		kai.Model.GetModelString(),
+		kai.SystemMessage,
+		float64(kai.Temperature),
+		float64(kai.TopP),
+		float64(kai.TopK),
+		int64(kai.MaxTokens),
+		projectID,
+		location,
+	)
+}
+
+func (kai *KarmaAI) configureGeminiClient(g *gemini.Gemini) {
+	kai.configureGeminiClientForMCP(g)
+	if kai.ResponseType != "" {
+		g.SetResponseType(kai.ResponseType)
+	}
+	if kai.MaxToolPasses > 0 {
+		g.SetMaxToolPasses(kai.MaxToolPasses)
+	}
+}
+
+func (kai *KarmaAI) configureGeminiClientForMCP(g *gemini.Gemini) {
+	// Configure MCP tools
+	if kai.MCPUrl != "" && kai.AuthToken != "" {
+		g.SetMCPServer(kai.MCPUrl, kai.AuthToken)
+	}
+
+	// Add Go function tools
+	for _, tool := range kai.GoFunctionTools {
+		// Capture tool in local variable to avoid closure issue
+		toolCopy := tool
+		geminiTool := gemini.GoFunctionTool{
+			Name:        toolCopy.Name,
+			Description: toolCopy.Description,
+			Parameters:  convertOpenAIParamsToGeminiSchema(toolCopy.Parameters),
+			Handler: func(ctx context.Context, fp gemini.FuncParams) (string, error) {
+				// Convert gemini.FuncParams to openai.FuncParams
+				openaiParams := make(map[string]any)
+				for k, v := range fp {
+					openaiParams[k] = v
+				}
+				return toolCopy.Handler(ctx, openaiParams)
+			},
+		}
+		g.AddGoFunctionTool(geminiTool)
+	}
+}
+
+func convertOpenAIParamsToGeminiSchema(params any) *genai.Schema {
+	if params == nil {
+		return &genai.Schema{
+			Type:       "object",
+			Properties: map[string]*genai.Schema{},
+		}
+	}
+
+	// Handle map[string]any format (OpenAI FunctionParameters)
+	// First, try to convert via JSON marshaling to handle typed maps
+	var paramsMap map[string]any
+
+	switch p := params.(type) {
+	case map[string]any:
+		paramsMap = p
+	default:
+		// Try JSON round-trip for other map types (like openai.FunctionParameters)
+		jsonBytes, err := json.Marshal(params)
+		if err != nil {
+			return &genai.Schema{
+				Type:       "object",
+				Properties: map[string]*genai.Schema{},
+			}
+		}
+		if err := json.Unmarshal(jsonBytes, &paramsMap); err != nil {
+			return &genai.Schema{
+				Type:       "object",
+				Properties: map[string]*genai.Schema{},
+			}
+		}
+	}
+
+	schema := &genai.Schema{
+		Type:       "object",
+		Properties: make(map[string]*genai.Schema),
+	}
+
+	if properties, ok := paramsMap["properties"].(map[string]any); ok {
+		for name, prop := range properties {
+			if propMap, ok := prop.(map[string]any); ok {
+				schema.Properties[name] = convertPropertyMapToSchema(propMap)
+			}
+		}
+	}
+
+	if required, ok := paramsMap["required"].([]any); ok {
+		reqStrings := make([]string, len(required))
+		for i, r := range required {
+			if s, ok := r.(string); ok {
+				reqStrings[i] = s
+			}
+		}
+		schema.Required = reqStrings
+	}
+
+	// Also handle required as []string (some callers may use this format)
+	if required, ok := paramsMap["required"].([]string); ok {
+		schema.Required = required
+	}
+
+	return schema
+}
+
+func convertPropertyMapToSchema(propMap map[string]any) *genai.Schema {
+	schema := &genai.Schema{}
+
+	if typeStr, ok := propMap["type"].(string); ok {
+		// Use lowercase type strings to match OpenAPI/JSON Schema spec
+		// The genai package accepts both formats, but lowercase is more compatible
+		switch typeStr {
+		case "string":
+			schema.Type = "string"
+		case "number":
+			schema.Type = "number"
+		case "integer":
+			schema.Type = "integer"
+		case "boolean":
+			schema.Type = "boolean"
+		case "array":
+			schema.Type = "array"
+			if items, ok := propMap["items"].(map[string]any); ok {
+				schema.Items = convertPropertyMapToSchema(items)
+			}
+		case "object":
+			schema.Type = "object"
+			if props, ok := propMap["properties"].(map[string]any); ok {
+				schema.Properties = make(map[string]*genai.Schema)
+				for name, prop := range props {
+					if propMap, ok := prop.(map[string]any); ok {
+						schema.Properties[name] = convertPropertyMapToSchema(propMap)
+					}
+				}
+			}
+		default:
+			schema.Type = "string" // Default to string for unknown types
+		}
+	}
+
+	if desc, ok := propMap["description"].(string); ok {
+		schema.Description = desc
+	}
+
+	if enum, ok := propMap["enum"].([]any); ok {
+		enumStrings := make([]string, len(enum))
+		for i, e := range enum {
+			if s, ok := e.(string); ok {
+				enumStrings[i] = s
+			}
+		}
+		schema.Enum = enumStrings
+	}
+
+	return schema
+}
+
+func buildGeminiChatResponse(response *genai.GenerateContentResponse, startTime time.Time) (*models.AIChatResponse, error) {
+	if response == nil || len(response.Candidates) == 0 {
+		return nil, errors.New("no response from Gemini")
+	}
+
+	res := &models.AIChatResponse{
+		AIResponse: response.Text(),
+		TimeTaken:  int(time.Since(startTime).Milliseconds()),
+	}
+
+	if response.UsageMetadata != nil {
+		res.Tokens = int(response.UsageMetadata.TotalTokenCount)
+		res.InputTokens = int(response.UsageMetadata.PromptTokenCount)
+		res.OutputTokens = int(response.UsageMetadata.CandidatesTokenCount)
+	}
+
+	// Add tool calls if present
+	functionCalls := response.FunctionCalls()
+	if len(functionCalls) > 0 {
+		res.ToolCalls = buildToolCallsFromGemini(functionCalls)
+	}
+
+	return res, nil
+}
+
+func buildToolCallsFromGemini(functionCalls []*genai.FunctionCall) []models.ToolCall {
+	result := make([]models.ToolCall, len(functionCalls))
+	for i, fc := range functionCalls {
+		argsJSON, _ := json.Marshal(fc.Args)
+		result[i] = models.ToolCall{
+			ID:   fc.ID,
+			Type: "function",
+			Function: models.ToolCallFunction{
+				Name:      fc.Name,
+				Arguments: string(argsJSON),
+			},
+		}
+	}
+	return result
+}
+
+func createGeminiChunkHandler(callback func(chunk models.StreamedResponse) error) func(*genai.GenerateContentResponse) {
+	return func(chunk *genai.GenerateContentResponse) {
+		if chunk == nil {
+			return
+		}
+
+		streamResp := models.StreamedResponse{
+			AIResponse: chunk.Text(),
+		}
+
+		if chunk.UsageMetadata != nil {
+			streamResp.TokenUsed = int(chunk.UsageMetadata.TotalTokenCount)
+		}
+
+		// Add tool calls if present
+		functionCalls := chunk.FunctionCalls()
+		if len(functionCalls) > 0 {
+			streamResp.ToolCalls = buildToolCallsFromGemini(functionCalls)
+		}
+
+		callback(streamResp)
+	}
 }

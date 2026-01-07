@@ -29,3 +29,20 @@ func TestNanoBananaImageGen() {
 	}
 	fmt.Println("Nano Banana result:", url)
 }
+
+func TestGeminiImageGen() {
+	// // With SpecialConfig overrides
+	gen := ai.NewKarmaImageGen(ai.GEMINI_3_PRO_IMAGE,
+		ai.WithImgSpecialConfig(map[ai.SpecialConfig]any{
+			ai.GoogleLocation: "global",
+		}),
+		ai.WithImgAspectRatio("16:9"),
+		ai.WithImgDisabledSafetyFilters(),
+	)
+	response, err := gen.GenerateImages("A futuristic Lamborghini")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("Gemini result:", response)
+
+}

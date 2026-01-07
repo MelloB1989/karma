@@ -105,6 +105,41 @@ func (kai *KarmaAI) handleGeminiSinglePrompt(prompt string) (*models.AIChatRespo
 	}, nil
 }
 
+func (kai *KarmaAI) handleGeminiChatCompletion(messages *models.AIChatHistory) (*models.AIChatResponse, error) {
+	start := time.Now()
+	g, err := kai.createGeminiClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
+	}
+
+	kai.configureGeminiClient(g)
+
+	chat, err := g.CreateChat(messages, kai.ToolsEnabled, kai.UseMCPExecution)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildGeminiChatResponse(chat, start)
+}
+
+func (kai *KarmaAI) handleGeminiStreamCompletion(messages *models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
+	start := time.Now()
+	g, err := kai.createGeminiClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
+	}
+
+	kai.configureGeminiClient(g)
+
+	chunkHandler := createGeminiChunkHandler(callback)
+	chat, err := g.CreateChatStream(messages, chunkHandler, kai.ToolsEnabled, kai.UseMCPExecution)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildGeminiChatResponse(chat, start)
+}
+
 func (kai *KarmaAI) handleAnthropicSinglePrompt(prompt string) (*models.AIChatResponse, error) {
 	cc := claude.NewClaudeClient(int(kai.MaxTokens), anthropic.Model(kai.Model.GetModelString()), float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), kai.SystemMessage)
 	if len(kai.MCPTools) > 0 {

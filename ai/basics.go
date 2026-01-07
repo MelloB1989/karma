@@ -1,6 +1,7 @@
 package ai
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -56,6 +57,7 @@ const (
 	Llama3_70B       BaseModel = "llama-3-70b"
 	Llama31_8B       BaseModel = "llama-3.1-8b"
 	Llama31_70B      BaseModel = "llama-3.1-70b"
+	Llama31_405B     BaseModel = "llama-3.1-405b"
 	Llama32_1B       BaseModel = "llama-3.2-1b"
 	Llama32_3B       BaseModel = "llama-3.2-3b"
 	Llama32_11B      BaseModel = "llama-3.2-11b"
@@ -73,6 +75,11 @@ const (
 	// Quew Models
 	Quew3_32B BaseModel = "quew3-32b"
 
+	// Moonshot Models
+	KimiK2Thinking BaseModel = "kimi-k2-thinking"
+
+	MiniMaxM2 BaseModel = "minimax-m2"
+
 	// Amazon Titan Models
 	TitanTextG1Large BaseModel = "titan-text-g1-large"
 	TitanTextPremier BaseModel = "titan-text-premier"
@@ -89,16 +96,17 @@ const (
 	NovaMicro  BaseModel = "nova-micro"
 
 	// Google Models
-	Gemini3ProPreview BaseModel = "gemini-3-pro-preview"
-	Gemini25Flash     BaseModel = "gemini-2.5-flash"
-	Gemini25Pro       BaseModel = "gemini-2.5-pro"
-	Gemini20Flash     BaseModel = "gemini-2.0-flash"
-	Gemini20FlashLite BaseModel = "gemini-2.0-flash-lite"
-	Gemini15Flash     BaseModel = "gemini-1.5-flash"
-	Gemini15Flash8B   BaseModel = "gemini-1.5-flash-8b"
-	Gemini15Pro       BaseModel = "gemini-1.5-pro"
-	GeminiEmbedding   BaseModel = "gemini-embedding"
-	PaLM2             BaseModel = "palm-2"
+	Gemini3FlashPreview BaseModel = "gemini-3-flash-preview"
+	Gemini3ProPreview   BaseModel = "gemini-3-pro-preview"
+	Gemini25Flash       BaseModel = "gemini-2.5-flash"
+	Gemini25Pro         BaseModel = "gemini-2.5-pro"
+	Gemini20Flash       BaseModel = "gemini-2.0-flash"
+	Gemini20FlashLite   BaseModel = "gemini-2.0-flash-lite"
+	Gemini15Flash       BaseModel = "gemini-1.5-flash"
+	Gemini15Flash8B     BaseModel = "gemini-1.5-flash-8b"
+	Gemini15Pro         BaseModel = "gemini-1.5-pro"
+	GeminiEmbedding     BaseModel = "gemini-embedding"
+	PaLM2               BaseModel = "palm-2"
 
 	// xAI Models
 	Grok4              BaseModel = "grok-4"
@@ -209,16 +217,32 @@ var (
 			NovaMicro:  "amazon.nova-micro-v1:0",
 		},
 		Google: {
-			Gemini3ProPreview: "gemini-3-pro-preview",
-			Gemini25Flash:     "gemini-2.5-flash",
-			Gemini25Pro:       "gemini-2.5-pro",
-			Gemini20Flash:     "gemini-2.0-flash",
-			Gemini20FlashLite: "gemini-2.0-flash-lite",
-			Gemini15Flash:     "gemini-1.5-flash",
-			Gemini15Flash8B:   "gemini-1.5-flash-8b",
-			Gemini15Pro:       "gemini-1.5-pro",
-			GeminiEmbedding:   "text-embedding-004",
-			PaLM2:             "palm-2",
+			Gemini3FlashPreview: "gemini-3-flash-preview",
+			Gemini3ProPreview:   "gemini-3-pro-preview",
+			Gemini25Flash:       "gemini-2.5-flash",
+			Gemini25Pro:         "gemini-2.5-pro",
+			Gemini20Flash:       "gemini-2.0-flash",
+			Gemini20FlashLite:   "gemini-2.0-flash-lite",
+			Gemini15Flash:       "gemini-1.5-flash",
+			Gemini15Flash8B:     "gemini-1.5-flash-8b",
+			Gemini15Pro:         "gemini-1.5-pro",
+			GeminiEmbedding:     "text-embedding-004",
+			PaLM2:               "palm-2",
+
+			// Meta
+			Llama4_Scout_17B: "meta/llama-4-maverick-17b-128e-instruct-maas",
+			Llama33_70B:      "meta/llama-3.3-70b-instruct-maas",
+			Llama32_90B:      "meta/llama-3.2-90b-vision-instruct-maas",
+			Llama31_405B:     "meta/llama-3.1-405b-instruct-maas",
+
+			// Moonshot
+			KimiK2Thinking: "moonshotai/kimi-k2-thinking-maas",
+
+			MiniMaxM2: "minimaxai/minimax-m2-maas",
+
+			// OpenAI
+			GPTOSS_120B: "openai/gpt-oss-120b-maas",
+			GPTOSS_20B:  "openai/gpt-oss-20b-maas",
 		},
 		XAI: {
 			Grok4:              "grok-4",
@@ -324,6 +348,14 @@ type Analytics struct {
 	mu                 sync.RWMutex   `json:"-"`
 }
 
+type SpecialConfig string
+
+const (
+	GoogleProjectID SpecialConfig = "google_project_id"
+	GoogleLocation  SpecialConfig = "google_location"
+	GoogleAPIKey    SpecialConfig = "google_api_key"
+)
+
 // KarmaAI represents the main AI configuration
 type KarmaAI struct {
 	Model           ModelConfig                     `json:"model"`
@@ -348,6 +380,8 @@ type KarmaAI struct {
 	MaxToolPasses   int                             `json:"max_tool_passes"`
 	// Deprecated: Use MCPServers instead
 	MCPServers []MCPServer `json:"mcp_servers"`
+	// Provider-specific configuration
+	SpecialConfig map[SpecialConfig]any `json:"special_config"`
 }
 
 type F struct {
@@ -361,6 +395,12 @@ type Option func(*KarmaAI)
 func WithSystemMessage(message string) Option {
 	return func(kai *KarmaAI) {
 		kai.SystemMessage = message
+	}
+}
+
+func WithSpecialConfig(config map[SpecialConfig]any) Option {
+	return func(kai *KarmaAI) {
+		kai.SpecialConfig = config
 	}
 }
 
@@ -566,6 +606,13 @@ func (kai *KarmaAI) EnableTools() {
 	kai.ToolsEnabled = true
 }
 
+func (kai *KarmaAI) GetSpecialConfig(c SpecialConfig) (any, error) {
+	if kai.SpecialConfig == nil {
+		return nil, errors.New("special config not initialized")
+	}
+	return kai.SpecialConfig[c], nil
+}
+
 // WithToolsEnabled enables MCP tools
 func WithToolsEnabled() Option {
 	return func(kai *KarmaAI) {
@@ -600,6 +647,7 @@ func NewKarmaAI(baseModel BaseModel, provider Provider, options ...Option) *Karm
 			optionalFields: make(map[string]any),
 		},
 		MaxToolPasses: 4,
+		SpecialConfig: make(map[SpecialConfig]any),
 	}
 
 	for _, option := range options {
@@ -608,48 +656,3 @@ func NewKarmaAI(baseModel BaseModel, provider Provider, options ...Option) *Karm
 
 	return kai
 }
-
-// Legacy model constants for backward compatibility
-const (
-	// Deprecated: Use BaseModel constants with providers instead
-	ChatModelO1                              = "o1"
-	ChatModelO1_2024_12_17                   = "o1-2024-12-17"
-	ChatModelO1Preview                       = "o1-preview"
-	ChatModelO1Preview2024_09_12             = "o1-preview-2024-09-12"
-	ChatModelO1Mini                          = "o1-mini"
-	ChatModelO1Mini2024_09_12                = "o1-mini-2024-09-12"
-	ChatModelGPT4o                           = "gpt-4o"
-	ChatModelGPT4o2024_11_20                 = "gpt-4o-2024-11-20"
-	ChatModelGPT4o2024_08_06                 = "gpt-4o-2024-08-06"
-	ChatModelGPT4o2024_05_13                 = "gpt-4o-2024-05-13"
-	ChatModelGPT4oAudioPreview               = "gpt-4o-audio-preview"
-	ChatModelGPT4oAudioPreview2024_10_01     = "gpt-4o-audio-preview-2024-10-01"
-	ChatModelGPT4oAudioPreview2024_12_17     = "gpt-4o-audio-preview-2024-12-17"
-	ChatModelGPT4oMiniAudioPreview           = "gpt-4o-mini-audio-preview"
-	ChatModelGPT4oMiniAudioPreview2024_12_17 = "gpt-4o-mini-audio-preview-2024-12-17"
-	ChatModelChatgpt4oLatest                 = "chatgpt-4o-latest"
-	ChatModelGPT4oMini                       = "gpt-4o-mini"
-	ChatModelGPT4oMini2024_07_18             = "gpt-4o-mini-2024-07-18"
-	ChatModelGPT4Turbo                       = "gpt-4-turbo"
-	ChatModelGPT4Turbo2024_04_09             = "gpt-4-turbo-2024-04-09"
-	ChatModelGPT4_0125Preview                = "gpt-4-0125-preview"
-	ChatModelGPT4TurboPreview                = "gpt-4-turbo-preview"
-	ChatModelGPT4_1106Preview                = "gpt-4-1106-preview"
-	ChatModelGPT4VisionPreview               = "gpt-4-vision-preview"
-	ChatModelGPT4                            = "gpt-4"
-	ChatModelGPT4_0314                       = "gpt-4-0314"
-	ChatModelGPT4_0613                       = "gpt-4-0613"
-	ChatModelGPT4_32k                        = "gpt-4-32k"
-	ChatModelGPT4_32k0314                    = "gpt-4-32k-0314"
-	ChatModelGPT4_32k0613                    = "gpt-4-32k-0613"
-	ChatModelGPT3_5Turbo                     = "gpt-3.5-turbo"
-	ChatModelGPT3_5Turbo16k                  = "gpt-3.5-turbo-16k"
-	ChatModelGPT3_5Turbo0301                 = "gpt-3.5-turbo-0301"
-	ChatModelGPT3_5Turbo0613                 = "gpt-3.5-turbo-0613"
-	ChatModelGPT3_5Turbo1106                 = "gpt-3.5-turbo-1106"
-	ChatModelGPT3_5Turbo0125                 = "gpt-3.5-turbo-0125"
-	ChatModelGPT3_5Turbo16k0613              = "gpt-3.5-turbo-16k-0613"
-	ChatModelGPT5                            = "gpt-5"
-	ChatModelGPT5_NANO                       = "gpt-5-nano"
-	ChatModelGPT5_MINI                       = "gpt-5-mini"
-)

@@ -20,6 +20,8 @@ const (
 	DALL_E_3           ImageModels = "dall-e-3"
 	DALL_E_2           ImageModels = "dall-e-2"
 	GEMINI_NANO_BANANA ImageModels = "gemini-2.5-flash-image-preview"
+	// Google/Gemini Image Models
+	GEMINI_3_PRO_IMAGE ImageModels = "gemini-3-pro-image-preview"
 	// Segmind Models
 	SEGMIND_SD          ImageModels = "segmind-sd-3.5-large"
 	SEGMIND_PROTOVIS    ImageModels = "segmind-protovis-lightning"
@@ -43,15 +45,28 @@ type KarmaImageGen struct {
 	N               int    // Number of output images
 	Model           ImageModels
 	OutputDirectory string
+	// Provider-specific configuration (same as KarmaAI)
+	SpecialConfig map[SpecialConfig]any
+	// Image generation settings
+	AspectRatio          string  // e.g., "1:1", "16:9", "9:16", "4:3", "3:4"
+	ImageSize            string  // e.g., "1K", "2K"
+	MimeType             string  // e.g., "image/png", "image/jpeg"
+	PersonGeneration     string  // e.g., "ALLOW_ALL", "BLOCK_ALL", "BLOCK_ONLY_ADULTS"
+	Temperature          float32 // Temperature for generation
+	DisableSafetyFilters bool    // Disable safety filters
 }
 
 type ImageGenOptions func(*KarmaImageGen)
 
 func NewKarmaImageGen(model ImageModels, opts ...ImageGenOptions) *KarmaImageGen {
-
-	return &KarmaImageGen{
-		Model: model,
+	ki := &KarmaImageGen{
+		Model:         model,
+		SpecialConfig: make(map[SpecialConfig]any),
 	}
+	for _, opt := range opts {
+		opt(ki)
+	}
+	return ki
 }
 
 func WithNImages(n int) ImageGenOptions {
@@ -78,6 +93,55 @@ func WithOutputDirectory(dir string) ImageGenOptions {
 	}
 }
 
+// WithImgSpecialConfig sets provider-specific configuration
+func WithImgSpecialConfig(cfg map[SpecialConfig]any) ImageGenOptions {
+	return func(k *KarmaImageGen) {
+		k.SpecialConfig = cfg
+	}
+}
+
+// WithImgAspectRatio sets the aspect ratio for generated images
+func WithImgAspectRatio(aspectRatio string) ImageGenOptions {
+	return func(k *KarmaImageGen) {
+		k.AspectRatio = aspectRatio
+	}
+}
+
+// WithImgImageSize sets the image size (e.g., "1K", "2K")
+func WithImgImageSize(imageSize string) ImageGenOptions {
+	return func(k *KarmaImageGen) {
+		k.ImageSize = imageSize
+	}
+}
+
+// WithImgMimeType sets the output MIME type (e.g., "image/png", "image/jpeg")
+func WithImgMimeType(mimeType string) ImageGenOptions {
+	return func(k *KarmaImageGen) {
+		k.MimeType = mimeType
+	}
+}
+
+// WithImgPersonGeneration sets the person generation policy
+func WithImgPersonGeneration(policy string) ImageGenOptions {
+	return func(k *KarmaImageGen) {
+		k.PersonGeneration = policy
+	}
+}
+
+// WithImgTemperature sets the temperature for image generation
+func WithImgTemperature(temperature float32) ImageGenOptions {
+	return func(k *KarmaImageGen) {
+		k.Temperature = temperature
+	}
+}
+
+// WithImgDisabledSafetyFilters disables all safety filters
+func WithImgDisabledSafetyFilters() ImageGenOptions {
+	return func(k *KarmaImageGen) {
+		k.DisableSafetyFilters = true
+	}
+}
+
 func (ki *KarmaImageGen) GenerateImages(prompt string) (*models.AIImageResponse, error) {
 	// Set default output directory if not specified
 	outputDir := ki.OutputDirectory
@@ -98,7 +162,9 @@ func (ki *KarmaImageGen) GenerateImages(prompt string) (*models.AIImageResponse,
 			API_Key: config.GetEnvRaw("XAI_API_KEY"),
 		})
 	case GEMINI_NANO_BANANA:
-		return gemini.GenImage(ki.UserPrePrompt+" "+prompt, string(ki.Model), outputDir)
+		return ki.genGeminiImage(prompt, outputDir)
+	case GEMINI_3_PRO_IMAGE:
+		return ki.genGeminiImage(prompt, outputDir)
 	case SEGMIND_SD:
 		seg := segmind.NewSegmind(segmind.SegmindSDAPI, segmind.WithOutputDir(outputDir))
 		url, err := seg.RequestCreateImage(ki.UserPrePrompt + " " + prompt)
@@ -164,6 +230,56 @@ func (ki *KarmaImageGen) GenerateImages(prompt string) (*models.AIImageResponse,
 		return &models.AIImageResponse{FilePath: *url}, nil
 	}
 	return nil, errors.New("unsupported model")
+}
+
+// genGeminiImage generates images using Google/Gemini with SpecialConfig support
+func (ki *KarmaImageGen) genGeminiImage(prompt, outputDir string) (*models.AIImageResponse, error) {
+	// Build options from configuration
+	var opts []gemini.ImageGenOption
+
+	// Check for API key first (from SpecialConfig or environment)
+	if apiKey, ok := ki.SpecialConfig[GoogleAPIKey].(string); ok && apiKey != "" {
+		opts = append(opts, gemini.WithAPIKey(apiKey))
+	} else {
+		// Check for Vertex AI configuration
+		projectID := config.GetEnvRaw("GOOGLE_PROJECT_ID")
+		location := config.GetEnvRaw("GOOGLE_LOCATION")
+
+		// Override with SpecialConfig if set
+		if configProjectID, ok := ki.SpecialConfig[GoogleProjectID].(string); ok && configProjectID != "" {
+			projectID = configProjectID
+		}
+		if configLocation, ok := ki.SpecialConfig[GoogleLocation].(string); ok && configLocation != "" {
+			location = configLocation
+		}
+
+		if projectID != "" && location != "" {
+			opts = append(opts, gemini.WithVertexAI(projectID, location))
+		}
+		// If neither API key nor Vertex AI config, GenImageWithConfig will try env vars
+	}
+
+	// Add image generation settings if configured
+	if ki.AspectRatio != "" {
+		opts = append(opts, gemini.WithAspectRatio(ki.AspectRatio))
+	}
+	if ki.ImageSize != "" {
+		opts = append(opts, gemini.WithImageSize(ki.ImageSize))
+	}
+	if ki.MimeType != "" {
+		opts = append(opts, gemini.WithMimeType(ki.MimeType))
+	}
+	if ki.PersonGeneration != "" {
+		opts = append(opts, gemini.WithPersonGeneration(ki.PersonGeneration))
+	}
+	if ki.Temperature > 0 {
+		opts = append(opts, gemini.WithTemperatureImg(ki.Temperature))
+	}
+	if ki.DisableSafetyFilters {
+		opts = append(opts, gemini.WithDisabledSafetyFilters())
+	}
+
+	return gemini.GenImageWithConfig(ki.UserPrePrompt+" "+prompt, string(ki.Model), outputDir, opts...)
 }
 
 // GenerateImagesWithInputImages generates images using input images (useful for models like Nano Banana)

@@ -19,6 +19,8 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 		response, err = kai.handleOpenAIChatCompletion(&messages)
 	case Bedrock:
 		response, err = kai.handleBedrockChatCompletion(messages)
+	case Google:
+		response, err = kai.handleGeminiChatCompletion(&messages)
 	case Anthropic:
 		response, err = kai.handleAnthropicChatCompletion(messages)
 	case XAI:
@@ -101,6 +103,8 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 		response, err = kai.handleOpenAIStreamCompletion(&messages, callback)
 	case Bedrock:
 		response, err = kai.handleBedrockStreamCompletion(messages, callback)
+	case Google:
+		response, err = kai.handleGeminiStreamCompletion(&messages, callback)
 	case Anthropic:
 		response, err = kai.handleAnthropicStreamCompletion(messages, callback)
 	case XAI:
@@ -141,6 +145,8 @@ func (kai *KarmaAI) ChatCompletionManaged(history *models.AIChatHistory) (*model
 		response, err = kai.handleOpenAIChatCompletion(history)
 	case Bedrock:
 		response, err = kai.handleBedrockChatCompletion(*history)
+	case Google:
+		response, err = kai.handleGeminiChatCompletion(history)
 	case Anthropic:
 		response, err = kai.handleAnthropicChatCompletion(*history)
 	case XAI:
@@ -181,6 +187,8 @@ func (kai *KarmaAI) ChatCompletionStreamManaged(history *models.AIChatHistory, c
 		response, err = kai.handleOpenAIStreamCompletion(history, callback)
 	case Bedrock:
 		response, err = kai.handleBedrockStreamCompletion(*history, callback)
+	case Google:
+		response, err = kai.handleGeminiStreamCompletion(history, callback)
 	case Anthropic:
 		response, err = kai.handleAnthropicStreamCompletion(*history, callback)
 	case XAI:
