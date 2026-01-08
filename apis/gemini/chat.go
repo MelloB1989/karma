@@ -54,6 +54,7 @@ func NewGemini(model, systemMessage string, temperature, topP, topK float64, max
 // NewGeminiWithVertexAI creates a new Gemini client using Vertex AI backend with explicit project and location
 func NewGeminiWithVertexAI(model, systemMessage string, temperature, topP, topK float64, maxTokens int64, projectID, location string) (*Gemini, error) {
 	ctx := context.Background()
+
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		Backend:  genai.BackendVertexAI,
 		Project:  projectID,
@@ -177,6 +178,15 @@ func (g *Gemini) CreateChat(messages *models.AIChatHistory, enableTools bool, us
 		// Get function calls from response
 		functionCalls := response.FunctionCalls()
 		if len(functionCalls) == 0 {
+			// Add assistant message to history even when no function calls
+			if len(response.Candidates) > 0 && response.Candidates[0].Content != nil {
+				messages.Messages = append(messages.Messages, models.AIMessage{
+					Role:      models.Assistant,
+					Message:   response.Text(),
+					Timestamp: time.Now(),
+					UniqueId:  utils.GenerateID(16),
+				})
+			}
 			return response, nil
 		}
 
@@ -289,6 +299,15 @@ func (g *Gemini) CreateChatStream(messages *models.AIChatHistory, chunkHandler f
 		// Get function calls from response
 		functionCalls := acc.FunctionCalls()
 		if len(functionCalls) == 0 {
+			// Add assistant message to history even when no function calls
+			if len(acc.Candidates) > 0 && acc.Candidates[0].Content != nil {
+				messages.Messages = append(messages.Messages, models.AIMessage{
+					Role:      models.Assistant,
+					Message:   acc.Text(),
+					Timestamp: time.Now(),
+					UniqueId:  utils.GenerateID(16),
+				})
+			}
 			return acc, nil
 		}
 

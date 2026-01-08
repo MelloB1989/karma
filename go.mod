@@ -43,7 +43,7 @@ require (
 	golang.org/x/crypto v0.41.0
 	golang.org/x/oauth2 v0.30.0
 	golang.org/x/text v0.28.0
-	google.golang.org/genai v1.4.0
+	google.golang.org/genai v1.41.0
 	google.golang.org/protobuf v1.36.3
 )
 

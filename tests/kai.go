@@ -10,11 +10,11 @@ import (
 
 	"github.com/MelloB1989/karma/ai"
 	"github.com/MelloB1989/karma/ai/memory"
+	"github.com/MelloB1989/karma/apir"
 	"github.com/MelloB1989/karma/apis/aws/bedrock"
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/models"
-	"github.com/MelloB1989/karma/utils"
 )
 
 func TestKai() {
@@ -26,8 +26,8 @@ func TestKai() {
 	// testRawApi()
 	// testChatCompletion()
 	// testGenerateFromSinglePrompt()
-	// testGoFunctionTools()
-	TestGeminiImageGen()
+	testGoFunctionTools()
+	// TestGeminiImageGen()
 	// testChatCompletionStream()
 	// testWithMcpServer()
 	// Set up the HTTP router
@@ -280,7 +280,7 @@ func testChatCompletionStream() {
 
 func testGoFunctionTools() {
 	// Example: Using FuncParams helpers to define and use Go function tools
-	kai := ai.NewKarmaAI(ai.Gemini25Pro, ai.Google,
+	kai := ai.NewKarmaAI(ai.MiniMaxM2, ai.Google,
 		ai.WithSystemMessage("You are a helpful assistant with access to tools. Use the tools when appropriate."),
 		ai.WithTemperature(0.7),
 		ai.WithMaxTokens(2000),
@@ -362,7 +362,7 @@ func testGoFunctionTools() {
 	}
 
 	// Test with a message that should trigger tool use
-	messages := models.AIChatHistory{
+	messages := &models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
 				Message:   "What's the weather like in New York? Also, can you calculate 769 * 69 * 67 * 96 for me? Reply in plain English.",
@@ -379,16 +379,41 @@ func testGoFunctionTools() {
 	fmt.Println("=== Testing Go Function Tools ===")
 	fmt.Println("User: What's the weather like in New York? Also, can you calculate 769 * 69 * 67 * 96 for me?")
 	fmt.Println()
+	watchCtx, cancelWatch := context.WithCancel(context.Background())
+	defer cancelWatch()
+	client := apir.NewAPIClient("https://webhook.site", map[string]string{})
+	go func(messages *models.AIChatHistory, ctx context.Context) {
+		ticker := time.NewTicker(100 * time.Millisecond) // Check more frequently
+		defer ticker.Stop()
 
-	response, err := kai.ChatCompletionManaged(&messages)
+		var lastLen int
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if len(messages.Messages) != lastLen {
+					lastLen = len(messages.Messages)
+					log.Println("New message received:", messages.Messages[lastLen-1].Message)
+					client.Post("/569819e8-5633-45e7-abe7-404c7e10154f", *messages, nil)
+				}
+			}
+		}
+	}(messages, watchCtx)
+
+	response, err := kai.ChatCompletionStreamManaged(messages, func(chunk models.StreamedResponse) error {
+		// fmt.Println("Assistant:", chunk.AIResponse)
+		return nil
+	})
 	if err != nil {
 		log.Fatalf("Chat completion failed: %v", err)
 	}
+	client.Post("/569819e8-5633-45e7-abe7-404c7e10154f", *messages, nil)
 
 	fmt.Println("Assistant:", response.AIResponse)
 	fmt.Println()
 	fmt.Println("=== Test Complete ===")
-	utils.PrintAsJson(messages)
 }
 
 func testRawApi() {
