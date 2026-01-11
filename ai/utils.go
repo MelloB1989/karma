@@ -60,7 +60,7 @@ const assitant_end = `
 <|start_header_id|>assistant<|end_header_id|>
 `
 
-func (kai *KarmaAI) addUserPreprompt(chat models.AIChatHistory) models.AIChatHistory {
+func (kai *KarmaAI) addUserPreprompt(chat *models.AIChatHistory) *models.AIChatHistory {
 	if len(chat.Messages) == 0 {
 		return chat
 	}
@@ -68,7 +68,7 @@ func (kai *KarmaAI) addUserPreprompt(chat models.AIChatHistory) models.AIChatHis
 	return chat
 }
 
-func (kai *KarmaAI) removeUserPrePrompt(chat models.AIChatHistory) models.AIChatHistory {
+func (kai *KarmaAI) removeUserPrePrompt(chat *models.AIChatHistory) *models.AIChatHistory {
 	if len(chat.Messages) == 0 {
 		return chat
 	}

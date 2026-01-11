@@ -9,39 +9,39 @@ import (
 
 func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
 	kai.setBasicProperties()
-	messages = kai.addUserPreprompt(messages)
+	m := kai.addUserPreprompt(&messages)
 
 	var response *models.AIChatResponse
 	var err error
 
 	switch kai.Model.GetModelProvider() {
 	case OpenAI:
-		response, err = kai.handleOpenAIChatCompletion(&messages)
+		response, err = kai.handleOpenAIChatCompletion(m)
 	case Bedrock:
-		response, err = kai.handleBedrockChatCompletion(messages)
+		response, err = kai.handleBedrockChatCompletion(*m)
 	case Google:
-		response, err = kai.handleGeminiChatCompletion(&messages)
+		response, err = kai.handleGeminiChatCompletion(m)
 	case Anthropic:
-		response, err = kai.handleAnthropicChatCompletion(messages)
+		response, err = kai.handleAnthropicChatCompletion(*m)
 	case XAI:
-		response, err = kai.handleOpenAICompatibleChatCompletion(&messages, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
+		response, err = kai.handleOpenAICompatibleChatCompletion(m, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
 	case Groq:
-		response, err = kai.handleOpenAICompatibleChatCompletion(&messages, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
+		response, err = kai.handleOpenAICompatibleChatCompletion(m, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
 	case Sarvam:
-		response, err = kai.handleOpenAICompatibleChatCompletion(&messages, SARVAM_API, config.GetEnvRaw("SARVAM_API_KEY"))
+		response, err = kai.handleOpenAICompatibleChatCompletion(m, SARVAM_API, config.GetEnvRaw("SARVAM_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
 
 	// Handle analytics and errors asynchronously after getting the response
 	if response != nil {
-		kai.captureResponse(messages, *response)
+		kai.captureResponse(*m, *response)
 	}
 	if err != nil {
 		kai.SendErrorEvent(err)
 	}
 
-	kai.removeUserPrePrompt(messages)
+	kai.removeUserPrePrompt(m)
 
 	return response, err
 }
@@ -93,39 +93,39 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 
 func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
 	kai.setBasicProperties()
-	messages = kai.addUserPreprompt(messages)
+	m := kai.addUserPreprompt(&messages)
 
 	var response *models.AIChatResponse
 	var err error
 
 	switch kai.Model.GetModelProvider() {
 	case OpenAI:
-		response, err = kai.handleOpenAIStreamCompletion(&messages, callback)
+		response, err = kai.handleOpenAIStreamCompletion(m, callback)
 	case Bedrock:
-		response, err = kai.handleBedrockStreamCompletion(messages, callback)
+		response, err = kai.handleBedrockStreamCompletion(*m, callback)
 	case Google:
-		response, err = kai.handleGeminiStreamCompletion(&messages, callback)
+		response, err = kai.handleGeminiStreamCompletion(m, callback)
 	case Anthropic:
-		response, err = kai.handleAnthropicStreamCompletion(messages, callback)
+		response, err = kai.handleAnthropicStreamCompletion(*m, callback)
 	case XAI:
-		response, err = kai.handleOpenAICompatibleStreamCompletion(&messages, callback, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
+		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, XAI_API, config.GetEnvRaw("XAI_API_KEY"))
 	case Groq:
-		response, err = kai.handleOpenAICompatibleStreamCompletion(&messages, callback, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
+		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
 	case Sarvam:
-		response, err = kai.handleOpenAICompatibleStreamCompletion(&messages, callback, SARVAM_API, config.GetEnvRaw("SARVAM_API_KEY"))
+		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, SARVAM_API, config.GetEnvRaw("SARVAM_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
 
 	// Handle analytics and errors asynchronously after getting the response
 	if response != nil {
-		kai.captureResponse(messages, *response)
+		kai.captureResponse(*m, *response)
 	}
 	if err != nil {
 		kai.SendErrorEvent(err)
 	}
 
-	kai.removeUserPrePrompt(messages)
+	kai.removeUserPrePrompt(m)
 
 	return response, err
 }
@@ -135,7 +135,7 @@ func (kai *KarmaAI) ChatCompletionManaged(history *models.AIChatHistory) (*model
 		return nil, errors.New("history is nil")
 	}
 	kai.setBasicProperties()
-	*history = kai.addUserPreprompt(*history)
+	kai.addUserPreprompt(history)
 
 	var response *models.AIChatResponse
 	var err error
@@ -167,7 +167,7 @@ func (kai *KarmaAI) ChatCompletionManaged(history *models.AIChatHistory) (*model
 		kai.SendErrorEvent(err)
 	}
 
-	kai.removeUserPrePrompt(*history)
+	kai.removeUserPrePrompt(history)
 
 	return response, err
 }
@@ -177,7 +177,7 @@ func (kai *KarmaAI) ChatCompletionStreamManaged(history *models.AIChatHistory, c
 		return nil, errors.New("history is nil")
 	}
 	kai.setBasicProperties()
-	*history = kai.addUserPreprompt(*history)
+	kai.addUserPreprompt(history)
 
 	var response *models.AIChatResponse
 	var err error
@@ -209,7 +209,7 @@ func (kai *KarmaAI) ChatCompletionStreamManaged(history *models.AIChatHistory, c
 		kai.SendErrorEvent(err)
 	}
 
-	kai.removeUserPrePrompt(*history)
+	kai.removeUserPrePrompt(history)
 
 	return response, err
 }
