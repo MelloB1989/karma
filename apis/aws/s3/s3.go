@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"mime/multipart"
 	"os"
+	"path/filepath"
 
 	c "github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/utils"
@@ -27,6 +29,52 @@ type S3ClientConfig struct {
 	AccessKeyID     string
 	SecretAccessKey string
 	EnvPrefix       string
+}
+
+// getContentType determines the content type based on file extension
+func getContentType(filename string) string {
+	ext := filepath.Ext(filename)
+	contentType := mime.TypeByExtension(ext)
+
+	// If mime.TypeByExtension doesn't find it, use common mappings
+	if contentType == "" {
+		switch ext {
+		case ".jpg", ".jpeg":
+			contentType = "image/jpeg"
+		case ".png":
+			contentType = "image/png"
+		case ".gif":
+			contentType = "image/gif"
+		case ".webp":
+			contentType = "image/webp"
+		case ".svg":
+			contentType = "image/svg+xml"
+		case ".pdf":
+			contentType = "application/pdf"
+		case ".json":
+			contentType = "application/json"
+		case ".xml":
+			contentType = "application/xml"
+		case ".txt":
+			contentType = "text/plain"
+		case ".html", ".htm":
+			contentType = "text/html"
+		case ".css":
+			contentType = "text/css"
+		case ".js":
+			contentType = "application/javascript"
+		case ".mp4":
+			contentType = "video/mp4"
+		case ".mp3":
+			contentType = "audio/mpeg"
+		case ".zip":
+			contentType = "application/zip"
+		default:
+			contentType = "application/octet-stream"
+		}
+	}
+
+	return contentType
 }
 
 // CreateS3Client creates an S3 client with flexible configuration
@@ -161,6 +209,9 @@ func UploadLargeFileToS3(opts S3ClientConfig, bucketName, objectKey, filePath st
 		Debug:    debug,
 	}
 
+	// Determine content type from file extension
+	contentType := getContentType(filePath)
+
 	// Create an uploader with the progress reader
 	uploader := manager.NewUploader(s3Client, func(u *manager.Uploader) {
 		u.PartSize = partMiBs * 1024 * 1024
@@ -170,10 +221,11 @@ func UploadLargeFileToS3(opts S3ClientConfig, bucketName, objectKey, filePath st
 
 	// Upload the file to S3
 	_, err = uploader.Upload(context.TODO(), &s3.PutObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(objectKey),
-		Body:   reader,
-		ACL:    types.ObjectCannedACLPublicRead,
+		Bucket:      aws.String(bucketName),
+		Key:         aws.String(objectKey),
+		Body:        reader,
+		ACL:         types.ObjectCannedACLPublicRead,
+		ContentType: aws.String(contentType),
 	})
 
 	if err != nil {
@@ -193,7 +245,7 @@ func UploadLargeFileToS3(opts S3ClientConfig, bucketName, objectKey, filePath st
 	}
 
 	if debug {
-		log.Printf("\nSuccessfully uploaded %s to %s/%s\n", filePath, bucketName, objectKey)
+		log.Printf("\nSuccessfully uploaded %s to %s/%s with content type %s\n", filePath, bucketName, objectKey, contentType)
 	}
 
 	return nil
@@ -227,13 +279,17 @@ func UploadFile(objectKey, fileName string, envPrefix ...string) error {
 	}
 	defer file.Close()
 
+	// Determine content type from file extension
+	contentType := getContentType(fileName)
+
 	// Upload to default bucket
 	bucketName := c.DefaultConfig().AwsBucketName
 	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(objectKey),
-		Body:   file,
-		ACL:    "public-read",
+		Bucket:      aws.String(bucketName),
+		Key:         aws.String(objectKey),
+		Body:        file,
+		ACL:         "public-read",
+		ContentType: aws.String(contentType),
 	})
 	if err != nil {
 		log.Printf("Couldn't upload file %v to %v:%v. Here's why: %v\n", fileName, bucketName, objectKey, err)
@@ -270,13 +326,17 @@ func UploadRawFile(objectKey string, file multipart.File, envPrefix ...string) (
 		return nil, err
 	}
 
+	// Determine content type from object key extension
+	contentType := getContentType(objectKey)
+
 	// Upload to default bucket
 	bucketName := c.DefaultConfig().AwsBucketName
 	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    aws.String(objectKey),
-		Body:   file,
-		ACL:    "public-read",
+		Bucket:      aws.String(bucketName),
+		Key:         aws.String(objectKey),
+		Body:        file,
+		ACL:         "public-read",
+		ContentType: aws.String(contentType),
 	})
 	if err != nil {
 		log.Printf("Couldn't upload file %v to %v:%v. Here's why: %v\n", "0", bucketName, objectKey, err)
