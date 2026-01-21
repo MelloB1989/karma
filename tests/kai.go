@@ -24,9 +24,9 @@ func TestKai() {
 	// fmt.Println(ai.Llama3_8B.IsBedrockModel())
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
-	// testChatCompletion()
+	testChatCompletion()
 	// testGenerateFromSinglePrompt()
-	testGoFunctionTools()
+	// testGoFunctionTools()
 	// TestGeminiImageGen()
 	// testChatCompletionStream()
 	// testWithMcpServer()
@@ -211,31 +211,31 @@ func testCliChatImplentation() {
 }
 
 func testChatCompletion() {
-	kai := ai.NewKarmaAI(ai.Grok4Fast, ai.XAI,
+	kai := ai.NewKarmaAI(ai.Gemini25Flash, ai.Google,
 		ai.WithSystemMessage("You are a smart AI assistant"),
 		ai.WithTemperature(1),
-		ai.WithMaxTokens(600),
+		ai.WithMaxTokens(1000),
 		ai.WithTopP(0.9))
-	kai.Features.EnableGrokLiveSearch(struct {
-		ReturnCitations  bool             `json:"return_citations"`
-		MaxSearchResults int              `json:"max_search_results"`
-		Sources          []map[string]any `json:"sources"`
-	}{
-		ReturnCitations:  true,
-		MaxSearchResults: 10,
-		// Sources: []map[string]any{
-		// 	{"type": "web", "country": "IN"},
-		// 	{"type": "x", "included_x_handles": []string{"lyzn_ai", "mellob1989"}},
-		// },
-	})
+	// kai.Features.EnableGrokLiveSearch(struct {
+	// 	ReturnCitations  bool             `json:"return_citations"`
+	// 	MaxSearchResults int              `json:"max_search_results"`
+	// 	Sources          []map[string]any `json:"sources"`
+	// }{
+	// 	ReturnCitations:  true,
+	// 	MaxSearchResults: 10,
+	// 	// Sources: []map[string]any{
+	// 	// 	{"type": "web", "country": "IN"},
+	// 	// 	{"type": "x", "included_x_handles": []string{"lyzn_ai", "mellob1989"}},
+	// 	// },
+	// })
 	response, err := kai.ChatCompletion(models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
-				Message: "Trending news on X in India.",
+				Message: "What do you see in this image?",
 				Role:    models.User,
-				// Images: []string{
-				// 	"https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Googleplex_HQ_%28cropped%29.jpg/960px-Googleplex_HQ_%28cropped%29.jpg",
-				// },
+				Images: []string{
+					"https://coffeecodes-cdn-public.s3.ap-south-1.amazonaws.com/lyzn/user_files/user_31N8BjgX6DAQ0plvm0dFS4YrNk1/-p0jpqk6esapaqc1m8bovaqx8_screenshot_1768938473882.png",
+				},
 			},
 		},
 	})

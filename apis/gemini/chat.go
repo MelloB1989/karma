@@ -3,8 +3,12 @@ package gemini
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -402,23 +406,9 @@ func (g *Gemini) formatMessages(messages models.AIChatHistory) []*genai.Content 
 
 			// Add images if present
 			for _, image := range msg.Images {
-				// Check if it's a base64 data URL
-				if len(image) > 100 && image[:5] == "data:" {
-					// Parse data URL: data:image/jpeg;base64,/9j/4AAQ...
-					parts = append(parts, &genai.Part{
-						InlineData: &genai.Blob{
-							MIMEType: "image/jpeg",
-							Data:     []byte(image),
-						},
-					})
-				} else {
-					// Assume it's a URI
-					parts = append(parts, &genai.Part{
-						FileData: &genai.FileData{
-							FileURI:  image,
-							MIMEType: "image/jpeg",
-						},
-					})
+				imagePart := parseImageToPart(image)
+				if imagePart != nil {
+					parts = append(parts, imagePart)
 				}
 			}
 
@@ -683,7 +673,156 @@ func convertPropertyToSchema(propMap map[string]any) *genai.Schema {
 	return schema
 }
 
-// shouldExecuteTools determines if tools should be executed
+// parseImageToPart parses an image URL or data URL and returns a genai.Part for Gemini
+// Handles:
+// - data: URLs (base64 encoded images)
+// - gs:// URLs (Google Cloud Storage - used directly)
+// - http:// and https:// URLs (fetched and converted to inline data)
+func parseImageToPart(image string) *genai.Part {
+	// Handle data URLs (base64 encoded)
+	if strings.HasPrefix(image, "data:") {
+		return parseDataURLToPart(image)
+	}
+
+	// Handle Google Cloud Storage URLs - use FileData directly
+	if strings.HasPrefix(image, "gs://") {
+		mimeType := getMIMETypeFromURL(image)
+		return &genai.Part{
+			FileData: &genai.FileData{
+				FileURI:  image,
+				MIMEType: mimeType,
+			},
+		}
+	}
+
+	// Handle HTTP/HTTPS URLs - fetch and convert to inline data
+	if strings.HasPrefix(image, "http://") || strings.HasPrefix(image, "https://") {
+		return fetchImageAsPart(image)
+	}
+
+	// Unknown format - try to use as inline data with default MIME type
+	return &genai.Part{
+		InlineData: &genai.Blob{
+			MIMEType: "image/jpeg",
+			Data:     []byte(image),
+		},
+	}
+}
+
+// parseDataURLToPart parses a data URL and extracts the MIME type and decoded bytes
+// Format: data:image/jpeg;base64,/9j/4AAQ...
+func parseDataURLToPart(dataURL string) *genai.Part {
+	// Find the comma that separates metadata from data
+	commaIdx := strings.Index(dataURL, ",")
+	if commaIdx == -1 {
+		return nil
+	}
+
+	// Parse metadata (e.g., "data:image/jpeg;base64")
+	metadata := dataURL[:commaIdx]
+	base64Data := dataURL[commaIdx+1:]
+
+	// Extract MIME type from metadata
+	mimeType := "image/jpeg" // default
+	if strings.HasPrefix(metadata, "data:") {
+		metadata = metadata[5:] // remove "data:"
+		if semicolonIdx := strings.Index(metadata, ";"); semicolonIdx != -1 {
+			mimeType = metadata[:semicolonIdx]
+		} else {
+			mimeType = metadata
+		}
+	}
+
+	// Decode base64 data
+	decoded, err := base64.StdEncoding.DecodeString(base64Data)
+	if err != nil {
+		// Try URL-safe base64
+		decoded, err = base64.URLEncoding.DecodeString(base64Data)
+		if err != nil {
+			// Try raw base64 (no padding)
+			decoded, err = base64.RawStdEncoding.DecodeString(base64Data)
+			if err != nil {
+				return nil
+			}
+		}
+	}
+
+	return &genai.Part{
+		InlineData: &genai.Blob{
+			MIMEType: mimeType,
+			Data:     decoded,
+		},
+	}
+}
+
+// fetchImageAsPart fetches an image from an HTTP/HTTPS URL and returns it as inline data
+func fetchImageAsPart(imageURL string) *genai.Part {
+	resp, err := http.Get(imageURL)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+
+	// Read the image data
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil
+	}
+
+	// Determine MIME type from Content-Type header or URL
+	mimeType := resp.Header.Get("Content-Type")
+	if mimeType == "" || mimeType == "application/octet-stream" {
+		mimeType = getMIMETypeFromURL(imageURL)
+	}
+	// Clean up MIME type (remove charset and other params)
+	if semicolonIdx := strings.Index(mimeType, ";"); semicolonIdx != -1 {
+		mimeType = strings.TrimSpace(mimeType[:semicolonIdx])
+	}
+
+	return &genai.Part{
+		InlineData: &genai.Blob{
+			MIMEType: mimeType,
+			Data:     data,
+		},
+	}
+}
+
+// getMIMETypeFromURL attempts to determine the MIME type from a URL's extension
+func getMIMETypeFromURL(url string) string {
+	lowerURL := strings.ToLower(url)
+
+	// Check for common image extensions
+	switch {
+	case strings.HasSuffix(lowerURL, ".jpg") || strings.HasSuffix(lowerURL, ".jpeg"):
+		return "image/jpeg"
+	case strings.HasSuffix(lowerURL, ".png"):
+		return "image/png"
+	case strings.HasSuffix(lowerURL, ".gif"):
+		return "image/gif"
+	case strings.HasSuffix(lowerURL, ".webp"):
+		return "image/webp"
+	case strings.HasSuffix(lowerURL, ".bmp"):
+		return "image/bmp"
+	case strings.HasSuffix(lowerURL, ".svg"):
+		return "image/svg+xml"
+	case strings.HasSuffix(lowerURL, ".ico"):
+		return "image/x-icon"
+	case strings.HasSuffix(lowerURL, ".tiff") || strings.HasSuffix(lowerURL, ".tif"):
+		return "image/tiff"
+	case strings.HasSuffix(lowerURL, ".heic"):
+		return "image/heic"
+	case strings.HasSuffix(lowerURL, ".heif"):
+		return "image/heif"
+	case strings.HasSuffix(lowerURL, ".avif"):
+		return "image/avif"
+	default:
+		return "image/jpeg" // default assumption
+	}
+}
 func (g *Gemini) shouldExecuteTools(response *genai.GenerateContentResponse, enableTools bool, useMCPExecution bool) bool {
 	if !enableTools || !useMCPExecution || response == nil {
 		return false

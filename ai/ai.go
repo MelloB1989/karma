@@ -29,6 +29,10 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 		response, err = kai.handleOpenAICompatibleChatCompletion(m, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
 	case Sarvam:
 		response, err = kai.handleOpenAICompatibleChatCompletion(m, SARVAM_API, config.GetEnvRaw("SARVAM_API_KEY"))
+	case FireworksAI:
+		response, err = kai.handleOpenAICompatibleChatCompletion(m, FIREWORKS_API, config.GetEnvRaw("FIREWORKS_API_KEY"))
+	case OpenRouter:
+		response, err = kai.handleOpenAICompatibleChatCompletion(m, OPENROUTER_API, config.GetEnvRaw("OPENROUTER_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
@@ -76,6 +80,10 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 		response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
 	case Sarvam:
 		response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, SARVAM_API, config.GetEnvRaw("SARVAM_API_KEY"))
+	case FireworksAI:
+		response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, FIREWORKS_API, config.GetEnvRaw("FIREWORKS_API_KEY"))
+	case OpenRouter:
+		response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, OPENROUTER_API, config.GetEnvRaw("OPENROUTER_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
@@ -113,6 +121,10 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
 	case Sarvam:
 		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, SARVAM_API, config.GetEnvRaw("SARVAM_API_KEY"))
+	case FireworksAI:
+		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, FIREWORKS_API, config.GetEnvRaw("FIREWORKS_API_KEY"))
+	case OpenRouter:
+		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, OPENROUTER_API, config.GetEnvRaw("OPENROUTER_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
@@ -155,6 +167,10 @@ func (kai *KarmaAI) ChatCompletionManaged(history *models.AIChatHistory) (*model
 		response, err = kai.handleOpenAICompatibleChatCompletion(history, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
 	case Sarvam:
 		response, err = kai.handleOpenAICompatibleChatCompletion(history, SARVAM_API, config.GetEnvRaw("SARVAM_API_KEY"))
+	case FireworksAI:
+		response, err = kai.handleOpenAICompatibleChatCompletion(history, FIREWORKS_API, config.GetEnvRaw("FIREWORKS_API_KEY"))
+	case OpenRouter:
+		response, err = kai.handleOpenAICompatibleChatCompletion(history, OPENROUTER_API, config.GetEnvRaw("OPENROUTER_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
@@ -197,6 +213,10 @@ func (kai *KarmaAI) ChatCompletionStreamManaged(history *models.AIChatHistory, c
 		response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, GROQ_API, config.GetEnvRaw("GROQ_API_KEY"))
 	case Sarvam:
 		response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, SARVAM_API, config.GetEnvRaw("SARVAM_API_KEY"))
+	case FireworksAI:
+		response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, FIREWORKS_API, config.GetEnvRaw("FIREWORKS_API_KEY"))
+	case OpenRouter:
+		response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, OPENROUTER_API, config.GetEnvRaw("OPENROUTER_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}

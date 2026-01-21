@@ -21,19 +21,27 @@ type Provider string
 // Base Models - Core models without provider prefixes
 const (
 	// OpenAI Models
-	GPT4        BaseModel = "gpt-4"
-	GPT4o       BaseModel = "gpt-4o"
-	GPT4oMini   BaseModel = "gpt-4o-mini"
-	GPT4Turbo   BaseModel = "gpt-4-turbo"
-	GPT35Turbo  BaseModel = "gpt-3.5-turbo"
-	GPT5        BaseModel = "gpt-5"
-	GPT5Nano    BaseModel = "gpt-5-nano"
-	GPT5Mini    BaseModel = "gpt-5-mini"
-	O1          BaseModel = "o1"
-	O1Mini      BaseModel = "o1-mini"
-	O1Preview   BaseModel = "o1-preview"
-	GPTOSS_20B  BaseModel = "gpt-oss-20b"
-	GPTOSS_120B BaseModel = "gpt-oss-120b"
+	GPT4       BaseModel = "gpt-4"
+	GPT4o      BaseModel = "gpt-4o"
+	GPT4oMini  BaseModel = "gpt-4o-mini"
+	GPT4Turbo  BaseModel = "gpt-4-turbo"
+	GPT35Turbo BaseModel = "gpt-3.5-turbo"
+	GPT5       BaseModel = "gpt-5"
+	GPT5Nano   BaseModel = "gpt-5-nano"
+	GPT5Mini   BaseModel = "gpt-5-mini"
+	GPT5_1     BaseModel = "gpt-5.1"
+	GPT5_2     BaseModel = "gpt-5.2"
+	GPT5_2_Pro BaseModel = "gpt-5.2-pro"
+
+	GPT5_1Codex    BaseModel = "gpt-5.1-codex"
+	GPT5_1CodexMax BaseModel = "gpt-5.1-codex-max"
+	GPT5_2Codex    BaseModel = "gpt-5.2-codex"
+	GPT5_2CodexMax BaseModel = "gpt-5.2-codex-max"
+	O1             BaseModel = "o1"
+	O1Mini         BaseModel = "o1-mini"
+	O1Preview      BaseModel = "o1-preview"
+	GPTOSS_20B     BaseModel = "gpt-oss-20b"
+	GPTOSS_120B    BaseModel = "gpt-oss-120b"
 
 	// Text Embedding Models
 	TextEmbeddingAda002 BaseModel = "text-embedding-ada-002"
@@ -41,16 +49,18 @@ const (
 	TextEmbedding3Small BaseModel = "text-embedding-3-small"
 
 	// Claude Models
-	Claude35Sonnet BaseModel = "claude-3.5-sonnet"
-	Claude35Haiku  BaseModel = "claude-3.5-haiku"
-	Claude3Sonnet  BaseModel = "claude-3-sonnet"
-	Claude3Haiku   BaseModel = "claude-3-haiku"
-	Claude3Opus    BaseModel = "claude-3-opus"
-	Claude37Sonnet BaseModel = "claude-3.7-sonnet"
-	Claude4Sonnet  BaseModel = "claude-4-sonnet"
-	Claude4Opus    BaseModel = "claude-4-opus"
-	ClaudeInstant  BaseModel = "claude-instant"
-	ClaudeV2       BaseModel = "claude-v2"
+	Claude35Sonnet  BaseModel = "claude-3.5-sonnet"
+	Claude35Haiku   BaseModel = "claude-3.5-haiku"
+	Claude3Sonnet   BaseModel = "claude-3-sonnet"
+	Claude3Haiku    BaseModel = "claude-3-haiku"
+	Claude3Opus     BaseModel = "claude-3-opus"
+	Claude37Sonnet  BaseModel = "claude-3.7-sonnet"
+	Claude4Sonnet   BaseModel = "claude-4-sonnet"
+	Claude4_5Sonnet BaseModel = "claude-4.5-sonnet"
+	Claude4Opus     BaseModel = "claude-4-opus"
+	Claude4_5Opus   BaseModel = "claude-4.5-opus"
+	ClaudeInstant   BaseModel = "claude-instant"
+	ClaudeV2        BaseModel = "claude-v2"
 
 	// Llama Models
 	Llama3_8B        BaseModel = "llama-3-8b"
@@ -73,12 +83,24 @@ const (
 	MistralSmall BaseModel = "mistral-small"
 
 	// Quew Models
-	Quew3_32B BaseModel = "quew3-32b"
+	Quew3_32B                 BaseModel = "quew3-32b"
+	Quew3_235B_VL_Thinking    BaseModel = "quew3-235b-vl"
+	Quew3_235B_VL_Instruct    BaseModel = "quew3-235b-vl-instruct"
+	Quew3_235B_Thinking       BaseModel = "quew3-235b-thinking"
+	Quew3_235B_Instruct       BaseModel = "quew3-235b-instruct"
+	Qwen3_Coder_480B_Instruct BaseModel = "qwen3-coder-480b-instruct"
 
 	// Moonshot Models
 	KimiK2Thinking BaseModel = "kimi-k2-thinking"
 
-	MiniMaxM2 BaseModel = "minimax-m2"
+	MiniMaxM2   BaseModel = "minimax-m2"
+	MiniMaxM2P1 BaseModel = "minimax-m2p1"
+
+	GLM4_7 BaseModel = "glm4-7"
+	GLM4_6 BaseModel = "glm4-6"
+
+	// Deepseek
+	DeepSeekV3P2 BaseModel = "deepseek-v3p2"
 
 	// Amazon Titan Models
 	TitanTextG1Large BaseModel = "titan-text-g1-large"
@@ -122,20 +144,24 @@ const (
 
 // Providers
 const (
-	OpenAI    Provider = "openai"
-	Anthropic Provider = "anthropic"
-	Bedrock   Provider = "bedrock"
-	Google    Provider = "google"
-	XAI       Provider = "xai"
-	Groq      Provider = "groq"
-	Sarvam    Provider = "sarvam"
+	OpenAI      Provider = "openai"
+	Anthropic   Provider = "anthropic"
+	Bedrock     Provider = "bedrock"
+	Google      Provider = "google"
+	XAI         Provider = "xai"
+	Groq        Provider = "groq"
+	FireworksAI Provider = "fireworksai"
+	OpenRouter  Provider = "openrouter"
+	Sarvam      Provider = "sarvam"
 )
 
 // API URLs for different providers
 const (
-	XAI_API    = "https://api.x.ai/v1"
-	GROQ_API   = "https://api.groq.com/openai/v1"
-	SARVAM_API = "https://api.sarvam.ai/v1"
+	XAI_API        = "https://api.x.ai/v1"
+	GROQ_API       = "https://api.groq.com/openai/v1"
+	SARVAM_API     = "https://api.sarvam.ai/v1"
+	FIREWORKS_API  = "https://api.fireworks.ai/inference/v1"
+	OPENROUTER_API = "https://openrouter.ai/api/v1"
 )
 
 // ModelConfig represents a model with its provider configuration
@@ -263,6 +289,53 @@ var (
 		},
 		Sarvam: {
 			SarvamM: "sarvam-m",
+		},
+		// Fireworks AI Serverless models
+		FireworksAI: {
+			MiniMaxM2P1:               "accounts/fireworks/models/minimax-m2p1",
+			MiniMaxM2:                 "accounts/fireworks/models/minimax-m2",
+			GLM4_7:                    "accounts/fireworks/models/glm-4p7",
+			DeepSeekV3P2:              "accounts/fireworks/models/deepseek-v3p2",
+			KimiK2Thinking:            "accounts/fireworks/models/kimi-k2-thinking",
+			GLM4_6:                    "accounts/fireworks/models/glm-4p6",
+			Quew3_235B_VL_Thinking:    "accounts/fireworks/models/qwen3-vl-235b-a22b-thinking",
+			Quew3_235B_VL_Instruct:    "accounts/fireworks/models/qwen3-vl-235b-a22b-instruct",
+			Qwen3_Coder_480B_Instruct: "accounts/fireworks/models/qwen3-coder-480b-a35b-instruct",
+			Quew3_235B_Thinking:       "accounts/fireworks/models/qwen3-235b-a22b-thinking-2507",
+			Quew3_235B_Instruct:       "accounts/fireworks/models/qwen3-coder-480b-a35b-instruct",
+			GPTOSS_120B:               "accounts/fireworks/models/gpt-oss-120b",
+			GPTOSS_20B:                "accounts/fireworks/models/gpt-oss-20b",
+			Llama33_70B:               "accounts/fireworks/models/llama-v3p3-70b-instruct",
+		},
+		// Common model mappings for OpenRouter
+		OpenRouter: {
+			GPTOSS_120B:               "openai/gpt-oss-120b",
+			GPTOSS_20B:                "openai/gpt-oss-20b",
+			GPT5Mini:                  "openai/gpt-5-mini",
+			GPT5Nano:                  "openai/gpt-5-nano",
+			GPT5_1:                    "openai/gpt-5.1",
+			GPT5_2:                    "openai/gpt-5.2",
+			GPT5_2_Pro:                "openai/gpt-5.2-pro",
+			GPT5_1Codex:               "openai/gpt-5.1-codex",
+			GPT5_1CodexMax:            "openai/gpt-5.1-codex-max",
+			GPT5_2Codex:               "openai/gpt-5.2-codex",
+			GPT5_2CodexMax:            "openai/gpt-5.2-codex-max",
+			Claude4_5Opus:             "anthropic/claude-sonnet-4.5",
+			Claude4_5Sonnet:           "anthropic/claude-sonnet-4.5",
+			MiniMaxM2P1:               "minimax/minimax-m2.1",
+			MiniMaxM2:                 "minimax/minimax-m2",
+			Gemini3FlashPreview:       "google/gemini-3-flash-preview",
+			Gemini3ProPreview:         "google/gemini-3-pro-preview",
+			Gemini25Pro:               "google/gemini-2.5-pro",
+			Gemini25Flash:             "google/gemini-2.5-flash",
+			Gemini20FlashLite:         "google/gemini-2.5-flash-lite",
+			KimiK2Thinking:            "moonshotai/kimi-k2-thinking",
+			Llama33_70B:               "meta-llama/llama-3.3-70b-instruct",
+			Llama4_Scout_17B:          "meta-llama/llama-4-scout",
+			Qwen3_Coder_480B_Instruct: "qwen/qwen3-coder",
+			Quew3_235B_Instruct:       "qwen/qwen3-235b-a22b-2507",
+			Quew3_235B_VL_Instruct:    "qwen/qwen3-vl-235b-a22b-instruct",
+			Quew3_235B_Thinking:       "qwen/qwen3-vl-235b-a22b-thinking",
 		},
 	}
 )
