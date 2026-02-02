@@ -212,12 +212,9 @@ func GetEnv(key string) (string, error) {
 	err := godotenv.Load()
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
-	sugar := logger.Sugar()
 	if err != nil {
-		sugar.Error("unable to load a ENV variable")
-		return "", err
+		logger.Error("unable to load .env")
 	}
-	// sugar.Info("loaded .env file")
 	return os.Getenv(key), nil
 }
 
