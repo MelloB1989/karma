@@ -26,7 +26,6 @@ func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 	// Choose URL based on environment
 	var dbURL string
 	prefix := ""
-
 	if len(options) > 0 && options[0].DatabaseUrlPrefix != "" {
 		prefix = "_" + options[0].DatabaseUrlPrefix
 	}
@@ -42,14 +41,13 @@ func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 
 	parsedURL, err := url.Parse(dbURL)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to parse database URL: %w", err)
 	}
 
 	// Extract credentials and connection components
 	userInfo := parsedURL.User
 	username := userInfo.Username()
 	password, _ := userInfo.Password()
-
 	host := parsedURL.Hostname()
 	port := parsedURL.Port()
 	if port == "" {
@@ -59,17 +57,21 @@ func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 	// The database name is the last segment in the path
 	pathSegments := strings.Split(parsedURL.Path, "/")
 	databaseName := pathSegments[len(pathSegments)-1]
+
 	sslMode := parsedURL.Query().Get("sslmode")
+	if sslMode == "" {
+		sslMode = "disable"
+	}
 
 	connStr := fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%s sslmode=%s",
 		username, databaseName, password, host, port, sslMode)
 
 	db, err := sqlx.Connect("postgres", connStr)
 	if err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	// Set connection pool settings
+	// Set connection pool settings with defaults
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(0) // No limit on connection lifetime
@@ -83,15 +85,15 @@ func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 			db.SetMaxIdleConns(*opt.MaxIdleConns)
 		}
 		if opt.ConnMaxLifetime != nil {
-			db.SetConnMaxLifetime(time.Duration(*opt.ConnMaxLifetime) * time.Second)
+			db.SetConnMaxLifetime(*opt.ConnMaxLifetime)
 		}
 		if opt.ConnMaxIdleTime != nil {
-			db.SetConnMaxIdleTime(time.Duration(*opt.ConnMaxIdleTime) * time.Second)
+			db.SetConnMaxIdleTime(*opt.ConnMaxIdleTime)
 		}
 	}
 
 	if err = db.Ping(); err != nil {
-		log.Fatal(err)
+		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	log.Println("Successfully Connected")
