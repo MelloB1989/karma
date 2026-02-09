@@ -1,15 +1,32 @@
 package files
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/MelloB1989/karma/apis/aws/s3"
+	c "github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/utils"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awss3 "github.com/aws/aws-sdk-go-v2/service/s3"
 )
+
+// getACLFromOptions extracts the ACL setting from options map
+// Returns ACLPublicRead by default, ACLPrivate if isPublic is explicitly set to false
+func getACLFromOptions(opts map[string]any) s3.FileACL {
+	if isPublic, ok := opts["isPublic"]; ok {
+		if public, isBool := isPublic.(bool); isBool && !public {
+			return s3.ACLPrivate
+		}
+	}
+	return s3.ACLPublicRead
+}
 
 func HandleSingleFileUploadToS3(file *multipart.FileHeader, prefix string, options ...map[string]any) (string, error) {
 	opts := map[string]any{}
@@ -26,14 +43,26 @@ func HandleSingleFileUploadToS3(file *multipart.FileHeader, prefix string, optio
 		return "", err
 	}
 	defer f.Close()
-	u, err := s3.UploadRawFile(file.Filename, f)
+
+	// Determine ACL from options
+	acl := getACLFromOptions(opts)
+
+	u, err := s3.UploadRawFileWithACL(file.Filename, f, acl)
 	if err != nil {
 		return "", err
 	}
 	return *u, nil
 }
 
-func HandleMultipleFileUploadToS3(files []*multipart.FileHeader, prefix string) ([]string, error) {
+func HandleMultipleFileUploadToS3(files []*multipart.FileHeader, prefix string, options ...map[string]any) ([]string, error) {
+	opts := map[string]any{}
+	if len(options) > 0 {
+		opts = options[0]
+	}
+
+	// Determine ACL from options
+	acl := getACLFromOptions(opts)
+
 	urls := []string{}
 	for _, file := range files {
 		f, err := file.Open()
@@ -42,7 +71,7 @@ func HandleMultipleFileUploadToS3(files []*multipart.FileHeader, prefix string) 
 		}
 		defer f.Close()
 		file.Filename = prefix + "/" + utils.GenerateID(25) + "_" + file.Filename
-		u, err := s3.UploadRawFile(file.Filename, f)
+		u, err := s3.UploadRawFileWithACL(file.Filename, f, acl)
 		if err != nil {
 			return urls, err
 		}
@@ -90,4 +119,71 @@ func HandleMultipleFileUploadToLocal(fileHeaders []*multipart.FileHeader, upload
 		s = append(s, p)
 	}
 	return s, nil
+}
+
+// GetSignedURLFromS3 generates a presigned URL for accessing an S3 object
+// objectKey is the key/path of the object in S3
+// expiration is the duration for which the URL will be valid
+func GetSignedURLFromS3(objectKey string, expiration time.Duration, envPrefix ...string) (string, error) {
+	prefix := ""
+	if len(envPrefix) > 0 {
+		prefix = envPrefix[0]
+	}
+
+	// Get bucket name and region from default config
+	bucketName := c.DefaultConfig().AwsBucketName
+	bucketRegion := c.DefaultConfig().S3BucketRegion
+
+	// Prepare S3 client config
+	clientConfig := s3.S3ClientConfig{
+		Region:    bucketRegion,
+		EnvPrefix: prefix,
+	}
+
+	// Create S3 client
+	s3Client, err := s3.CreateS3Client(clientConfig)
+	if err != nil {
+		return "", fmt.Errorf("couldn't create S3 client: %w", err)
+	}
+
+	// Create presign client
+	presignClient := awss3.NewPresignClient(s3Client)
+
+	// Generate presigned URL
+	presignedReq, err := presignClient.PresignGetObject(context.TODO(), &awss3.GetObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    aws.String(objectKey),
+	}, awss3.WithPresignExpires(expiration))
+	if err != nil {
+		return "", fmt.Errorf("couldn't generate presigned URL: %w", err)
+	}
+
+	return presignedReq.URL, nil
+}
+
+// GetSignedURLFromLocal returns the local file path or a URL for accessing local files
+// For local files, this returns the file path that can be served by a local file server
+// basePath is the base URL path where files are served (e.g., "/files" or "http://localhost:8080/files")
+// filePath is the path to the file in the local upload directory
+func GetSignedURLFromLocal(filePath string, basePath string) (string, error) {
+	// Check if file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return "", fmt.Errorf("file does not exist: %s", filePath)
+	}
+
+	// Get the filename from the path
+	filename := filepath.Base(filePath)
+
+	// Construct the URL
+	if basePath == "" {
+		// Return the absolute file path if no base path is provided
+		return filePath, nil
+	}
+
+	// Ensure basePath doesn't end with a slash
+	if basePath[len(basePath)-1] == '/' {
+		basePath = basePath[:len(basePath)-1]
+	}
+
+	return fmt.Sprintf("%s/%s", basePath, filename), nil
 }

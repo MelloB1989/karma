@@ -119,6 +119,7 @@ type ORM struct {
 	RedisClient    *redis.Client
 	serializeMux   sync.Mutex
 	databasePrefix string
+	dbOptions      database.PostgresConnOptions
 }
 
 type QueryResult struct {
@@ -220,6 +221,12 @@ func Load(entity any, opts ...Options) *ORM {
 		opt(orm)
 	}
 	return orm
+}
+
+func WithDatabaseOptions(options database.PostgresConnOptions) Options {
+	return func(o *ORM) {
+		o.dbOptions = options
+	}
 }
 
 func WithDatabasePrefix(prefix string) Options {
@@ -466,11 +473,10 @@ func (o *ORM) executeQuery(query string, args ...any) *QueryResult {
 			var db *sqlx.DB
 			var err error
 			if o.databasePrefix != "" {
-				db, err = database.PostgresConn(database.PostgresConnOptions{
-					DatabaseUrlPrefix: o.databasePrefix,
-				})
+				o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
+				db, err = database.PostgresConn(o.dbOptions)
 			} else {
-				db, err = database.PostgresConn()
+				db, err = database.PostgresConn(o.dbOptions)
 			}
 			if err != nil {
 				log.Printf("Database connection error: %v", err)

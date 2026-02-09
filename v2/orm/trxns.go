@@ -102,7 +102,7 @@ func (o *ORM) ExecuteRaw(query string, args ...any) (sql.Result, error) {
 		return o.tx.Exec(query, args...)
 	}
 	if o.db == nil {
-		db, err := database.PostgresConn()
+		db, err := database.PostgresConn(o.dbOptions)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get database connection: %w", err)
 		}

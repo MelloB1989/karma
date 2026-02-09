@@ -306,8 +306,23 @@ func UploadFile(objectKey, fileName string, envPrefix ...string) error {
 	return nil
 }
 
-// UploadRawFile uploads a multipart file to S3
+// FileACL represents the access control level for uploaded files
+type FileACL string
+
+const (
+	// ACLPublicRead makes the file publicly readable
+	ACLPublicRead FileACL = "public-read"
+	// ACLPrivate makes the file private (only accessible via signed URLs or with credentials)
+	ACLPrivate FileACL = "private"
+)
+
+// UploadRawFile uploads a multipart file to S3 with public-read ACL (default behavior)
 func UploadRawFile(objectKey string, file multipart.File, envPrefix ...string) (*string, error) {
+	return UploadRawFileWithACL(objectKey, file, ACLPublicRead, envPrefix...)
+}
+
+// UploadRawFileWithACL uploads a multipart file to S3 with specified ACL
+func UploadRawFileWithACL(objectKey string, file multipart.File, acl FileACL, envPrefix ...string) (*string, error) {
 	prefix := ""
 	if len(envPrefix) > 0 {
 		prefix = envPrefix[0]
@@ -335,7 +350,7 @@ func UploadRawFile(objectKey string, file multipart.File, envPrefix ...string) (
 		Bucket:      aws.String(bucketName),
 		Key:         aws.String(objectKey),
 		Body:        file,
-		ACL:         "public-read",
+		ACL:         types.ObjectCannedACL(acl),
 		ContentType: aws.String(contentType),
 	})
 	if err != nil {

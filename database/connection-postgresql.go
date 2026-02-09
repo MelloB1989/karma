@@ -16,6 +16,7 @@ type PostgresConnOptions struct {
 	MaxOpenConns      *int
 	MaxIdleConns      *int
 	ConnMaxLifetime   *time.Duration
+	ConnMaxIdleTime   *time.Duration
 	DatabaseUrlPrefix string
 }
 
@@ -83,6 +84,9 @@ func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 		}
 		if opt.ConnMaxLifetime != nil {
 			db.SetConnMaxLifetime(time.Duration(*opt.ConnMaxLifetime) * time.Second)
+		}
+		if opt.ConnMaxIdleTime != nil {
+			db.SetConnMaxIdleTime(time.Duration(*opt.ConnMaxIdleTime) * time.Second)
 		}
 	}
 

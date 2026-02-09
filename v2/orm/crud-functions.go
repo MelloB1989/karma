@@ -184,11 +184,10 @@ func (o *ORM) GetCount(filters map[string]any) (int, error) {
 	var db *sqlx.DB
 	var err error
 	if o.databasePrefix != "" {
-		db, err = database.PostgresConn(database.PostgresConnOptions{
-			DatabaseUrlPrefix: o.databasePrefix,
-		})
+		o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
+		db, err = database.PostgresConn(o.dbOptions)
 	} else {
-		db, err = database.PostgresConn()
+		db, err = database.PostgresConn(o.dbOptions)
 	}
 	if err != nil {
 		log.Println("DB connection error:", err)
@@ -216,11 +215,10 @@ func (o *ORM) GetTotalRowCount() (int, error) {
 	var db *sqlx.DB
 	var err error
 	if o.databasePrefix != "" {
-		db, err = database.PostgresConn(database.PostgresConnOptions{
-			DatabaseUrlPrefix: o.databasePrefix,
-		})
+		o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
+		db, err = database.PostgresConn(o.dbOptions)
 	} else {
-		db, err = database.PostgresConn()
+		db, err = database.PostgresConn(o.dbOptions)
 	}
 	if err != nil {
 		log.Println("DB connection error:", err)
@@ -336,11 +334,10 @@ func (o *ORM) Insert(entity any) error {
 			var db *sqlx.DB
 			var err error
 			if o.databasePrefix != "" {
-				db, err = database.PostgresConn(database.PostgresConnOptions{
-					DatabaseUrlPrefix: o.databasePrefix,
-				})
+				o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
+				db, err = database.PostgresConn(o.dbOptions)
 			} else {
-				db, err = database.PostgresConn()
+				db, err = database.PostgresConn(o.dbOptions)
 			}
 			if err != nil {
 				log.Printf("Database connection error: %v", err)
@@ -367,11 +364,10 @@ func (o *ORM) Update(entity any, primaryKeyValue string) error {
 			var db *sqlx.DB
 			var err error
 			if o.databasePrefix != "" {
-				db, err = database.PostgresConn(database.PostgresConnOptions{
-					DatabaseUrlPrefix: o.databasePrefix,
-				})
+				o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
+				db, err = database.PostgresConn(o.dbOptions)
 			} else {
-				db, err = database.PostgresConn()
+				db, err = database.PostgresConn(o.dbOptions)
 			}
 			if err != nil {
 				log.Printf("Database connection error: %v", err)
@@ -394,11 +390,10 @@ func (o *ORM) DeleteByFieldEquals(fieldName string, value any) (int64, error) {
 	var db *sqlx.DB
 	var err error
 	if o.databasePrefix != "" {
-		db, err = database.PostgresConn(database.PostgresConnOptions{
-			DatabaseUrlPrefix: o.databasePrefix,
-		})
+		o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
+		db, err = database.PostgresConn(o.dbOptions)
 	} else {
-		db, err = database.PostgresConn()
+		db, err = database.PostgresConn(o.dbOptions)
 	}
 	if err != nil {
 		log.Println("DB connection error:", err)
@@ -458,11 +453,10 @@ func (o *ORM) DeleteByFieldCompare(fieldName string, value any, operator string)
 	var db *sqlx.DB
 	var err error
 	if o.databasePrefix != "" {
-		db, err = database.PostgresConn(database.PostgresConnOptions{
-			DatabaseUrlPrefix: o.databasePrefix,
-		})
+		o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
+		db, err = database.PostgresConn(o.dbOptions)
 	} else {
-		db, err = database.PostgresConn()
+		db, err = database.PostgresConn(o.dbOptions)
 	}
 	if err != nil {
 		log.Println("DB connection error:", err)
@@ -513,11 +507,10 @@ func (o *ORM) DeleteByFieldIn(fieldName string, values []any) (int64, error) {
 	var db *sqlx.DB
 	var err error
 	if o.databasePrefix != "" {
-		db, err = database.PostgresConn(database.PostgresConnOptions{
-			DatabaseUrlPrefix: o.databasePrefix,
-		})
+		o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
+		db, err = database.PostgresConn(o.dbOptions)
 	} else {
-		db, err = database.PostgresConn()
+		db, err = database.PostgresConn(o.dbOptions)
 	}
 	if err != nil {
 		log.Println("DB connection error:", err)
@@ -585,11 +578,10 @@ func (o *ORM) DeleteAll() (int64, error) {
 	var db *sqlx.DB
 	var err error
 	if o.databasePrefix != "" {
-		db, err = database.PostgresConn(database.PostgresConnOptions{
-			DatabaseUrlPrefix: o.databasePrefix,
-		})
+		o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
+		db, err = database.PostgresConn(o.dbOptions)
 	} else {
-		db, err = database.PostgresConn()
+		db, err = database.PostgresConn(o.dbOptions)
 	}
 	if err != nil {
 		log.Println("DB connection error:", err)
