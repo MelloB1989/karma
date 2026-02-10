@@ -39,9 +39,13 @@ func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 		dbURL = config.GetEnvRaw(env.Environment + prefix + "_DATABASE_URL")
 	}
 
+	if dbURL == "" {
+		log.Fatal("DATABASE_URL is empty or not set")
+	}
+
 	parsedURL, err := url.Parse(dbURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse database URL: %w", err)
+		log.Fatalf("Failed to parse database URL: %v", err)
 	}
 
 	// Extract credentials and connection components
@@ -55,8 +59,15 @@ func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 	}
 
 	// The database name is the last segment in the path
-	pathSegments := strings.Split(parsedURL.Path, "/")
-	databaseName := pathSegments[len(pathSegments)-1]
+	pathSegments := strings.Split(strings.TrimPrefix(parsedURL.Path, "/"), "/")
+	databaseName := ""
+	if len(pathSegments) > 0 && pathSegments[len(pathSegments)-1] != "" {
+		databaseName = pathSegments[len(pathSegments)-1]
+	}
+
+	if databaseName == "" {
+		log.Fatal("Database name is empty in the URL")
+	}
 
 	sslMode := parsedURL.Query().Get("sslmode")
 	if sslMode == "" {
@@ -66,9 +77,42 @@ func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 	connStr := fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%s sslmode=%s",
 		username, databaseName, password, host, port, sslMode)
 
-	db, err := sqlx.Connect("postgres", connStr)
+	// Log connection attempt (without password for security)
+	log.Printf("Attempting to connect to PostgreSQL: host=%s port=%s dbname=%s user=%s sslmode=%s",
+		host, port, databaseName, username, sslMode)
+
+	var db *sqlx.DB
+	maxRetries := 3
+	retryDelay := 2 * time.Second
+
+	// Retry logic
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		log.Printf("Connection attempt %d/%d...", attempt, maxRetries)
+
+		db, err = sqlx.Connect("postgres", connStr)
+		if err == nil {
+			// Connection successful, try to ping
+			if err = db.Ping(); err == nil {
+				log.Println("Successfully connected to PostgreSQL")
+				break
+			}
+			// Ping failed, close the connection and retry
+			db.Close()
+			log.Printf("Ping failed on attempt %d: %v", attempt, err)
+		} else {
+			log.Printf("Connection failed on attempt %d: %v", attempt, err)
+		}
+
+		if attempt < maxRetries {
+			log.Printf("Retrying in %v...", retryDelay)
+			time.Sleep(retryDelay)
+		}
+	}
+
+	// If all retries failed, panic
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+		log.Fatalf("FATAL: Failed to connect to PostgreSQL after %d attempts. Last error: %v\nConnection string (sanitized): user=%s dbname=%s host=%s port=%s sslmode=%s",
+			maxRetries, err, username, databaseName, host, port, sslMode)
 	}
 
 	// Set connection pool settings with defaults
@@ -92,10 +136,8 @@ func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 		}
 	}
 
-	if err = db.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
-	}
+	log.Printf("Connection pool configured: MaxOpenConns=%d, MaxIdleConns=%d",
+		db.Stats().MaxOpenConnections, *options[0].MaxIdleConns)
 
-	log.Println("Successfully Connected")
 	return db, nil
 }
