@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/MelloB1989/karma/database"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -97,19 +96,15 @@ func (t *Transaction) ORM() *ORM {
 
 // Add ExecuteRaw for non-query operations (INSERT, UPDATE, DELETE)
 func (o *ORM) ExecuteRaw(query string, args ...any) (sql.Result, error) {
-	// Use transaction if available, otherwise use the database connection
+	// Use transaction if available, otherwise use the shared database connection
 	if o.tx != nil {
 		return o.tx.Exec(query, args...)
 	}
-	if o.db == nil {
-		db, err := database.PostgresConn(o.dbOptions)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get database connection: %w", err)
-		}
-		return db.Exec(query, args...)
-	} else {
-		return o.db.Exec(query, args...)
+	db, err := o.getDB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database connection: %w", err)
 	}
+	return db.Exec(query, args...)
 }
 
 // Add a helper function for transaction execution with automatic rollback on error

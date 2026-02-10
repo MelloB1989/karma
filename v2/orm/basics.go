@@ -22,6 +22,13 @@ var (
 	ctx         = context.Background()
 	json        = jsoniter.ConfigFastest
 	memoryCache = newMemoryCache()
+
+	// Global connection pool registry — keyed by (prefix + options hash).
+	// Pools are created once and shared across all ORM instances that use
+	// the same database configuration, which is the standard behaviour for
+	// every production-grade ORM.
+	globalPoolsMu sync.Mutex
+	globalPools   = make(map[string]*sqlx.DB)
 )
 
 const (
@@ -112,6 +119,8 @@ type ORM struct {
 	fieldMap       map[string]string
 	tx             *sqlx.Tx
 	db             *sqlx.DB
+	dbMu           sync.Mutex
+	ownsDB         bool // true when the ORM created/owns the *sqlx.DB (i.e. it was NOT injected via WithDB)
 	CacheOn        *bool
 	CacheMethod    *string // "redis", "memory", or "both"
 	CacheKey       *string
@@ -120,6 +129,104 @@ type ORM struct {
 	serializeMux   sync.Mutex
 	databasePrefix string
 	dbOptions      database.PostgresConnOptions
+}
+
+// poolKey returns a deterministic cache key for the global pool registry
+// based on the database prefix and connection options.
+func (o *ORM) poolKey() string {
+	prefix := o.databasePrefix
+	// Include pointer values in the key so different pool configs get different pools
+	key := "prefix=" + prefix
+	if o.dbOptions.MaxOpenConns != nil {
+		key += fmt.Sprintf(",maxOpen=%d", *o.dbOptions.MaxOpenConns)
+	}
+	if o.dbOptions.MaxIdleConns != nil {
+		key += fmt.Sprintf(",maxIdle=%d", *o.dbOptions.MaxIdleConns)
+	}
+	if o.dbOptions.ConnMaxLifetime != nil {
+		key += fmt.Sprintf(",maxLife=%v", *o.dbOptions.ConnMaxLifetime)
+	}
+	if o.dbOptions.ConnMaxIdleTime != nil {
+		key += fmt.Sprintf(",maxIdleTime=%v", *o.dbOptions.ConnMaxIdleTime)
+	}
+	if o.dbOptions.DatabaseUrlPrefix != "" {
+		key += ",urlPrefix=" + o.dbOptions.DatabaseUrlPrefix
+	}
+	return key
+}
+
+// getDB returns a shared database connection pool, creating one if it doesn't
+// exist yet for this configuration.  The pool is stored in the global registry
+// so that every ORM instance (even across different requests) reuses the same
+// underlying connections — which is what makes your MaxOpenConns / MaxIdleConns /
+// ConnMaxLifetime / ConnMaxIdleTime settings actually effective.
+func (o *ORM) getDB() (*sqlx.DB, error) {
+	// Fast path: already resolved for this ORM instance.
+	o.dbMu.Lock()
+	if o.db != nil {
+		db := o.db
+		o.dbMu.Unlock()
+		return db, nil
+	}
+	o.dbMu.Unlock()
+
+	// Slow path: look up (or create) the pool in the global registry.
+	key := o.poolKey()
+
+	globalPoolsMu.Lock()
+	defer globalPoolsMu.Unlock()
+
+	if db, ok := globalPools[key]; ok {
+		// Verify the pool is still alive
+		if err := db.Ping(); err == nil {
+			o.dbMu.Lock()
+			o.db = db
+			o.ownsDB = false // shared pool — don't close on ORM.Close()
+			o.dbMu.Unlock()
+			return db, nil
+		}
+		// Pool is dead — remove it and fall through to create a new one
+		log.Printf("Shared pool for key %q failed ping, recreating...", key)
+		db.Close()
+		delete(globalPools, key)
+	}
+
+	// Create a brand-new pool.
+	var db *sqlx.DB
+	var err error
+	if o.databasePrefix != "" {
+		opts := o.dbOptions
+		opts.DatabaseUrlPrefix = o.databasePrefix
+		db, err = database.PostgresConn(opts)
+	} else {
+		db, err = database.PostgresConn(o.dbOptions)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database connection: %w", err)
+	}
+
+	globalPools[key] = db
+
+	o.dbMu.Lock()
+	o.db = db
+	o.ownsDB = false // managed by the global registry
+	o.dbMu.Unlock()
+
+	return db, nil
+}
+
+// CloseAllPools tears down every connection pool in the global registry.
+// Call this once during graceful application shutdown.
+func CloseAllPools() {
+	globalPoolsMu.Lock()
+	defer globalPoolsMu.Unlock()
+
+	for key, db := range globalPools {
+		if err := db.Close(); err != nil {
+			log.Printf("Failed to close pool %q: %v", key, err)
+		}
+		delete(globalPools, key)
+	}
 }
 
 type QueryResult struct {
@@ -214,6 +321,7 @@ func Load(entity any, opts ...Options) *ORM {
 		fieldMap:   fieldMap,
 		db:         nil,
 		tx:         nil,
+		ownsDB:     false,
 	}
 
 	// Apply options
@@ -226,6 +334,21 @@ func Load(entity any, opts ...Options) *ORM {
 func WithDatabaseOptions(options database.PostgresConnOptions) Options {
 	return func(o *ORM) {
 		o.dbOptions = options
+	}
+}
+
+// WithDB lets you inject a pre-existing *sqlx.DB connection pool.
+// The ORM will use this pool directly and will NOT close it when
+// ORM.Close() is called — you are responsible for its lifecycle.
+//
+// Example (create pool once at startup, share everywhere):
+//
+//	db, _ := database.PostgresConn(dbConfig)
+//	userORM := orm.Load(&models.Users{}, orm.WithDB(db))
+func WithDB(db *sqlx.DB) Options {
+	return func(o *ORM) {
+		o.db = db
+		o.ownsDB = false // caller owns it — don't close on ORM.Close()
 	}
 }
 
@@ -465,26 +588,16 @@ func (o *ORM) executeQuery(query string, args ...any) *QueryResult {
 	var rows *sql.Rows
 	var err error
 
-	// Use transaction if available, otherwise use the database connection
+	// Use transaction if available, otherwise use the shared database connection
 	if o.tx != nil {
 		rows, err = o.tx.Query(query, args...)
 	} else {
-		if o.db == nil {
-			var db *sqlx.DB
-			var err error
-			if o.databasePrefix != "" {
-				o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
-				db, err = database.PostgresConn(o.dbOptions)
-			} else {
-				db, err = database.PostgresConn(o.dbOptions)
-			}
-			if err != nil {
-				log.Printf("Database connection error: %v", err)
-				return &QueryResult{nil, err, query, args, nil, o}
-			}
-			o.db = db
+		db, dbErr := o.getDB()
+		if dbErr != nil {
+			log.Printf("Database connection error: %v", dbErr)
+			return &QueryResult{nil, dbErr, query, args, nil, o}
 		}
-		rows, err = o.db.Query(query, args...)
+		rows, err = db.Query(query, args...)
 	}
 
 	if err != nil {
@@ -507,16 +620,32 @@ func (o *ORM) Close() {
 		if err != nil {
 			log.Println("Failed to commit transaction:", err)
 		}
-	} else if o.db != nil {
-		err := o.db.Close()
-		if err != nil {
-			log.Println("Failed to close database connection:", err)
+		o.tx = nil
+	}
+
+	o.dbMu.Lock()
+	if o.db != nil {
+		if o.ownsDB {
+			// Only close the pool if this ORM instance created it outside the
+			// global registry (e.g. via a direct assignment, not through getDB
+			// or WithDB).
+			err := o.db.Close()
+			if err != nil {
+				log.Println("Failed to close database connection:", err)
+			}
 		}
-	} else if o.RedisClient != nil {
+		// Detach from the pool but leave it alive in the global registry
+		// so other ORM instances (and future requests) can keep using it.
+		o.db = nil
+	}
+	o.dbMu.Unlock()
+
+	if o.RedisClient != nil {
 		err := o.RedisClient.Close()
 		if err != nil {
 			log.Println("Failed to close Redis connection:", err)
 		}
+		o.RedisClient = nil
 	}
 }
 

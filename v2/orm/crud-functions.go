@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/MelloB1989/karma/database"
-	"github.com/jmoiron/sqlx"
 )
 
 // GetByFieldIn to return a QueryResult for chaining
@@ -180,20 +179,12 @@ func (o *ORM) GetCount(filters map[string]any) (int, error) {
 	// Join all conditions with AND
 	whereStatement := strings.Join(whereClauses, " AND ")
 
-	// Connect to the database
-	var db *sqlx.DB
-	var err error
-	if o.databasePrefix != "" {
-		o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
-		db, err = database.PostgresConn(o.dbOptions)
-	} else {
-		db, err = database.PostgresConn(o.dbOptions)
-	}
+	// Get the shared database connection
+	db, err := o.getDB()
 	if err != nil {
 		log.Println("DB connection error:", err)
 		return 0, err
 	}
-	defer db.Close()
 
 	// Construct query for count
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE %s", o.tableName, whereStatement)
@@ -211,20 +202,12 @@ func (o *ORM) GetCount(filters map[string]any) (int, error) {
 
 // GetTotalRowCount returns the total number of rows in the table
 func (o *ORM) GetTotalRowCount() (int, error) {
-	// Connect to the database
-	var db *sqlx.DB
-	var err error
-	if o.databasePrefix != "" {
-		o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
-		db, err = database.PostgresConn(o.dbOptions)
-	} else {
-		db, err = database.PostgresConn(o.dbOptions)
-	}
+	// Get the shared database connection
+	db, err := o.getDB()
 	if err != nil {
 		log.Println("DB connection error:", err)
 		return 0, err
 	}
-	defer db.Close()
 
 	// Construct simple count query
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", o.tableName)
@@ -329,23 +312,12 @@ func (o *ORM) Insert(entity any) error {
 	if o.tx != nil {
 		return database.InsertTrxStruct(o.tx, o.tableName, entity)
 	} else {
-		// Initialize database connection if not already done
-		if o.db == nil {
-			var db *sqlx.DB
-			var err error
-			if o.databasePrefix != "" {
-				o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
-				db, err = database.PostgresConn(o.dbOptions)
-			} else {
-				db, err = database.PostgresConn(o.dbOptions)
-			}
-			if err != nil {
-				log.Printf("Database connection error: %v", err)
-				return err
-			}
-			o.db = db
+		db, err := o.getDB()
+		if err != nil {
+			log.Printf("Database connection error: %v", err)
+			return err
 		}
-		return database.InsertStruct(o.db, o.tableName, entity)
+		return database.InsertStruct(db, o.tableName, entity)
 	}
 }
 
@@ -359,23 +331,12 @@ func (o *ORM) Update(entity any, primaryKeyValue string) error {
 	if o.tx != nil {
 		return database.UpdateTrxStruct(o.tx, o.tableName, entity, primaryField, primaryKeyValue)
 	} else {
-		// Initialize database connection if not already done
-		if o.db == nil {
-			var db *sqlx.DB
-			var err error
-			if o.databasePrefix != "" {
-				o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
-				db, err = database.PostgresConn(o.dbOptions)
-			} else {
-				db, err = database.PostgresConn(o.dbOptions)
-			}
-			if err != nil {
-				log.Printf("Database connection error: %v", err)
-				return err
-			}
-			o.db = db
+		db, err := o.getDB()
+		if err != nil {
+			log.Printf("Database connection error: %v", err)
+			return err
 		}
-		return database.UpdateStruct(o.db, o.tableName, entity, primaryField, primaryKeyValue)
+		return database.UpdateStruct(db, o.tableName, entity, primaryField, primaryKeyValue)
 	}
 }
 
@@ -386,20 +347,12 @@ func (o *ORM) DeleteByFieldEquals(fieldName string, value any) (int64, error) {
 		return 0, fmt.Errorf("field %s not found in struct", fieldName)
 	}
 
-	// Establish database connection
-	var db *sqlx.DB
-	var err error
-	if o.databasePrefix != "" {
-		o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
-		db, err = database.PostgresConn(o.dbOptions)
-	} else {
-		db, err = database.PostgresConn(o.dbOptions)
-	}
+	// Get the shared database connection
+	db, err := o.getDB()
 	if err != nil {
 		log.Println("DB connection error:", err)
 		return 0, err
 	}
-	defer db.Close()
 
 	// Construct DELETE query (quote column name for case sensitivity)
 	query := fmt.Sprintf(`DELETE FROM %s WHERE "%s" = $1`, o.tableName, columnName)
@@ -449,20 +402,12 @@ func (o *ORM) DeleteByFieldCompare(fieldName string, value any, operator string)
 		return 0, fmt.Errorf("unsupported operator: %s", operator)
 	}
 
-	// Establish database connection
-	var db *sqlx.DB
-	var err error
-	if o.databasePrefix != "" {
-		o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
-		db, err = database.PostgresConn(o.dbOptions)
-	} else {
-		db, err = database.PostgresConn(o.dbOptions)
-	}
+	// Get the shared database connection
+	db, err := o.getDB()
 	if err != nil {
 		log.Println("DB connection error:", err)
 		return 0, err
 	}
-	defer db.Close()
 
 	// Construct DELETE query (quote column name for case sensitivity)
 	query := fmt.Sprintf(`DELETE FROM %s WHERE "%s" %s $1`, o.tableName, columnName, operator)
@@ -503,20 +448,12 @@ func (o *ORM) DeleteByFieldIn(fieldName string, values []any) (int64, error) {
 		return 0, fmt.Errorf("values slice is empty")
 	}
 
-	// Establish database connection
-	var db *sqlx.DB
-	var err error
-	if o.databasePrefix != "" {
-		o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
-		db, err = database.PostgresConn(o.dbOptions)
-	} else {
-		db, err = database.PostgresConn(o.dbOptions)
-	}
+	// Get the shared database connection
+	db, err := o.getDB()
 	if err != nil {
 		log.Println("DB connection error:", err)
 		return 0, err
 	}
-	defer db.Close()
 
 	// Construct DELETE query with IN clause
 	placeholders := make([]string, len(values))
@@ -574,20 +511,12 @@ fmt.Printf("Deleted %d row with primary key 10\n", rowsDeleted)
 */
 
 func (o *ORM) DeleteAll() (int64, error) {
-	// Establish database connection
-	var db *sqlx.DB
-	var err error
-	if o.databasePrefix != "" {
-		o.dbOptions.DatabaseUrlPrefix = o.databasePrefix
-		db, err = database.PostgresConn(o.dbOptions)
-	} else {
-		db, err = database.PostgresConn(o.dbOptions)
-	}
+	// Get the shared database connection
+	db, err := o.getDB()
 	if err != nil {
 		log.Println("DB connection error:", err)
 		return 0, err
 	}
-	defer db.Close()
 
 	// Construct DELETE ALL query
 	query := fmt.Sprintf("DELETE FROM %s", o.tableName)

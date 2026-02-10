@@ -136,8 +136,8 @@ func PostgresConn(options ...PostgresConnOptions) (*sqlx.DB, error) {
 		}
 	}
 
-	log.Printf("Connection pool configured: MaxOpenConns=%d, MaxIdleConns=%d",
-		db.Stats().MaxOpenConnections, *options[0].MaxIdleConns)
+	log.Printf("Connection pool configured: MaxOpenConns=%d, MaxIdleConns=%d, ConnMaxLifetime=%v, ConnMaxIdleTime=%v",
+		db.Stats().MaxOpenConnections, db.Stats().Idle, db.Stats().MaxLifetimeClosed, db.Stats().MaxIdleTimeClosed)
 
 	return db, nil
 }
