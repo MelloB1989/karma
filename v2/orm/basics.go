@@ -29,7 +29,25 @@ var (
 	// every production-grade ORM.
 	globalPoolsMu sync.Mutex
 	globalPools   = make(map[string]*sqlx.DB)
+
+	// Global shared Redis client — created once via sync.Once on the first
+	// call to WithCacheOn, then reused by every ORM instance.  This prevents
+	// the "redis: client is closed" errors that occur when each ORM creates
+	// its own client and Close() tears it down while background caching
+	// goroutines are still using it.
+	globalRedisOnce   sync.Once
+	globalRedisClient *redis.Client
 )
+
+// getSharedRedisClient returns the package-level shared Redis client,
+// creating it on the first call via utils.RedisConnect().
+func getSharedRedisClient() *redis.Client {
+	globalRedisOnce.Do(func() {
+		globalRedisClient = utils.RedisConnect()
+		log.Println("Shared Redis client initialized")
+	})
+	return globalRedisClient
+}
 
 const (
 	InfiniteTTL = time.Duration(-1)
@@ -121,6 +139,7 @@ type ORM struct {
 	db             *sqlx.DB
 	dbMu           sync.Mutex
 	ownsDB         bool // true when the ORM created/owns the *sqlx.DB (i.e. it was NOT injected via WithDB)
+	ownsRedis      bool // true when the Redis client was injected via WithRedisClient (caller owns lifecycle)
 	CacheOn        *bool
 	CacheMethod    *string // "redis", "memory", or "both"
 	CacheKey       *string
@@ -215,17 +234,26 @@ func (o *ORM) getDB() (*sqlx.DB, error) {
 	return db, nil
 }
 
-// CloseAllPools tears down every connection pool in the global registry.
-// Call this once during graceful application shutdown.
+// CloseAllPools tears down every connection pool and the shared Redis client
+// in the global registries.  Call this once during graceful application shutdown.
 func CloseAllPools() {
 	globalPoolsMu.Lock()
-	defer globalPoolsMu.Unlock()
-
 	for key, db := range globalPools {
 		if err := db.Close(); err != nil {
 			log.Printf("Failed to close pool %q: %v", key, err)
 		}
 		delete(globalPools, key)
+	}
+	globalPoolsMu.Unlock()
+
+	// Close the shared Redis client if it was ever created.
+	if globalRedisClient != nil {
+		if err := globalRedisClient.Close(); err != nil {
+			log.Printf("Failed to close shared Redis client: %v", err)
+		}
+		globalRedisClient = nil
+		// Reset the Once so a new client can be created if needed after restart.
+		globalRedisOnce = sync.Once{}
 	}
 }
 
@@ -360,9 +388,9 @@ func WithDatabasePrefix(prefix string) Options {
 
 func WithCacheOn(cacheOn bool) Options {
 	return func(o *ORM) {
-		client := utils.RedisConnect()
 		o.CacheOn = &cacheOn
-		o.RedisClient = client
+		o.RedisClient = getSharedRedisClient()
+		o.ownsRedis = false // shared — don't close on ORM.Close()
 
 		// Default to both memory and Redis caching
 		cacheMethod := "both"
@@ -403,6 +431,7 @@ func WithInfiniteCacheTTL() Options {
 func WithRedisClient(redisClient *redis.Client) Options {
 	return func(o *ORM) {
 		o.RedisClient = redisClient
+		o.ownsRedis = false // caller owns it — don't close on ORM.Close()
 	}
 }
 
@@ -445,28 +474,36 @@ func (qr *QueryResult) Scan(dest any) error {
 
 		// If caching is enabled, cache the results
 		if ok && orm != nil && orm.CacheOn != nil && *orm.CacheOn {
+			// Snapshot every ORM field the goroutine needs BEFORE launching it.
+			// This prevents a race where defer Close() nils out RedisClient /
+			// CacheTTL / CacheMethod while the goroutine is still running.
+			cacheKey := orm.generateCacheKey(qr.query, qr.args)
+
+			ttl := 5 * time.Minute // Default TTL
+			if orm.CacheTTL != nil {
+				ttl = *orm.CacheTTL
+			}
+
+			cacheMethod := "both"
+			if orm.CacheMethod != nil {
+				cacheMethod = *orm.CacheMethod
+			}
+
+			// Capture the Redis client pointer now — if it's non-nil at this
+			// point it's safe to use (Close hasn't run yet).
+			redisClient := orm.RedisClient
+
 			// Use a goroutine to handle caching in the background to not block
-			go func(orm *ORM, dest any, query string, args []any) {
+			go func(mux *sync.Mutex, dest any, cacheKey string, ttl time.Duration, cacheMethod string, redisClient *redis.Client) {
 				// Prevent concurrent access to serialization
-				orm.serializeMux.Lock()
-				defer orm.serializeMux.Unlock()
+				mux.Lock()
+				defer mux.Unlock()
 
 				// Serialize the results with the faster jsoniter
 				data, err := json.Marshal(dest)
 				if err != nil {
 					log.Printf("Failed to marshal result for caching: %v", err)
 					return
-				}
-
-				cacheKey := orm.generateCacheKey(query, args)
-				ttl := 5 * time.Minute // Default TTL
-				if orm.CacheTTL != nil {
-					ttl = *orm.CacheTTL
-				}
-
-				cacheMethod := "both"
-				if orm.CacheMethod != nil {
-					cacheMethod = *orm.CacheMethod
 				}
 
 				// Cache in memory if requested
@@ -480,7 +517,7 @@ func (qr *QueryResult) Scan(dest any) error {
 				}
 
 				// Cache in Redis if requested
-				if (cacheMethod == "redis" || cacheMethod == "both") && orm.RedisClient != nil {
+				if (cacheMethod == "redis" || cacheMethod == "both") && redisClient != nil {
 					ctx := context.Background()
 					var redisTTL time.Duration
 
@@ -491,7 +528,7 @@ func (qr *QueryResult) Scan(dest any) error {
 						redisTTL = ttl
 					}
 
-					err = orm.RedisClient.Set(ctx, cacheKey, data, redisTTL).Err()
+					err = redisClient.Set(ctx, cacheKey, data, redisTTL).Err()
 					if err != nil {
 						log.Printf("Failed to cache query results in Redis: %v", err)
 					} else {
@@ -502,7 +539,7 @@ func (qr *QueryResult) Scan(dest any) error {
 						}
 					}
 				}
-			}(orm, dest, qr.query, qr.args)
+			}(&orm.serializeMux, dest, cacheKey, ttl, cacheMethod, redisClient)
 		}
 
 		return nil
@@ -640,13 +677,22 @@ func (o *ORM) Close() {
 	}
 	o.dbMu.Unlock()
 
+	// Wait for any in-flight background caching goroutine to finish before
+	// we detach the Redis client reference.
+	o.serializeMux.Lock()
 	if o.RedisClient != nil {
-		err := o.RedisClient.Close()
-		if err != nil {
-			log.Println("Failed to close Redis connection:", err)
+		if o.ownsRedis {
+			// Only close the client if this ORM instance exclusively owns it
+			// (not the shared global client, not one injected via WithRedisClient).
+			err := o.RedisClient.Close()
+			if err != nil {
+				log.Println("Failed to close Redis connection:", err)
+			}
 		}
+		// Detach but leave the shared client alive for other ORM instances.
 		o.RedisClient = nil
 	}
+	o.serializeMux.Unlock()
 }
 
 // normalizeValues converts various input formats into a flat slice of values
