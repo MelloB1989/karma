@@ -37,6 +37,7 @@ require (
 	github.com/razorpay/razorpay-go v1.3.2
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/stretchr/testify v1.10.0
+	github.com/togethercomputer/together-go v0.6.0
 	github.com/twilio/twilio-go v1.23.6
 	github.com/upstash/vector-go v0.7.0
 	go.uber.org/zap v1.27.0
