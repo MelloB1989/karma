@@ -142,7 +142,7 @@ func (a *Agent) Converse(ctx context.Context, req ConverseRequest) (*ConverseRes
 
 	history.Messages = append(history.Messages, a.newMessage(models.User, transcript))
 
-	textResponse, err := a.textAI.ChatCompletion(*history)
+	textResponse, err := a.textAI.ChatCompletionManaged(history)
 	if err != nil {
 		return &ConverseResponse{
 			Transcript: transcript,

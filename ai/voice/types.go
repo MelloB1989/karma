@@ -21,7 +21,7 @@ const (
 //
 // Use *ai.KarmaAI to preserve MCP/Go-function tool behavior.
 type TextAI interface {
-	ChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error)
+	ChatCompletionManaged(messages *models.AIChatHistory) (*models.AIChatResponse, error)
 }
 
 // SpeechProvider defines STT and TTS operations.

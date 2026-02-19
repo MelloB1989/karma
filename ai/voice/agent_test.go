@@ -15,8 +15,8 @@ type fakeTextAI struct {
 	history  []models.AIChatHistory
 }
 
-func (f *fakeTextAI) ChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
-	f.history = append(f.history, messages)
+func (f *fakeTextAI) ChatCompletionManaged(messages *models.AIChatHistory) (*models.AIChatResponse, error) {
+	f.history = append(f.history, *messages)
 	if f.err != nil {
 		return nil, f.err
 	}
