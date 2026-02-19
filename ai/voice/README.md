@@ -41,6 +41,43 @@ func main() {
 }
 ```
 
+## Model Selection (Hard-Coded Catalog)
+
+Models are not loaded from env. Use provider model constants, similar to `ai`:
+
+```go
+agent, _ := voice.NewOpenAIAgent(
+    textAI,
+    voice.WithOpenAIModels(
+        voice.OpenAIGPT4oMiniTranscribe,
+        voice.OpenAIGPT4oMiniTTS,
+    ),
+)
+```
+
+You can inspect available models:
+
+```go
+voice.GetAvailableSTTModels(voice.ProviderOpenAI)
+voice.GetAvailableTTSModels(voice.ProviderOpenAI)
+```
+
+## WebSocket Utility
+
+Use `voice.WebSocketHandler` for message loops and typed send helpers:
+
+```go
+handler, _ := voice.NewWebSocketHandler(conn,
+    voice.WithWSMessageHandler(func(ctx context.Context, msg voice.WSMessage) error {
+        // msg.Data, msg.JSON
+        return nil
+    }),
+)
+
+_ = handler.SendJSON(ctx, map[string]any{"event": "ready"})
+_ = handler.Run(ctx)
+```
+
 ## Environment Defaults
 
 - OpenAI: `OPENAI_API_KEY` (fallback `OPENAI_KEY`)

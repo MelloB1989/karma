@@ -11,16 +11,16 @@ func defaultConfig() Config {
 		OpenAI: OpenAIConfig{
 			APIKey:    firstNonEmpty(os.Getenv("OPENAI_API_KEY"), os.Getenv("OPENAI_KEY")),
 			BaseURL:   os.Getenv("OPENAI_BASE_URL"),
-			STTModel:  firstNonEmpty(os.Getenv("KARMA_VOICE_OPENAI_STT_MODEL"), "whisper-1"),
-			TTSModel:  firstNonEmpty(os.Getenv("KARMA_VOICE_OPENAI_TTS_MODEL"), "gpt-4o-mini-tts"),
+			STTModel:  OpenAIWhisper1,
+			TTSModel:  OpenAIGPT4oMiniTTS,
 			TTSVoice:  firstNonEmpty(os.Getenv("KARMA_VOICE_OPENAI_TTS_VOICE"), "alloy"),
 			TTSFormat: firstNonEmpty(os.Getenv("KARMA_VOICE_OPENAI_TTS_FORMAT"), "mp3"),
 		},
 		Together: TogetherConfig{
 			APIKey:    os.Getenv("TOGETHER_API_KEY"),
 			BaseURL:   os.Getenv("TOGETHER_BASE_URL"),
-			STTModel:  firstNonEmpty(os.Getenv("KARMA_VOICE_TOGETHER_STT_MODEL"), "openai/whisper-large-v3"),
-			TTSModel:  firstNonEmpty(os.Getenv("KARMA_VOICE_TOGETHER_TTS_MODEL"), "hexgrad/Kokoro-82M"),
+			STTModel:  TogetherWhisperLargeV3,
+			TTSModel:  TogetherHexgradKokoro82M,
 			TTSVoice:  firstNonEmpty(os.Getenv("KARMA_VOICE_TOGETHER_TTS_VOICE"), "af_alloy"),
 			TTSFormat: firstNonEmpty(os.Getenv("KARMA_VOICE_TOGETHER_TTS_FORMAT"), "mp3"),
 		},
@@ -28,12 +28,12 @@ func defaultConfig() Config {
 			APIKey:                     os.Getenv("ELEVENLABS_API_KEY"),
 			Token:                      os.Getenv("ELEVENLABS_TOKEN"),
 			BaseWSURL:                  firstNonEmpty(os.Getenv("ELEVENLABS_WS_BASE_URL"), "wss://api.elevenlabs.io"),
-			TTSModel:                   firstNonEmpty(os.Getenv("KARMA_VOICE_ELEVENLABS_TTS_MODEL"), "eleven_flash_v2_5"),
+			TTSModel:                   ElevenLabsFlashV25,
 			TTSVoiceID:                 os.Getenv("ELEVENLABS_VOICE_ID"),
 			TTSOutputFormat:            firstNonEmpty(os.Getenv("KARMA_VOICE_ELEVENLABS_TTS_OUTPUT_FORMAT"), "mp3_44100_128"),
 			TTSLanguageCode:            os.Getenv("KARMA_VOICE_ELEVENLABS_TTS_LANGUAGE"),
 			TTSInactivityTimeoutSecond: 20,
-			STTModel:                   os.Getenv("KARMA_VOICE_ELEVENLABS_STT_MODEL"),
+			STTModel:                   ElevenLabsScribeV1,
 			STTAudioFormat:             firstNonEmpty(os.Getenv("KARMA_VOICE_ELEVENLABS_STT_AUDIO_FORMAT"), "pcm_16000"),
 			STTCommitStrategy:          firstNonEmpty(os.Getenv("KARMA_VOICE_ELEVENLABS_STT_COMMIT_STRATEGY"), "manual"),
 			STTLanguageCode:            os.Getenv("KARMA_VOICE_ELEVENLABS_STT_LANGUAGE"),
@@ -76,6 +76,42 @@ func WithTogetherAPIKey(apiKey string) Option {
 func WithElevenLabsAPIKey(apiKey string) Option {
 	return func(c *Config) {
 		c.ElevenLabs.APIKey = apiKey
+	}
+}
+
+// WithOpenAIModels overrides OpenAI STT and TTS models.
+func WithOpenAIModels(sttModel VoiceModel, ttsModel VoiceModel) Option {
+	return func(c *Config) {
+		if sttModel != "" {
+			c.OpenAI.STTModel = sttModel
+		}
+		if ttsModel != "" {
+			c.OpenAI.TTSModel = ttsModel
+		}
+	}
+}
+
+// WithTogetherModels overrides Together STT and TTS models.
+func WithTogetherModels(sttModel VoiceModel, ttsModel VoiceModel) Option {
+	return func(c *Config) {
+		if sttModel != "" {
+			c.Together.STTModel = sttModel
+		}
+		if ttsModel != "" {
+			c.Together.TTSModel = ttsModel
+		}
+	}
+}
+
+// WithElevenLabsModels overrides ElevenLabs STT and TTS models.
+func WithElevenLabsModels(sttModel VoiceModel, ttsModel VoiceModel) Option {
+	return func(c *Config) {
+		if sttModel != "" {
+			c.ElevenLabs.STTModel = sttModel
+		}
+		if ttsModel != "" {
+			c.ElevenLabs.TTSModel = ttsModel
+		}
 	}
 }
 

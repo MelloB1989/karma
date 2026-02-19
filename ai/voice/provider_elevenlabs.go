@@ -49,8 +49,13 @@ func (p *elevenLabsProvider) Transcribe(ctx context.Context, req TranscribeReque
 		return nil, errors.New("audio is required for transcription")
 	}
 
+	model, err := resolveProviderModel(ProviderElevenLabs, ModelKindSTT, req.Model, p.cfg.STTModel)
+	if err != nil {
+		return nil, err
+	}
+
 	query := url.Values{}
-	if model := firstNonEmpty(req.Model, p.cfg.STTModel); model != "" {
+	if model != "" {
 		query.Set("model_id", model)
 	}
 	if language := firstNonEmpty(req.Language, p.cfg.STTLanguageCode); language != "" {
@@ -165,9 +170,14 @@ func (p *elevenLabsProvider) Synthesize(ctx context.Context, req SynthesizeReque
 		return nil, errors.New("voice_id is required for elevenlabs tts (set SynthesizeRequest.VoiceID or ELEVENLABS_VOICE_ID)")
 	}
 
+	model, err := resolveProviderModel(ProviderElevenLabs, ModelKindTTS, req.Model, p.cfg.TTSModel)
+	if err != nil {
+		return nil, err
+	}
+
 	format := firstNonEmpty(req.Format, p.cfg.TTSOutputFormat, "mp3_44100_128")
 	query := url.Values{}
-	if model := firstNonEmpty(req.Model, p.cfg.TTSModel); model != "" {
+	if model != "" {
 		query.Set("model_id", model)
 	}
 	if language := firstNonEmpty(req.Language, p.cfg.TTSLanguageCode); language != "" {

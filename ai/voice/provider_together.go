@@ -42,7 +42,10 @@ func (p *togetherSpeechProvider) Transcribe(ctx context.Context, req TranscribeR
 		return nil, errors.New("audio is required for transcription")
 	}
 
-	model := firstNonEmpty(req.Model, p.cfg.STTModel, "openai/whisper-large-v3")
+	model, err := resolveProviderModel(ProviderTogether, ModelKindSTT, req.Model, p.cfg.STTModel)
+	if err != nil {
+		return nil, err
+	}
 	params := together.AudioTranscriptionNewParams{
 		File: together.AudioTranscriptionNewParamsFileUnion{
 			OfFile: bytes.NewReader(req.Audio),
@@ -77,7 +80,10 @@ func (p *togetherSpeechProvider) Synthesize(ctx context.Context, req SynthesizeR
 		return nil, errors.New("text is required for synthesis")
 	}
 
-	model := firstNonEmpty(req.Model, p.cfg.TTSModel, "hexgrad/Kokoro-82M")
+	model, err := resolveProviderModel(ProviderTogether, ModelKindTTS, req.Model, p.cfg.TTSModel)
+	if err != nil {
+		return nil, err
+	}
 	voice := firstNonEmpty(req.VoiceID, p.cfg.TTSVoice, "af_alloy")
 	format := firstNonEmpty(req.Format, p.cfg.TTSFormat, "mp3")
 

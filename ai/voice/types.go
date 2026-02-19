@@ -52,8 +52,8 @@ type Config struct {
 type OpenAIConfig struct {
 	APIKey    string
 	BaseURL   string
-	STTModel  string
-	TTSModel  string
+	STTModel  VoiceModel
+	TTSModel  VoiceModel
 	TTSVoice  string
 	TTSFormat string
 }
@@ -62,8 +62,8 @@ type OpenAIConfig struct {
 type TogetherConfig struct {
 	APIKey    string
 	BaseURL   string
-	STTModel  string
-	TTSModel  string
+	STTModel  VoiceModel
+	TTSModel  VoiceModel
 	TTSVoice  string
 	TTSFormat string
 }
@@ -73,12 +73,12 @@ type ElevenLabsConfig struct {
 	APIKey                     string
 	Token                      string
 	BaseWSURL                  string
-	TTSModel                   string
+	TTSModel                   VoiceModel
 	TTSVoiceID                 string
 	TTSOutputFormat            string
 	TTSLanguageCode            string
 	TTSInactivityTimeoutSecond int
-	STTModel                   string
+	STTModel                   VoiceModel
 	STTAudioFormat             string
 	STTCommitStrategy          string
 	STTLanguageCode            string
@@ -96,7 +96,7 @@ type TranscribeRequest struct {
 	FileName     string
 	MIMEType     string
 	AudioFormat  string
-	Model        string
+	Model        VoiceModel
 	Language     string
 	SampleRate   int
 	Prompt       string
@@ -112,7 +112,7 @@ type TranscribeResponse struct {
 // SynthesizeRequest holds TTS input.
 type SynthesizeRequest struct {
 	Text         string
-	Model        string
+	Model        VoiceModel
 	VoiceID      string
 	Language     string
 	Format       string

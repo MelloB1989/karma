@@ -42,7 +42,10 @@ func (p *openAISpeechProvider) Transcribe(ctx context.Context, req TranscribeReq
 		return nil, errors.New("audio is required for transcription")
 	}
 
-	model := firstNonEmpty(req.Model, p.cfg.STTModel, "whisper-1")
+	model, err := resolveProviderModel(ProviderOpenAI, ModelKindSTT, req.Model, p.cfg.STTModel)
+	if err != nil {
+		return nil, err
+	}
 	params := openai.AudioTranscriptionNewParams{
 		File:  bytes.NewReader(req.Audio),
 		Model: openai.AudioModel(model),
@@ -75,7 +78,10 @@ func (p *openAISpeechProvider) Synthesize(ctx context.Context, req SynthesizeReq
 		return nil, errors.New("text is required for synthesis")
 	}
 
-	model := firstNonEmpty(req.Model, p.cfg.TTSModel, "gpt-4o-mini-tts")
+	model, err := resolveProviderModel(ProviderOpenAI, ModelKindTTS, req.Model, p.cfg.TTSModel)
+	if err != nil {
+		return nil, err
+	}
 	voice := firstNonEmpty(req.VoiceID, p.cfg.TTSVoice, "alloy")
 	format := firstNonEmpty(req.Format, p.cfg.TTSFormat, "mp3")
 
