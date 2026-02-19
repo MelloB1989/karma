@@ -38,7 +38,7 @@ const (
 	TogetherCanopyOrpheus3B01FT VoiceModel = "canopylabs/orpheus-3b-0.1-ft"
 
 	// ElevenLabs STT
-	ElevenLabsScribeV1 VoiceModel = "scribe_v1"
+	ElevenLabsScribeV2 VoiceModel = "scribe_v2_realtime"
 
 	// ElevenLabs TTS
 	ElevenLabsFlashV25       VoiceModel = "eleven_flash_v2_5"
@@ -58,7 +58,7 @@ var ProviderSTTModelMapping = map[Provider]map[VoiceModel]string{
 		TogetherWhisperLargeV3: string(TogetherWhisperLargeV3),
 	},
 	ProviderElevenLabs: {
-		ElevenLabsScribeV1: string(ElevenLabsScribeV1),
+		ElevenLabsScribeV2: string(ElevenLabsScribeV2),
 	},
 }
 

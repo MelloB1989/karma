@@ -13,6 +13,17 @@ import (
 	openaioption "github.com/openai/openai-go/v3/option"
 )
 
+// namedReader wraps an io.Reader and exposes a Name() method.
+// The openai-go SDK checks for Name() when building multipart uploads so it
+// can set the Content-Disposition filename, which OpenAI Whisper uses to
+// detect the audio format from the file extension.
+type namedReader struct {
+	io.Reader
+	name string
+}
+
+func (nr namedReader) Name() string { return nr.name }
+
 type openAISpeechProvider struct {
 	client openai.Client
 	cfg    OpenAIConfig
@@ -46,8 +57,14 @@ func (p *openAISpeechProvider) Transcribe(ctx context.Context, req TranscribeReq
 	if err != nil {
 		return nil, err
 	}
+	fileName := strings.TrimSpace(req.FileName)
+	if fileName == "" {
+		// Fall back to a webm extension so Whisper can detect the format.
+		fileName = "audio.webm"
+	}
+
 	params := openai.AudioTranscriptionNewParams{
-		File:  bytes.NewReader(req.Audio),
+		File:  namedReader{bytes.NewReader(req.Audio), fileName},
 		Model: openai.AudioModel(model),
 	}
 

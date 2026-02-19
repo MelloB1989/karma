@@ -61,11 +61,13 @@ func (p *elevenLabsProvider) Transcribe(ctx context.Context, req TranscribeReque
 	if language := firstNonEmpty(req.Language, p.cfg.STTLanguageCode); language != "" {
 		query.Set("language_code", language)
 	}
-	if format := firstNonEmpty(req.AudioFormat, p.cfg.STTAudioFormat); format != "" {
-		query.Set("audio_format", format)
+	audioFormat := firstNonEmpty(req.AudioFormat, p.cfg.STTAudioFormat)
+	if audioFormat != "" {
+		query.Set("audio_format", audioFormat)
 	}
-	if strategy := firstNonEmpty(p.cfg.STTCommitStrategy, "manual"); strategy != "" {
-		query.Set("commit_strategy", strategy)
+	commitStrategy := firstNonEmpty(p.cfg.STTCommitStrategy, "manual")
+	if commitStrategy != "" {
+		query.Set("commit_strategy", commitStrategy)
 	}
 	if p.cfg.IncludeTimestamps {
 		query.Set("include_timestamps", "true")
@@ -96,10 +98,26 @@ func (p *elevenLabsProvider) Transcribe(ctx context.Context, req TranscribeReque
 		sampleRate = 16000
 	}
 
+	// ElevenLabs manual commits require at least ~0.3s of uncommitted audio.
+	// Short clips can be handled as no-speech locally instead of surfacing
+	// commit_throttled to callers.
+	if strings.EqualFold(commitStrategy, "manual") {
+		const minCommitDuration = 300 * time.Millisecond
+		if estimated := estimateAudioDuration(len(req.Audio), audioFormat, sampleRate); estimated > 0 && estimated < minCommitDuration {
+			return nil, fmt.Errorf(
+				"elevenlabs no speech detected (clip too short for manual commit: %.2fs < %.2fs)",
+				estimated.Seconds(),
+				minCommitDuration.Seconds(),
+			)
+		}
+	}
+
+	commitNow := !strings.EqualFold(commitStrategy, "vad")
+
 	message := map[string]any{
 		"message_type":  "input_audio_chunk",
 		"audio_base_64": base64.StdEncoding.EncodeToString(req.Audio),
-		"commit":        true,
+		"commit":        commitNow,
 		"sample_rate":   sampleRate,
 	}
 	if req.PreviousText != "" {
@@ -144,7 +162,7 @@ func (p *elevenLabsProvider) Transcribe(ctx context.Context, req TranscribeReque
 				text = latestPartial
 			}
 			if text == "" {
-				return nil, errors.New("elevenlabs transcription committed with empty text")
+				return nil, errors.New("elevenlabs no speech detected (empty committed transcript)")
 			}
 			return &TranscribeResponse{Text: text, Raw: json.RawMessage(data)}, nil
 		case "error", "auth_error", "quota_exceeded", "commit_throttled", "unaccepted_terms", "rate_limited", "queue_overflow", "resource_exhausted", "session_time_limit_exceeded", "input_error", "chunk_size_exceeded", "insufficient_audio_activity", "transcriber_error":
@@ -156,7 +174,7 @@ func (p *elevenLabsProvider) Transcribe(ctx context.Context, req TranscribeReque
 		return &TranscribeResponse{Text: latestPartial}, nil
 	}
 
-	return nil, errors.New("no transcription received from elevenlabs")
+	return nil, errors.New("elevenlabs no speech detected (no transcription received)")
 }
 
 func (p *elevenLabsProvider) Synthesize(ctx context.Context, req SynthesizeRequest) (*SynthesizeResponse, error) {
@@ -330,6 +348,12 @@ func elevenLabsPayloadError(messageType string, payload map[string]any) error {
 	if msg == "" {
 		msg = "unknown elevenlabs error"
 	}
+	if messageType == "commit_throttled" && strings.Contains(strings.ToLower(msg), "uncommitted audio") {
+		return fmt.Errorf("elevenlabs no speech detected (%s)", msg)
+	}
+	if messageType == "input_error" && strings.Contains(strings.ToLower(msg), "decode audio chunk") {
+		msg += " (expected raw PCM/uLaw bytes matching audio_format; for pcm_16000 send mono 16 kHz PCM16LE)"
+	}
 	return fmt.Errorf("elevenlabs %s: %s", messageType, msg)
 }
 
@@ -349,4 +373,42 @@ func ensureTrailingSpace(s string) string {
 		return s
 	}
 	return s + " "
+}
+
+func estimateAudioDuration(byteLen int, audioFormat string, sampleRate int) time.Duration {
+	if byteLen <= 0 {
+		return 0
+	}
+
+	format := strings.ToLower(strings.TrimSpace(audioFormat))
+	switch {
+	case strings.HasPrefix(format, "pcm_"):
+		rate := parseSampleRateFromAudioFormat(format)
+		if rate <= 0 {
+			rate = sampleRate
+		}
+		if rate <= 0 {
+			return 0
+		}
+		bytesPerSecond := rate * 2 // pcm_XXXX in ElevenLabs is 16-bit mono PCM
+		return time.Duration(float64(byteLen) / float64(bytesPerSecond) * float64(time.Second))
+	case format == "ulaw_8000":
+		const bytesPerSecond = 8000 // 8-bit mu-law mono
+		return time.Duration(float64(byteLen) / float64(bytesPerSecond) * float64(time.Second))
+	default:
+		return 0
+	}
+}
+
+func parseSampleRateFromAudioFormat(audioFormat string) int {
+	parts := strings.Split(strings.ToLower(strings.TrimSpace(audioFormat)), "_")
+	if len(parts) != 2 {
+		return 0
+	}
+
+	rate, err := strconv.Atoi(parts[1])
+	if err != nil || rate <= 0 {
+		return 0
+	}
+	return rate
 }

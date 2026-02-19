@@ -2,41 +2,42 @@ package voice
 
 import (
 	"net/http"
-	"os"
 	"time"
+
+	"github.com/MelloB1989/karma/config"
 )
 
 func defaultConfig() Config {
 	return Config{
 		OpenAI: OpenAIConfig{
-			APIKey:    firstNonEmpty(os.Getenv("OPENAI_API_KEY"), os.Getenv("OPENAI_KEY")),
-			BaseURL:   os.Getenv("OPENAI_BASE_URL"),
+			APIKey: firstNonEmpty(config.GetEnvRaw("OPENAI_API_KEY"), config.GetEnvRaw("OPENAI_KEY")),
+			// BaseURL:   config.GetEnvRaw("OPENAI_BASE_URL"),
 			STTModel:  OpenAIWhisper1,
 			TTSModel:  OpenAIGPT4oMiniTTS,
-			TTSVoice:  firstNonEmpty(os.Getenv("KARMA_VOICE_OPENAI_TTS_VOICE"), "alloy"),
-			TTSFormat: firstNonEmpty(os.Getenv("KARMA_VOICE_OPENAI_TTS_FORMAT"), "mp3"),
+			TTSVoice:  firstNonEmpty(config.GetEnvRaw("KARMA_VOICE_OPENAI_TTS_VOICE"), "alloy"),
+			TTSFormat: firstNonEmpty(config.GetEnvRaw("KARMA_VOICE_OPENAI_TTS_FORMAT"), "mp3"),
 		},
 		Together: TogetherConfig{
-			APIKey:    os.Getenv("TOGETHER_API_KEY"),
-			BaseURL:   os.Getenv("TOGETHER_BASE_URL"),
+			APIKey: config.GetEnvRaw("TOGETHER_API_KEY"),
+			// BaseURL:   config.GetEnvRaw("TOGETHER_BASE_URL"),
 			STTModel:  TogetherWhisperLargeV3,
 			TTSModel:  TogetherHexgradKokoro82M,
-			TTSVoice:  firstNonEmpty(os.Getenv("KARMA_VOICE_TOGETHER_TTS_VOICE"), "af_alloy"),
-			TTSFormat: firstNonEmpty(os.Getenv("KARMA_VOICE_TOGETHER_TTS_FORMAT"), "mp3"),
+			TTSVoice:  firstNonEmpty(config.GetEnvRaw("KARMA_VOICE_TOGETHER_TTS_VOICE"), "af_alloy"),
+			TTSFormat: firstNonEmpty(config.GetEnvRaw("KARMA_VOICE_TOGETHER_TTS_FORMAT"), "mp3"),
 		},
 		ElevenLabs: ElevenLabsConfig{
-			APIKey:                     os.Getenv("ELEVENLABS_API_KEY"),
-			Token:                      os.Getenv("ELEVENLABS_TOKEN"),
-			BaseWSURL:                  firstNonEmpty(os.Getenv("ELEVENLABS_WS_BASE_URL"), "wss://api.elevenlabs.io"),
+			APIKey:                     config.GetEnvRaw("ELEVENLABS_API_KEY"),
+			Token:                      config.GetEnvRaw("ELEVENLABS_TOKEN"),
+			BaseWSURL:                  firstNonEmpty(config.GetEnvRaw("ELEVENLABS_WS_BASE_URL"), "wss://api.elevenlabs.io"),
 			TTSModel:                   ElevenLabsFlashV25,
-			TTSVoiceID:                 os.Getenv("ELEVENLABS_VOICE_ID"),
-			TTSOutputFormat:            firstNonEmpty(os.Getenv("KARMA_VOICE_ELEVENLABS_TTS_OUTPUT_FORMAT"), "mp3_44100_128"),
-			TTSLanguageCode:            os.Getenv("KARMA_VOICE_ELEVENLABS_TTS_LANGUAGE"),
+			TTSVoiceID:                 config.GetEnvRaw("ELEVENLABS_VOICE_ID"),
+			TTSOutputFormat:            firstNonEmpty(config.GetEnvRaw("KARMA_VOICE_ELEVENLABS_TTS_OUTPUT_FORMAT"), "mp3_44100_128"),
+			TTSLanguageCode:            config.GetEnvRaw("KARMA_VOICE_ELEVENLABS_TTS_LANGUAGE"),
 			TTSInactivityTimeoutSecond: 20,
-			STTModel:                   ElevenLabsScribeV1,
-			STTAudioFormat:             firstNonEmpty(os.Getenv("KARMA_VOICE_ELEVENLABS_STT_AUDIO_FORMAT"), "pcm_16000"),
-			STTCommitStrategy:          firstNonEmpty(os.Getenv("KARMA_VOICE_ELEVENLABS_STT_COMMIT_STRATEGY"), "manual"),
-			STTLanguageCode:            os.Getenv("KARMA_VOICE_ELEVENLABS_STT_LANGUAGE"),
+			STTModel:                   ElevenLabsScribeV2,
+			STTAudioFormat:             firstNonEmpty(config.GetEnvRaw("KARMA_VOICE_ELEVENLABS_STT_AUDIO_FORMAT"), "pcm_16000"),
+			STTCommitStrategy:          firstNonEmpty(config.GetEnvRaw("KARMA_VOICE_ELEVENLABS_STT_COMMIT_STRATEGY"), "manual"),
+			STTLanguageCode:            config.GetEnvRaw("KARMA_VOICE_ELEVENLABS_STT_LANGUAGE"),
 			ReadTimeout:                60 * time.Second,
 		},
 	}
