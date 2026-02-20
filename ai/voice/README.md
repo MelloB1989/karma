@@ -41,6 +41,37 @@ func main() {
 }
 ```
 
+## Converse Controls
+
+`ConverseRequest` supports per-turn control of STT/TTS:
+
+```go
+resp, _ := agent.Converse(ctx, voice.ConverseRequest{
+    UserText:             "client already did STT",
+    DisableTranscription: true, // skip STT, require UserText
+    DisableSynthesis:     true, // skip TTS, text-only output
+})
+_ = resp
+```
+
+`SkipSynthesis` remains supported as a backward-compatible alias.
+
+## Thinking Tokens
+
+Some models may emit `<think>...</think>`. By default:
+
+- these blocks are removed from output text and conversation history
+- TTS uses the cleaned text
+
+You can opt in to synthesize raw model output (including thinking blocks):
+
+```go
+agent, _ := voice.NewOpenAIAgent(
+    textAI,
+    voice.WithSynthesizeThinkingTokens(true),
+)
+```
+
 ## Model Selection (Hard-Coded Catalog)
 
 Models are not loaded from env. Use provider model constants, similar to `ai`:

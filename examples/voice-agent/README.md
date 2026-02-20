@@ -17,6 +17,8 @@ Browser (MediaRecorder)
 ## Features
 
 - **Push-to-talk** — hold the 🎤 button (or press `Space`) to record
+- **Typed input** — send text turns without server-side STT
+- **TTS toggle** — enable/disable voice playback per session (enabled by default)
 - **Live waveform** — canvas visualiser while recording
 - **Streaming-safe** — `voice.WebSocketHandler` handles read / write deadlines
 - **Session memory** — conversation history is kept per WebSocket connection
@@ -97,6 +99,8 @@ Set a custom port with `PORT=9090 go run .`
 - `mouseup` / `touchend` → `MediaRecorder.stop()` and sends provider-specific audio:
   - `webm` for OpenAI/Together
   - `pcm16_16000` for ElevenLabs realtime STT
+- Text form sends `text_input` events (server runs `Converse` with STT disabled).
+- `Voice reply` toggle sends `set_tts` events (server runs `Converse` with TTS disabled when off).
 - Receives JSON responses, appends chat bubbles, and plays audio via the Web Audio API.
 - `Space` key works as a keyboard shortcut for push-to-talk.
 
@@ -107,9 +111,12 @@ Set a custom port with `PORT=9090 go run .`
 | Direction | Format | Meaning |
 |---|---|---|
 | client → server | **binary** | `webm` (OpenAI/Together) or mono PCM16LE 16 kHz (ElevenLabs) |
+| client → server | `{"event":"text_input","text":"..."}` | Text-only input (skip STT) |
+| client → server | `{"event":"set_tts","enabled":true|false}` | Enable/disable TTS replies |
 | client → server | `{"event":"ping"}` | Keep-alive |
 | client → server | `{"event":"reset"}` | Clear conversation history |
-| server → client | `{"event":"ready","provider":"...","input_audio_format":"..."}` | Server is ready + expected audio format |
+| server → client | `{"event":"ready","provider":"...","input_audio_format":"...","tts_enabled":true|false}` | Server is ready + expected audio format |
+| server → client | `{"event":"tts_updated","tts_enabled":true|false}` | TTS session setting updated |
 | server → client | `{"event":"processing"}` | Server received audio, working |
 | server → client | `{"event":"response", ...}` | Full turn result |
 | server → client | `{"event":"reset_ok"}` | History cleared |

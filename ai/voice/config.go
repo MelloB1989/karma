@@ -9,6 +9,8 @@ import (
 
 func defaultConfig() Config {
 	return Config{
+		StripThinkingTokens:   true,
+		SynthesizeThinkingRaw: false,
 		OpenAI: OpenAIConfig{
 			APIKey: firstNonEmpty(config.GetEnvRaw("OPENAI_API_KEY"), config.GetEnvRaw("OPENAI_KEY")),
 			// BaseURL:   config.GetEnvRaw("OPENAI_BASE_URL"),
@@ -56,6 +58,22 @@ func firstNonEmpty(values ...string) string {
 func WithHTTPClient(client *http.Client) Option {
 	return func(c *Config) {
 		c.HTTPClient = client
+	}
+}
+
+// WithStripThinkingTokens controls whether <think>...</think> blocks are removed
+// from text output/history. Enabled by default.
+func WithStripThinkingTokens(enabled bool) Option {
+	return func(c *Config) {
+		c.StripThinkingTokens = enabled
+	}
+}
+
+// WithSynthesizeThinkingTokens controls whether TTS uses raw model text
+// (including <think>...</think>) instead of stripped text. Disabled by default.
+func WithSynthesizeThinkingTokens(enabled bool) Option {
+	return func(c *Config) {
+		c.SynthesizeThinkingRaw = enabled
 	}
 }
 

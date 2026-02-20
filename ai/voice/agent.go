@@ -32,10 +32,12 @@ func NewAgent(textAI TextAI, provider Provider, options ...Option) (*Agent, erro
 	}
 
 	return &Agent{
-		provider: provider,
-		textAI:   textAI,
-		speech:   speech,
-		now:      time.Now,
+		provider:              provider,
+		textAI:                textAI,
+		speech:                speech,
+		now:                   time.Now,
+		stripThinkingTokens:   cfg.StripThinkingTokens,
+		synthesizeThinkingRaw: cfg.SynthesizeThinkingRaw,
 	}, nil
 }
 
@@ -55,7 +57,7 @@ func NewElevenLabsAgent(textAI TextAI, options ...Option) (*Agent, error) {
 }
 
 // NewAgentWithProvider creates a voice agent with a custom speech provider.
-func NewAgentWithProvider(textAI TextAI, providerName Provider, speechProvider SpeechProvider) (*Agent, error) {
+func NewAgentWithProvider(textAI TextAI, providerName Provider, speechProvider SpeechProvider, options ...Option) (*Agent, error) {
 	if textAI == nil {
 		return nil, errors.New("textAI is required")
 	}
@@ -63,11 +65,20 @@ func NewAgentWithProvider(textAI TextAI, providerName Provider, speechProvider S
 		return nil, errors.New("speechProvider is required")
 	}
 
+	cfg := defaultConfig()
+	for _, option := range options {
+		if option != nil {
+			option(&cfg)
+		}
+	}
+
 	return &Agent{
-		provider: providerName,
-		textAI:   textAI,
-		speech:   speechProvider,
-		now:      time.Now,
+		provider:              providerName,
+		textAI:                textAI,
+		speech:                speechProvider,
+		now:                   time.Now,
+		stripThinkingTokens:   cfg.StripThinkingTokens,
+		synthesizeThinkingRaw: cfg.SynthesizeThinkingRaw,
 	}, nil
 }
 
@@ -106,9 +117,9 @@ func (a *Agent) Synthesize(ctx context.Context, req SynthesizeRequest) (*Synthes
 }
 
 // Converse runs one voice turn:
-//  1. STT (unless UserText is provided)
+//  1. STT (unless UserText is provided or DisableTranscription is true)
 //  2. Text completion through textAI
-//  3. TTS (unless SkipSynthesis is true)
+//  3. TTS (unless DisableSynthesis/SkipSynthesis is true)
 func (a *Agent) Converse(ctx context.Context, req ConverseRequest) (*ConverseResponse, error) {
 	if a == nil {
 		return nil, errors.New("voice agent is nil")
@@ -120,7 +131,11 @@ func (a *Agent) Converse(ctx context.Context, req ConverseRequest) (*ConverseRes
 	}
 
 	transcript := strings.TrimSpace(req.UserText)
-	if transcript == "" {
+	if req.DisableTranscription {
+		if transcript == "" {
+			return nil, errors.New("user text is required when transcription is disabled")
+		}
+	} else if transcript == "" {
 		trReq := req.TranscribeRequest
 		if len(trReq.Audio) == 0 && len(req.Audio) > 0 {
 			trReq.Audio = req.Audio
@@ -150,23 +165,47 @@ func (a *Agent) Converse(ctx context.Context, req ConverseRequest) (*ConverseRes
 		}, err
 	}
 
-	if textResponse != nil && textResponse.AIResponse != "" {
-		history.Messages = append(history.Messages, a.newMessage(models.Assistant, textResponse.AIResponse))
+	rawAssistantText := ""
+	assistantText := ""
+	resultTextResponse := textResponse
+	if textResponse != nil {
+		rawAssistantText = strings.TrimSpace(textResponse.AIResponse)
+		assistantText = rawAssistantText
+		if a.stripThinkingTokens {
+			assistantText = stripThinkingTokens(rawAssistantText)
+		}
+
+		if assistantText != textResponse.AIResponse {
+			cloned := *textResponse
+			cloned.AIResponse = assistantText
+			resultTextResponse = &cloned
+		}
+	}
+
+	if assistantText != "" {
+		history.Messages = append(history.Messages, a.newMessage(models.Assistant, assistantText))
 	}
 
 	result := &ConverseResponse{
 		Transcript:   transcript,
-		TextResponse: textResponse,
+		TextResponse: resultTextResponse,
 		History:      history,
 	}
 
-	if req.SkipSynthesis || textResponse == nil || strings.TrimSpace(textResponse.AIResponse) == "" {
+	if req.SkipSynthesis || req.DisableSynthesis || resultTextResponse == nil {
 		return result, nil
 	}
 
 	ttsReq := req.SynthesizeRequest
 	if strings.TrimSpace(ttsReq.Text) == "" {
-		ttsReq.Text = textResponse.AIResponse
+		if a.synthesizeThinkingRaw && rawAssistantText != "" {
+			ttsReq.Text = rawAssistantText
+		} else {
+			ttsReq.Text = assistantText
+		}
+	}
+	if strings.TrimSpace(ttsReq.Text) == "" {
+		return result, nil
 	}
 
 	ttsResponse, err := a.Synthesize(ctx, ttsReq)

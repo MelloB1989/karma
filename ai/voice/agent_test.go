@@ -181,6 +181,166 @@ func TestConverse_SkipSynthesis(t *testing.T) {
 	}
 }
 
+func TestConverse_DisableTranscriptionRequiresText(t *testing.T) {
+	textAI := &fakeTextAI{}
+	speech := &fakeSpeechProvider{}
+	agent, err := NewAgentWithProvider(textAI, ProviderOpenAI, speech)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+
+	_, err = agent.Converse(context.Background(), ConverseRequest{
+		DisableTranscription: true,
+	})
+	if err == nil {
+		t.Fatal("expected error when transcription is disabled without user text")
+	}
+}
+
+func TestConverse_DisableTranscriptionUsesUserText(t *testing.T) {
+	textAI := &fakeTextAI{
+		response: &models.AIChatResponse{AIResponse: "assistant reply"},
+	}
+	speech := &fakeSpeechProvider{}
+	agent, err := NewAgentWithProvider(textAI, ProviderOpenAI, speech)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+
+	resp, err := agent.Converse(context.Background(), ConverseRequest{
+		UserText:             "typed input",
+		DisableTranscription: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Transcript != "typed input" {
+		t.Fatalf("unexpected transcript: %q", resp.Transcript)
+	}
+	if speech.transcribeCalls != 0 {
+		t.Fatalf("expected transcribe to be skipped")
+	}
+}
+
+func TestConverse_DisableSynthesis(t *testing.T) {
+	textAI := &fakeTextAI{
+		response: &models.AIChatResponse{AIResponse: "assistant reply"},
+	}
+	speech := &fakeSpeechProvider{}
+	agent, err := NewAgentWithProvider(textAI, ProviderOpenAI, speech)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+
+	resp, err := agent.Converse(context.Background(), ConverseRequest{
+		UserText:         "hello",
+		DisableSynthesis: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.TextResponse == nil {
+		t.Fatal("expected text response")
+	}
+	if speech.synthesizeCalls != 0 {
+		t.Fatalf("synthesize should not be called when DisableSynthesis is true")
+	}
+}
+
+func TestConverse_StripsThinkingTokensByDefault(t *testing.T) {
+	textAI := &fakeTextAI{
+		response: &models.AIChatResponse{
+			AIResponse: "<think>internal chain</think>final answer",
+		},
+	}
+	speech := &fakeSpeechProvider{}
+	agent, err := NewAgentWithProvider(textAI, ProviderOpenAI, speech)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+
+	resp, err := agent.Converse(context.Background(), ConverseRequest{
+		UserText: "hello",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.TextResponse == nil {
+		t.Fatal("expected text response")
+	}
+	if resp.TextResponse.AIResponse != "final answer" {
+		t.Fatalf("unexpected cleaned response: %q", resp.TextResponse.AIResponse)
+	}
+	if speech.lastSynthesizeReq.Text != "final answer" {
+		t.Fatalf("expected cleaned text to be synthesized, got %q", speech.lastSynthesizeReq.Text)
+	}
+}
+
+func TestConverse_CanSynthesizeThinkingTokens(t *testing.T) {
+	textAI := &fakeTextAI{
+		response: &models.AIChatResponse{
+			AIResponse: "<think>internal chain</think>final answer",
+		},
+	}
+	speech := &fakeSpeechProvider{}
+	agent, err := NewAgentWithProvider(
+		textAI,
+		ProviderOpenAI,
+		speech,
+		WithSynthesizeThinkingTokens(true),
+	)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+
+	resp, err := agent.Converse(context.Background(), ConverseRequest{
+		UserText: "hello",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.TextResponse == nil {
+		t.Fatal("expected text response")
+	}
+	if resp.TextResponse.AIResponse != "final answer" {
+		t.Fatalf("unexpected cleaned response: %q", resp.TextResponse.AIResponse)
+	}
+	if speech.lastSynthesizeReq.Text != "<think>internal chain</think>final answer" {
+		t.Fatalf("expected raw text to be synthesized, got %q", speech.lastSynthesizeReq.Text)
+	}
+}
+
+func TestConverse_CanKeepThinkingTokensInText(t *testing.T) {
+	textAI := &fakeTextAI{
+		response: &models.AIChatResponse{
+			AIResponse: "<think>internal chain</think>final answer",
+		},
+	}
+	speech := &fakeSpeechProvider{}
+	agent, err := NewAgentWithProvider(
+		textAI,
+		ProviderOpenAI,
+		speech,
+		WithStripThinkingTokens(false),
+	)
+	if err != nil {
+		t.Fatalf("failed to create agent: %v", err)
+	}
+
+	resp, err := agent.Converse(context.Background(), ConverseRequest{
+		UserText: "hello",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.TextResponse == nil {
+		t.Fatal("expected text response")
+	}
+	if resp.TextResponse.AIResponse != "<think>internal chain</think>final answer" {
+		t.Fatalf("expected raw response, got %q", resp.TextResponse.AIResponse)
+	}
+}
+
 func TestConverse_ReturnsPartialOnTextAIError(t *testing.T) {
 	textAI := &fakeTextAI{err: errors.New("text failure")}
 	speech := &fakeSpeechProvider{transcribeResponse: &TranscribeResponse{Text: "hello"}}

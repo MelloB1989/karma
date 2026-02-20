@@ -59,8 +59,9 @@ func main() {
 
 // session holds per-connection state.
 type session struct {
-	mu      sync.Mutex
-	history *models.AIChatHistory
+	mu         sync.Mutex
+	history    *models.AIChatHistory
+	ttsEnabled bool
 }
 
 func (s *session) getHistory() *models.AIChatHistory {
@@ -79,6 +80,18 @@ func (s *session) resetHistory() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.history = &models.AIChatHistory{}
+}
+
+func (s *session) isTTSEnabled() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ttsEnabled
+}
+
+func (s *session) setTTSEnabled(enabled bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ttsEnabled = enabled
 }
 
 func handleVoiceWS(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +132,10 @@ func handleVoiceWS(w http.ResponseWriter, r *http.Request) {
 		runtime.transcribeRequest.Language,
 	)
 
-	sess := &session{history: &models.AIChatHistory{}}
+	sess := &session{
+		history:    &models.AIChatHistory{},
+		ttsEnabled: true,
+	}
 
 	// We declare `handler` before the closure so the closure can reference it
 	// by the time Run() calls it (handler is guaranteed non-nil at that point).
@@ -129,7 +145,7 @@ func handleVoiceWS(w http.ResponseWriter, r *http.Request) {
 		voice.WithWSMessageHandler(func(ctx context.Context, msg voice.WSMessage) error {
 			// ── JSON control messages ──────────────────────────────────
 			if msg.JSON != nil {
-				return handleControlMessage(ctx, handler, sess, msg.JSON)
+				return handleControlMessage(ctx, handler, runtime, sess, msg.JSON)
 			}
 
 			// ── Binary audio payload ───────────────────────────────────
@@ -139,53 +155,11 @@ func handleVoiceWS(w http.ResponseWriter, r *http.Request) {
 
 			log.Printf("[session] received %d bytes of audio", len(msg.Data))
 
-			// Tell the client we are working on it.
-			if sendErr := handler.SendJSON(ctx, map[string]any{
-				"event": "processing",
-			}); sendErr != nil {
-				return sendErr
-			}
-
-			resp, err := runtime.agent.Converse(ctx, voice.ConverseRequest{
-				History:           sess.getHistory(),
+			return runTurn(ctx, handler, runtime, sess, voice.ConverseRequest{
 				Audio:             msg.Data,
 				TranscribeRequest: runtime.transcribeRequest,
+				DisableSynthesis:  !sess.isTTSEnabled(),
 			})
-			if err != nil {
-				if isNoSpeechError(err) {
-					log.Printf("[session] no speech detected: %v", err)
-					return handler.SendJSON(ctx, map[string]any{
-						"event":   "no_speech",
-						"message": "No speech detected. Please try again.",
-					})
-				}
-				log.Printf("[session] Converse error: %v", err)
-				return handler.SendJSON(ctx, map[string]any{
-					"event":   "error",
-					"message": err.Error(),
-				})
-			}
-
-			// Persist the updated history for the next turn.
-			sess.setHistory(resp.History)
-
-			aiText := ""
-			if resp.TextResponse != nil {
-				aiText = resp.TextResponse.AIResponse
-			}
-
-			payload := map[string]any{
-				"event":      "response",
-				"transcript": resp.Transcript,
-				"text":       aiText,
-				"audio":      base64.StdEncoding.EncodeToString(resp.Audio),
-				"format":     resp.AudioFormat,
-			}
-
-			log.Printf("[session] transcript=%q reply=%q audio=%d bytes",
-				resp.Transcript, aiText, len(resp.Audio))
-
-			return handler.SendJSON(ctx, payload)
 		}),
 
 		voice.WithWSCloseHandler(func(code int, text string) error {
@@ -205,6 +179,7 @@ func handleVoiceWS(w http.ResponseWriter, r *http.Request) {
 		"event":              "ready",
 		"provider":           runtime.provider,
 		"input_audio_format": runtime.inputAudioFormat,
+		"tts_enabled":        sess.isTTSEnabled(),
 	}); err != nil {
 		log.Printf("Failed to send ready event: %v", err)
 		return
@@ -285,10 +260,67 @@ func buildVoiceRuntime(textAI voice.TextAI) (*voiceRuntime, error) {
 	}
 }
 
+func runTurn(
+	ctx context.Context,
+	handler *voice.WebSocketHandler,
+	runtime *voiceRuntime,
+	sess *session,
+	req voice.ConverseRequest,
+) error {
+	if req.History == nil {
+		req.History = sess.getHistory()
+	}
+
+	// Tell the client we are working on it.
+	if sendErr := handler.SendJSON(ctx, map[string]any{
+		"event": "processing",
+	}); sendErr != nil {
+		return sendErr
+	}
+
+	resp, err := runtime.agent.Converse(ctx, req)
+	if err != nil {
+		if isNoSpeechError(err) {
+			log.Printf("[session] no speech detected: %v", err)
+			return handler.SendJSON(ctx, map[string]any{
+				"event":   "no_speech",
+				"message": "No speech detected. Please try again.",
+			})
+		}
+		log.Printf("[session] Converse error: %v", err)
+		return handler.SendJSON(ctx, map[string]any{
+			"event":   "error",
+			"message": err.Error(),
+		})
+	}
+
+	// Persist the updated history for the next turn.
+	sess.setHistory(resp.History)
+
+	aiText := ""
+	if resp.TextResponse != nil {
+		aiText = resp.TextResponse.AIResponse
+	}
+
+	payload := map[string]any{
+		"event":      "response",
+		"transcript": resp.Transcript,
+		"text":       aiText,
+		"audio":      base64.StdEncoding.EncodeToString(resp.Audio),
+		"format":     resp.AudioFormat,
+	}
+
+	log.Printf("[session] transcript=%q reply=%q audio=%d bytes",
+		resp.Transcript, aiText, len(resp.Audio))
+
+	return handler.SendJSON(ctx, payload)
+}
+
 // handleControlMessage processes JSON control frames sent by the client.
 func handleControlMessage(
 	ctx context.Context,
 	handler *voice.WebSocketHandler,
+	runtime *voiceRuntime,
 	sess *session,
 	payload map[string]any,
 ) error {
@@ -301,6 +333,34 @@ func handleControlMessage(
 		sess.resetHistory()
 		log.Printf("[session] conversation history reset")
 		return handler.SendJSON(ctx, map[string]any{"event": "reset_ok"})
+
+	case "set_tts":
+		enabled, ok := asBool(payload["enabled"])
+		if !ok {
+			return handler.SendJSON(ctx, map[string]any{
+				"event":   "error",
+				"message": "set_tts requires boolean field 'enabled'",
+			})
+		}
+		sess.setTTSEnabled(enabled)
+		return handler.SendJSON(ctx, map[string]any{
+			"event":       "tts_updated",
+			"tts_enabled": enabled,
+		})
+
+	case "text_input":
+		text := strings.TrimSpace(asString(payload["text"]))
+		if text == "" {
+			return handler.SendJSON(ctx, map[string]any{
+				"event":   "error",
+				"message": "text_input requires non-empty 'text'",
+			})
+		}
+		return runTurn(ctx, handler, runtime, sess, voice.ConverseRequest{
+			UserText:             text,
+			DisableTranscription: true,
+			DisableSynthesis:     !sess.isTTSEnabled(),
+		})
 
 	default:
 		log.Printf("[session] unknown control event: %q", event)
@@ -318,4 +378,26 @@ func isNoSpeechError(err error) bool {
 		strings.Contains(msg, "empty committed transcript") ||
 		strings.Contains(msg, "commit_throttled") ||
 		strings.Contains(msg, "uncommitted audio")
+}
+
+func asBool(v any) (bool, bool) {
+	switch t := v.(type) {
+	case bool:
+		return t, true
+	case string:
+		switch strings.ToLower(strings.TrimSpace(t)) {
+		case "true", "1", "yes", "on":
+			return true, true
+		case "false", "0", "no", "off":
+			return false, true
+		}
+	}
+	return false, false
+}
+
+func asString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
 }

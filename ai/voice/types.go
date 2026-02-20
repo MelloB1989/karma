@@ -38,6 +38,9 @@ type Agent struct {
 	textAI   TextAI
 	speech   SpeechProvider
 	now      func() time.Time
+
+	stripThinkingTokens   bool
+	synthesizeThinkingRaw bool
 }
 
 // Config configures all provider clients.
@@ -46,6 +49,13 @@ type Config struct {
 	OpenAI     OpenAIConfig
 	Together   TogetherConfig
 	ElevenLabs ElevenLabsConfig
+
+	// StripThinkingTokens removes <think>...</think> blocks from AI text before
+	// history/update output by default.
+	StripThinkingTokens bool
+	// SynthesizeThinkingRaw controls whether TTS should use raw model output
+	// (including <think>...</think>) when available.
+	SynthesizeThinkingRaw bool
 }
 
 // OpenAIConfig configures the OpenAI speech provider.
@@ -135,7 +145,13 @@ type ConverseRequest struct {
 	UserText          string
 	TranscribeRequest TranscribeRequest
 	SynthesizeRequest SynthesizeRequest
-	SkipSynthesis     bool
+
+	// DisableTranscription skips STT and requires UserText.
+	DisableTranscription bool
+	// DisableSynthesis skips TTS and returns text-only output.
+	DisableSynthesis bool
+	// SkipSynthesis is a backward-compatible alias for DisableSynthesis.
+	SkipSynthesis bool
 }
 
 // ConverseResponse returns transcript, text, and optional synthesized audio.
