@@ -42,6 +42,24 @@ func defaultConfig() Config {
 			STTLanguageCode:            config.GetEnvRaw("KARMA_VOICE_ELEVENLABS_STT_LANGUAGE"),
 			ReadTimeout:                60 * time.Second,
 		},
+		Vapi: VapiConfig{
+			APIKey:              config.GetEnvRaw("VAPI_API_KEY"),
+			BaseURL:             config.GetEnvRaw("VAPI_BASE_URL"),
+			AssistantID:         config.GetEnvRaw("VAPI_ASSISTANT_ID"),
+			PhoneNumberID:       config.GetEnvRaw("VAPI_PHONE_NUMBER_ID"),
+			AssistantName:       config.GetEnvRaw("KARMA_VOICE_VAPI_ASSISTANT_NAME"),
+			FirstMessage:        config.GetEnvRaw("KARMA_VOICE_VAPI_FIRST_MESSAGE"),
+			SystemPrompt:        config.GetEnvRaw("KARMA_VOICE_VAPI_SYSTEM_PROMPT"),
+			ModelProvider:       firstNonEmpty(config.GetEnvRaw("KARMA_VOICE_VAPI_MODEL_PROVIDER"), "openai"),
+			Model:               firstNonEmpty(config.GetEnvRaw("KARMA_VOICE_VAPI_MODEL"), "gpt-4o"),
+			VoiceProvider:       config.GetEnvRaw("KARMA_VOICE_VAPI_VOICE_PROVIDER"),
+			VoiceID:             config.GetEnvRaw("KARMA_VOICE_VAPI_VOICE_ID"),
+			VoiceModel:          config.GetEnvRaw("KARMA_VOICE_VAPI_VOICE_MODEL"),
+			TranscriberProvider: config.GetEnvRaw("KARMA_VOICE_VAPI_TRANSCRIBER_PROVIDER"),
+			TranscriberModel:    config.GetEnvRaw("KARMA_VOICE_VAPI_TRANSCRIBER_MODEL"),
+			TranscriberLanguage: config.GetEnvRaw("KARMA_VOICE_VAPI_TRANSCRIBER_LANGUAGE"),
+			ServerURL:           config.GetEnvRaw("KARMA_VOICE_VAPI_SERVER_URL"),
+		},
 	}
 }
 
@@ -230,5 +248,19 @@ func WithElevenLabsConfig(cfg ElevenLabsConfig) Option {
 		if cfg.ReadTimeout > 0 {
 			c.ElevenLabs.ReadTimeout = cfg.ReadTimeout
 		}
+	}
+}
+
+// WithVapiAPIKey overrides Vapi API key.
+func WithVapiAPIKey(apiKey string) Option {
+	return func(c *Config) {
+		c.Vapi.APIKey = apiKey
+	}
+}
+
+// WithVapiConfig merges Vapi call-agent config.
+func WithVapiConfig(cfg VapiConfig) Option {
+	return func(c *Config) {
+		mergeVapiConfig(&c.Vapi, cfg)
 	}
 }

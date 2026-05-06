@@ -6,6 +6,7 @@ toolchain go1.24.10
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/VapiAI/server-sdk-go v1.1.0
 	github.com/anthropics/anthropic-sdk-go v1.4.0
 	github.com/aws/aws-sdk-go v1.55.5
 	github.com/aws/aws-sdk-go-v2 v1.36.3

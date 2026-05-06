@@ -8,13 +8,14 @@ import (
 	"github.com/MelloB1989/karma/models"
 )
 
-// Provider represents a voice backend for STT and TTS.
+// Provider represents a voice backend.
 type Provider string
 
 const (
 	ProviderOpenAI     Provider = "openai"
 	ProviderTogether   Provider = "together"
 	ProviderElevenLabs Provider = "elevenlabs"
+	ProviderVapi       Provider = "vapi"
 )
 
 // TextAI is the text reasoning interface used by the voice agent.
@@ -49,6 +50,7 @@ type Config struct {
 	OpenAI     OpenAIConfig
 	Together   TogetherConfig
 	ElevenLabs ElevenLabsConfig
+	Vapi       VapiConfig
 
 	// StripThinkingTokens removes <think>...</think> blocks from AI text before
 	// history/update output by default.

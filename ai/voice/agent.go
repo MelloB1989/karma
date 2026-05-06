@@ -90,6 +90,8 @@ func newBuiltInSpeechProvider(provider Provider, cfg Config) (SpeechProvider, er
 		return newTogetherSpeechProvider(cfg.Together, cfg.HTTPClient)
 	case ProviderElevenLabs:
 		return newElevenLabsProvider(cfg.ElevenLabs, cfg.HTTPClient)
+	case ProviderVapi:
+		return nil, errors.New("vapi is a call agent provider; use NewVapiAgent instead of NewAgent")
 	default:
 		return nil, fmt.Errorf("unsupported voice provider: %s", provider)
 	}

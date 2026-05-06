@@ -5,12 +5,15 @@
 - Text reasoning still goes through your configured `ai.KarmaAI` instance.
 - MCP, Go function tools, analytics, and provider/model behavior stay intact.
 - Only speech I/O (STT + TTS) is provider-specific.
+- Vapi is exposed separately as a call agent because Vapi owns STT, LLM, and
+  TTS inside the call.
 
 ## Providers
 
 - `openai` (SDK: `github.com/openai/openai-go/v3`)
 - `together` (SDK: `github.com/togethercomputer/together-go`)
 - `elevenlabs` (WebSocket APIs)
+- `vapi` (SDK: `github.com/VapiAI/server-sdk-go`, call agent only)
 
 ## Quick Start
 
@@ -109,11 +112,42 @@ _ = handler.SendJSON(ctx, map[string]any{"event": "ready"})
 _ = handler.Run(ctx)
 ```
 
+## Vapi Call Agent
+
+Vapi should not be used with `NewAgent`, `Transcribe`, or `Synthesize`.
+Use `NewVapiAgent` to create Vapi assistants and start calls:
+
+```go
+temperature := 0.7
+agent, _ := voice.NewVapiAgent(
+    voice.WithVapiConfig(voice.VapiConfig{
+        SystemPrompt:  "You are a helpful support agent. Keep replies short.",
+        ModelProvider: "openai",
+        Model:         "gpt-4o",
+        Temperature:   &temperature,
+        VoiceProvider: "11labs",
+        VoiceID:       "21m00Tcm4TlvDq8ikWAM",
+        PhoneNumberID: "vapi-phone-number-id",
+    }),
+)
+
+call, _ := agent.CreateOutboundCall(ctx, voice.VapiCallRequest{
+    CustomerNumber: "+1234567890",
+    UseTransient:  true, // sends the configured assistant inline for this call
+})
+_ = call
+```
+
+For stable assistants, call `CreateAssistant` once, store its ID, and reuse it
+with `VapiConfig.AssistantID` or `VapiCallRequest.AssistantID`.
+
 ## Environment Defaults
 
 - OpenAI: `OPENAI_API_KEY` (fallback `OPENAI_KEY`)
 - Together: `TOGETHER_API_KEY`
 - ElevenLabs: `ELEVENLABS_API_KEY`
+- Vapi: `VAPI_API_KEY`
 
 Optional defaults can be customized with `voice.WithOpenAIConfig`,
-`voice.WithTogetherConfig`, and `voice.WithElevenLabsConfig`.
+`voice.WithTogetherConfig`, `voice.WithElevenLabsConfig`, and
+`voice.WithVapiConfig`.
