@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
+	"sync"
 
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
@@ -64,7 +66,6 @@ func DefaultConfig() *Config {
 	if err != nil {
 		sugar.Error("unable to load .env")
 	}
-	// sugar.Info("loaded .env file")
 
 	return &Config{
 		Port:                 os.Getenv("PORT"),
@@ -133,81 +134,6 @@ func DefaultConfig() *Config {
 	}
 }
 
-/*
-* Example usage:
-package main
-
-import (
-	"fmt"
-	"github.com/MelloB1989/karma/config"
-)
-
-func main() {
-	fmt.Println("Default Config:", config.DefaultConfig().Port)
-}
-*/
-
-// If you want to use a custom configuration, you can use the CustomConfig function.
-func CustomConfig(cfg interface{}) error {
-	err := godotenv.Load()
-	logger, _ := zap.NewProduction()
-	defer logger.Sync()
-	sugar := logger.Sugar()
-	if err != nil {
-		sugar.Error("unable to load .env")
-	}
-	// sugar.Info("loaded .env file")
-
-	v := reflect.ValueOf(cfg)
-	if v.Kind() != reflect.Ptr || v.Elem().Kind() != reflect.Struct {
-		return fmt.Errorf("CustomConfig: expected a pointer to a struct, got %T", cfg)
-	}
-
-	v = v.Elem()
-	t := v.Type()
-
-	for i := 0; i < v.NumField(); i++ {
-		field := t.Field(i)
-		envVar := field.Tag.Get("env")
-		if envVar == "" {
-			envVar = field.Name
-		}
-		value := os.Getenv(envVar)
-		if value != "" {
-			v.Field(i).SetString(value)
-		}
-	}
-
-	return nil
-}
-
-/*
-* Example usage:
-package main
-
-import (
-
-	"fmt"
-	"github.com/MelloB1989/karma/config"
-
-)
-
-	type MyCustomConfig struct {
-		AppName     string `env:"APP_NAME"`
-		CustomField string `env:"CUSTOM_FIELD"`
-		DatabaseURL string `env:"DATABASE_URL"`
-	}
-
-	func main() {
-		customConfig := &MyCustomConfig{}
-		err := config.CustomConfig(customConfig)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Custom Config:", customConfig)
-	}
-*/
 func GetEnv(key string) (string, error) {
 	err := godotenv.Load()
 	logger, _ := zap.NewProduction()
@@ -236,3 +162,361 @@ func GetEnvRaw(key string) string {
 	}
 	return value
 }
+
+// AppConfig is the generic singleton wrapper around any user-defined config struct.
+// T must be a pointer to a struct.
+type AppConfig[T any] struct {
+	mu       sync.RWMutex
+	instance T
+	loaded   bool
+	optional map[string]bool   // field names that are optional
+	defaults map[string]string // field name -> default value
+}
+
+var (
+	// globalInstances stores one *AppConfig per concrete struct type name.
+	globalInstances   = map[string]any{}
+	globalInstancesMu sync.RWMutex
+)
+
+// NewAppConfig creates (or returns the existing) singleton AppConfig for type T.
+// Call this once at startup (e.g., in init() or main()).
+//
+//	type MyConfig struct {
+//	    AppName  string `env:"APP_NAME"`
+//	    Debug    string `env:"DEBUG"    optional:"true"  default:"false"`
+//	    DBUrl    string `env:"DATABASE_URL"`
+//	}
+//
+//	var Cfg = config.NewAppConfig[*MyConfig]()
+func NewAppConfig[T any]() *AppConfig[T] {
+	var zero T
+	typeName := fmt.Sprintf("%T", zero)
+
+	globalInstancesMu.Lock()
+	defer globalInstancesMu.Unlock()
+
+	if existing, ok := globalInstances[typeName]; ok {
+		return existing.(*AppConfig[T])
+	}
+
+	ac := &AppConfig[T]{
+		optional: make(map[string]bool),
+		defaults: make(map[string]string),
+	}
+	globalInstances[typeName] = ac
+	return ac
+}
+
+// Load reads environment variables into T.
+// It respects `env`, `optional`, and `default` struct tags.
+// Fields tagged `optional:"true"` are not required to be present.
+// Fields tagged `default:"value"` get that value when the env var is empty.
+//
+// Load is idempotent — calling it again reloads values from the environment.
+func (ac *AppConfig[T]) Load() error {
+	if err := godotenv.Load(); err != nil {
+		// Non-fatal: variables may already be in the environment.
+		logger, _ := zap.NewProduction()
+		defer logger.Sync()
+		logger.Warn("unable to load .env file", zap.Error(err))
+	}
+
+	var zero T
+	rv := reflect.ValueOf(zero)
+	if rv.Kind() != reflect.Ptr {
+		return fmt.Errorf("AppConfig: T must be a pointer to a struct, got %T", zero)
+	}
+
+	// Allocate a new concrete value of T's elem type.
+	elem := reflect.New(rv.Type().Elem())
+	v := elem.Elem()
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		fv := v.Field(i)
+
+		// Only handle string fields.
+		if fv.Kind() != reflect.String {
+			continue
+		}
+
+		envKey := field.Tag.Get("env")
+		if envKey == "" {
+			envKey = field.Name
+		}
+
+		isOptional := field.Tag.Get("optional") == "true"
+		defaultVal := field.Tag.Get("default")
+
+		// Merge with programmatic optional/default registrations.
+		if ac.optional[field.Name] {
+			isOptional = true
+		}
+		if d, ok := ac.defaults[field.Name]; ok {
+			defaultVal = d
+		}
+
+		value := os.Getenv(envKey)
+		if value == "" {
+			value = defaultVal
+		}
+
+		fv.SetString(value)
+
+		// Track optional status derived from tags for Validate().
+		if isOptional {
+			ac.optional[field.Name] = true
+		}
+	}
+
+	ac.mu.Lock()
+	ac.instance = elem.Interface().(T)
+	ac.loaded = true
+	ac.mu.Unlock()
+
+	return nil
+}
+
+// MustLoad calls Load and panics on error. Useful for fail-fast startup.
+func (ac *AppConfig[T]) MustLoad() *AppConfig[T] {
+	if err := ac.Load(); err != nil {
+		panic(fmt.Sprintf("config: failed to load: %v", err))
+	}
+	return ac
+}
+
+// Get returns the loaded config instance.
+// Panics if Load has not been called yet.
+func (ac *AppConfig[T]) Get() T {
+	ac.mu.RLock()
+	defer ac.mu.RUnlock()
+	if !ac.loaded {
+		panic("config: Get() called before Load(). Call MustLoad() or Load() first.")
+	}
+	return ac.instance
+}
+
+// GetField returns the string value of a named field.
+// Returns ("", false) if the field does not exist or is not a string.
+func (ac *AppConfig[T]) GetField(fieldName string) (string, bool) {
+	ac.mu.RLock()
+	defer ac.mu.RUnlock()
+
+	v := reflect.ValueOf(ac.instance)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	f := v.FieldByName(fieldName)
+	if !f.IsValid() || f.Kind() != reflect.String {
+		return "", false
+	}
+	return f.String(), true
+}
+
+// MustGetField returns the value of a named field or panics if missing/empty.
+func (ac *AppConfig[T]) MustGetField(fieldName string) string {
+	val, ok := ac.GetField(fieldName)
+	if !ok || val == "" {
+		panic(fmt.Sprintf("config: required field %q is missing or empty", fieldName))
+	}
+	return val
+}
+
+// SetOptional marks field names as optional so Validate() does not flag them.
+//
+//	cfg.SetOptional("Debug", "FeatureFlag")
+func (ac *AppConfig[T]) SetOptional(fieldNames ...string) *AppConfig[T] {
+	ac.mu.Lock()
+	defer ac.mu.Unlock()
+	for _, name := range fieldNames {
+		ac.optional[name] = true
+	}
+	return ac
+}
+
+// SetDefault registers a fallback value for a field used during the next Load().
+//
+//	cfg.SetDefault("LogLevel", "info").SetDefault("Port", "8080")
+func (ac *AppConfig[T]) SetDefault(fieldName, value string) *AppConfig[T] {
+	ac.mu.Lock()
+	defer ac.mu.Unlock()
+	ac.defaults[fieldName] = value
+	return ac
+}
+
+// Validate checks that all non-optional string fields are non-empty.
+// Returns a descriptive error listing every missing field.
+func (ac *AppConfig[T]) Validate() error {
+	ac.mu.RLock()
+	defer ac.mu.RUnlock()
+
+	if !ac.loaded {
+		return fmt.Errorf("config: Validate() called before Load()")
+	}
+
+	v := reflect.ValueOf(ac.instance)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	t := v.Type()
+
+	var missing []string
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		fv := v.Field(i)
+
+		if fv.Kind() != reflect.String {
+			continue
+		}
+
+		isOptional := ac.optional[field.Name] ||
+			field.Tag.Get("optional") == "true"
+
+		if !isOptional && fv.String() == "" {
+			envKey := field.Tag.Get("env")
+			if envKey == "" {
+				envKey = field.Name
+			}
+			missing = append(missing, fmt.Sprintf("%s (env: %s)", field.Name, envKey))
+		}
+	}
+
+	if len(missing) > 0 {
+		return fmt.Errorf("config: missing required fields:\n  - %s",
+			strings.Join(missing, "\n  - "))
+	}
+	return nil
+}
+
+// MustValidate calls Validate and panics on error.
+func (ac *AppConfig[T]) MustValidate() *AppConfig[T] {
+	if err := ac.Validate(); err != nil {
+		panic(err.Error())
+	}
+	return ac
+}
+
+// Missing returns the names of all non-optional empty fields, or nil if all present.
+func (ac *AppConfig[T]) Missing() []string {
+	ac.mu.RLock()
+	defer ac.mu.RUnlock()
+
+	if !ac.loaded {
+		return nil
+	}
+
+	v := reflect.ValueOf(ac.instance)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	t := v.Type()
+
+	var out []string
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		fv := v.Field(i)
+		if fv.Kind() != reflect.String {
+			continue
+		}
+		isOptional := ac.optional[field.Name] || field.Tag.Get("optional") == "true"
+		if !isOptional && fv.String() == "" {
+			out = append(out, field.Name)
+		}
+	}
+	return out
+}
+
+// IsLoaded reports whether Load has been called at least once.
+func (ac *AppConfig[T]) IsLoaded() bool {
+	ac.mu.RLock()
+	defer ac.mu.RUnlock()
+	return ac.loaded
+}
+
+// Override sets a field's value at runtime without reloading from the environment.
+// Useful in tests or for dynamic overrides.
+func (ac *AppConfig[T]) Override(fieldName, value string) error {
+	ac.mu.Lock()
+	defer ac.mu.Unlock()
+
+	v := reflect.ValueOf(ac.instance)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	} else {
+		// For pointer types we need addressability; rebuild through pointer.
+		ptr := reflect.New(v.Type())
+		ptr.Elem().Set(v)
+		v = ptr.Elem()
+	}
+
+	f := v.FieldByName(fieldName)
+	if !f.IsValid() {
+		return fmt.Errorf("config: field %q not found", fieldName)
+	}
+	if f.Kind() != reflect.String {
+		return fmt.Errorf("config: field %q is not a string", fieldName)
+	}
+	if !f.CanSet() {
+		return fmt.Errorf("config: field %q is not settable", fieldName)
+	}
+	f.SetString(value)
+	return nil
+}
+
+/*
+──────────────────────────────────────────────────────────────────────────────
+USAGE GUIDE
+──────────────────────────────────────────────────────────────────────────────
+
+1. Define your config struct with tags:
+
+	type MyConfig struct {
+	    AppName  string `env:"APP_NAME"`
+	    Port     string `env:"PORT"      default:"8080"  optional:"true"`
+	    DBUrl    string `env:"DATABASE_URL"`
+	    Debug    string `env:"DEBUG"     optional:"true" default:"false"`
+	    LogLevel string `env:"LOG_LEVEL" optional:"true" default:"info"`
+	    Secret   string `env:"JWT_SECRET"`
+	}
+
+2. Declare a package-level singleton (one per config type):
+
+	// config/app.go  (or anywhere in your package)
+	var AppCfg = config.NewAppConfig[*MyConfig]().
+	    SetDefault("Port", "9090").   // programmatic defaults (override tags)
+	    SetOptional("Debug").         // programmatic optional marking
+	    MustLoad().                   // load + panic on error
+	    MustValidate()                // validate + panic on missing required fields
+
+3. Access from anywhere in your app — no re-initialisation needed:
+
+	func main() {
+	    db := connectDB(AppCfg.Get().DBUrl)
+	    port := AppCfg.Get().Port
+
+	    // Or by field name (useful for dynamic lookups):
+	    secret, ok := AppCfg.GetField("Secret")
+	    _ = AppCfg.MustGetField("AppName") // panics if empty
+	}
+
+4. Validate at startup:
+
+	if err := AppCfg.Validate(); err != nil {
+	    log.Fatal(err)
+	}
+	// or use MustValidate() to panic immediately.
+
+5. Check what's missing without erroring:
+
+	if missing := AppCfg.Missing(); len(missing) > 0 {
+	    log.Printf("optional fields not set: %v", missing)
+	}
+
+6. Override in tests without touching .env:
+
+	AppCfg.Override("Secret", "test-secret")
+
+──────────────────────────────────────────────────────────────────────────────
+*/
