@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/config"
@@ -20,10 +21,11 @@ type CompatibleOptions struct {
 }
 
 func createClient(opts ...CompatibleOptions) openai.Client {
+	timeout := option.WithRequestTimeout(60 * time.Second)
 	if len(opts) > 0 {
-		return openai.NewClient(option.WithAPIKey(opts[0].API_Key), option.WithBaseURL(opts[0].BaseURL))
+		return openai.NewClient(option.WithAPIKey(opts[0].API_Key), option.WithBaseURL(opts[0].BaseURL), timeout)
 	}
-	return openai.NewClient(option.WithAPIKey(config.DefaultConfig().OPENAI_KEY))
+	return openai.NewClient(option.WithAPIKey(config.DefaultConfig().OPENAI_KEY), timeout)
 }
 
 func formatMessages(messages models.AIChatHistory, sysmgs string) []openai.ChatCompletionMessageParamUnion {

@@ -66,7 +66,8 @@ func detectRawFunctionCall(content string) bool {
 }
 
 func (o *OpenAI) CreateChat(messages *models.AIChatHistory, enableTools bool, useMCPExecution bool) (*openai.ChatCompletion, error) {
-	ctx := context.TODO()
+	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
+	defer cancel()
 	params := o.buildParams(*messages, enableTools)
 
 	for range o.toolPassLimit() {
@@ -183,7 +184,8 @@ func (o *OpenAI) CreateChat(messages *models.AIChatHistory, enableTools bool, us
 }
 
 func (o *OpenAI) CreateChatStream(messages *models.AIChatHistory, chunkHandler func(chunk openai.ChatCompletionChunk), enableTools bool, useMCPExecution bool) (*openai.ChatCompletion, error) {
-	ctx := context.TODO()
+	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
+	defer cancel()
 	params := o.buildParams(*messages, enableTools)
 
 	for range o.toolPassLimit() {
