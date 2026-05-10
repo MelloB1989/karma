@@ -33,6 +33,10 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 		response, err = kai.handleOpenAICompatibleChatCompletion(m, FIREWORKS_API, config.GetEnvRaw("FIREWORKS_API_KEY"))
 	case OpenRouter:
 		response, err = kai.handleOpenAICompatibleChatCompletion(m, OPENROUTER_API, config.GetEnvRaw("OPENROUTER_API_KEY"))
+	case TogetherAI:
+		response, err = kai.handleOpenAICompatibleChatCompletion(m, TOGETHER_API, config.GetEnvRaw("TOGETHER_API_KEY"))
+	case NvidiaNIM:
+		response, err = kai.handleOpenAICompatibleChatCompletion(m, NVIDIA_NIM_API, config.GetEnvRaw("NVIDIA_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
@@ -84,6 +88,10 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 		response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, FIREWORKS_API, config.GetEnvRaw("FIREWORKS_API_KEY"))
 	case OpenRouter:
 		response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, OPENROUTER_API, config.GetEnvRaw("OPENROUTER_API_KEY"))
+	case TogetherAI:
+		response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, TOGETHER_API, config.GetEnvRaw("TOGETHER_API_KEY"))
+	case NvidiaNIM:
+		response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, NVIDIA_NIM_API, config.GetEnvRaw("NVIDIA_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
@@ -125,6 +133,10 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, FIREWORKS_API, config.GetEnvRaw("FIREWORKS_API_KEY"))
 	case OpenRouter:
 		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, OPENROUTER_API, config.GetEnvRaw("OPENROUTER_API_KEY"))
+	case TogetherAI:
+		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, TOGETHER_API, config.GetEnvRaw("TOGETHER_API_KEY"))
+	case NvidiaNIM:
+		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, NVIDIA_NIM_API, config.GetEnvRaw("NVIDIA_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
@@ -171,6 +183,10 @@ func (kai *KarmaAI) ChatCompletionManaged(history *models.AIChatHistory) (*model
 		response, err = kai.handleOpenAICompatibleChatCompletion(history, FIREWORKS_API, config.GetEnvRaw("FIREWORKS_API_KEY"))
 	case OpenRouter:
 		response, err = kai.handleOpenAICompatibleChatCompletion(history, OPENROUTER_API, config.GetEnvRaw("OPENROUTER_API_KEY"))
+	case TogetherAI:
+		response, err = kai.handleOpenAICompatibleChatCompletion(history, TOGETHER_API, config.GetEnvRaw("TOGETHER_API_KEY"))
+	case NvidiaNIM:
+		response, err = kai.handleOpenAICompatibleChatCompletion(history, NVIDIA_NIM_API, config.GetEnvRaw("NVIDIA_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}
@@ -217,6 +233,10 @@ func (kai *KarmaAI) ChatCompletionStreamManaged(history *models.AIChatHistory, c
 		response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, FIREWORKS_API, config.GetEnvRaw("FIREWORKS_API_KEY"))
 	case OpenRouter:
 		response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, OPENROUTER_API, config.GetEnvRaw("OPENROUTER_API_KEY"))
+	case TogetherAI:
+		response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, TOGETHER_API, config.GetEnvRaw("TOGETHER_API_KEY"))
+	case NvidiaNIM:
+		response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, NVIDIA_NIM_API, config.GetEnvRaw("NVIDIA_API_KEY"))
 	default:
 		return nil, errors.New("this provider is not supported yet")
 	}

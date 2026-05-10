@@ -140,6 +140,17 @@ const (
 
 	// Sarvam AI Models
 	SarvamM BaseModel = "sarvam-m"
+
+	// Together AI / NVIDIA NIM Models
+	DeepSeekR1      BaseModel = "deepseek-r1"
+	DeepSeekV3      BaseModel = "deepseek-v3"
+	DeepSeekV4      BaseModel = "deepseek-v4"
+	DeepSeekV4Flash BaseModel = "deepseek-v4-flash"
+	Llama4Maverick  BaseModel = "llama-4-maverick"
+
+	// Moonshot Models
+	KimiK2_5 BaseModel = "kimi-k2.5"
+	KimiK2_6 BaseModel = "kimi-k2.6"
 )
 
 // Providers
@@ -153,6 +164,8 @@ const (
 	FireworksAI Provider = "fireworksai"
 	OpenRouter  Provider = "openrouter"
 	Sarvam      Provider = "sarvam"
+	TogetherAI  Provider = "together-ai"
+	NvidiaNIM   Provider = "nvidia-nim"
 )
 
 // API URLs for different providers
@@ -162,6 +175,8 @@ const (
 	SARVAM_API     = "https://api.sarvam.ai/v1"
 	FIREWORKS_API  = "https://api.fireworks.ai/inference/v1"
 	OPENROUTER_API = "https://openrouter.ai/api/v1"
+	TOGETHER_API   = "https://api.together.ai/v1"
+	NVIDIA_NIM_API = "https://integrate.api.nvidia.com/v1"
 )
 
 // ModelConfig represents a model with its provider configuration
@@ -330,12 +345,47 @@ var (
 			Gemini25Flash:             "google/gemini-2.5-flash",
 			Gemini20FlashLite:         "google/gemini-2.5-flash-lite",
 			KimiK2Thinking:            "moonshotai/kimi-k2-thinking",
+			KimiK2_5:                  "moonshotai/kimi-k2.5",
+			KimiK2_6:                  "moonshotai/kimi-k2.6",
+			DeepSeekV4:                "deepseek-ai/deepseek-v4",
+			DeepSeekV4Flash:           "deepseek-ai/deepseek-v4-flash",
 			Llama33_70B:               "meta-llama/llama-3.3-70b-instruct",
 			Llama4_Scout_17B:          "meta-llama/llama-4-scout",
 			Qwen3_Coder_480B_Instruct: "qwen/qwen3-coder",
 			Quew3_235B_Instruct:       "qwen/qwen3-235b-a22b-2507",
 			Quew3_235B_VL_Instruct:    "qwen/qwen3-vl-235b-a22b-instruct",
 			Quew3_235B_Thinking:       "qwen/qwen3-vl-235b-a22b-thinking",
+		},
+		// Together AI models
+		TogetherAI: {
+			Llama33_70B:      "meta-llama/Llama-3.3-70B-Instruct",
+			Llama31_8B:       "meta-llama/Llama-3.1-8B-Instruct",
+			Llama4Maverick:   "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+			Llama4_Scout_17B: "meta-llama/Llama-4-Scout-17B-128E-Instruct-FP8",
+			DeepSeekR1:       "deepseek-ai/DeepSeek-R1",
+			DeepSeekV3:       "deepseek-ai/DeepSeek-V3",
+			DeepSeekV4:       "deepseek-ai/DeepSeek-V4-Pro",
+			DeepSeekV4Flash:  "deepseek-ai/DeepSeek-V4-Flash",
+			Mistral7B:        "mistralai/Mistral-7B-Instruct-v0.3",
+			Mixtral8x7B:      "mistralai/Mixtral-8x7B-Instruct-v0.1",
+			Llama32_90B:      "meta-llama/Llama-3.2-90B-Vision-Instruct",
+			KimiK2_5:         "moonshotai/Kimi-K2.5",
+			KimiK2_6:         "moonshotai/Kimi-K2.6",
+		},
+		// NVIDIA NIM models
+		NvidiaNIM: {
+			Llama33_70B:     "meta/llama-3.3-70b-instruct",
+			Llama31_8B:      "meta/llama-3.1-8b-instruct",
+			Llama31_70B:     "meta/llama-3.1-70b-instruct",
+			DeepSeekR1:      "deepseek-ai/deepseek-r1",
+			DeepSeekV3:      "deepseek-ai/deepseek-v3",
+			DeepSeekV4:      "deepseek-ai/deepseek-v4-pro",
+			DeepSeekV4Flash: "deepseek-ai/deepseek-v4-flash",
+			MistralLarge:    "mistralai/mistral-large-instruct-2407",
+			Mixtral8x7B:     "mistralai/mixtral-8x22b-instruct-v0.1",
+			Quew3_32B:       "qwen/qwen3-32b",
+			KimiK2_5:        "moonshotai/kimi-k2.5",
+			KimiK2_6:        "moonshotai/kimi-k2.6",
 		},
 	}
 )
@@ -370,12 +420,12 @@ func (mc ModelConfig) GetProvider() Provider {
 // IsOpenAICompatibleModel checks if the model is OpenAI API compatible
 func (mc ModelConfig) IsOpenAICompatibleModel() bool {
 	provider := mc.GetProvider()
-	return provider == OpenAI || provider == XAI || provider == Groq
+	return provider == OpenAI || provider == XAI || provider == Groq || provider == TogetherAI || provider == NvidiaNIM
 }
 
 // SupportsMCP checks if the model supports MCP
 func (mc ModelConfig) SupportsMCP() bool {
-	return mc.Provider == OpenAI || mc.Provider == XAI || mc.Provider == Anthropic
+	return mc.Provider == OpenAI || mc.Provider == XAI || mc.Provider == Anthropic || mc.Provider == TogetherAI || mc.Provider == NvidiaNIM
 }
 
 // GetModelProvider returns the provider for a given model config
