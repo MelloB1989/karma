@@ -46,6 +46,7 @@ type Gemini struct {
 	MultiMCPManager *mcp.MultiManager
 	FunctionTools   map[string]GoFunctionTool
 	maxToolPasses   int
+	RequestGate     func() error
 }
 
 // NewGemini creates a new Gemini client using environment variables for Vertex AI config
@@ -161,6 +162,11 @@ func (g *Gemini) CreateChat(messages *models.AIChatHistory, enableTools bool, us
 	config := g.buildConfig(enableTools)
 
 	for range g.toolPassLimit() {
+		if g.RequestGate != nil {
+			if err := g.RequestGate(); err != nil {
+				return nil, err
+			}
+		}
 		response, err := g.Client.Models.GenerateContent(ctx, g.Model, contents, config)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate content: %w", err)
@@ -282,6 +288,11 @@ func (g *Gemini) CreateChatStream(messages *models.AIChatHistory, chunkHandler f
 
 	for range g.toolPassLimit() {
 		// Accumulate the streamed response
+		if g.RequestGate != nil {
+			if err := g.RequestGate(); err != nil {
+				return nil, err
+			}
+		}
 		acc, err := g.streamAndAccumulate(ctx, contents, config, chunkHandler)
 		if err != nil {
 			return nil, fmt.Errorf("failed to stream content: %w", err)

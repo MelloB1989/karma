@@ -46,6 +46,9 @@ func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages *models.AIChat
 
 func (kai *KarmaAI) handleBedrockChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
 	start := time.Now()
+	if err := kai.enforceRateLimit(); err != nil {
+		return nil, err
+	}
 	response, err := bedrock_runtime.InvokeBedrockConverseAPI(
 		kai.Model.GetModelString(),
 		bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), float64(kai.Temperature), float64(kai.TopP), messages, kai.SystemMessage),
@@ -68,6 +71,7 @@ func (kai *KarmaAI) handleBedrockChatCompletion(messages models.AIChatHistory) (
 func (kai *KarmaAI) handleAnthropicChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
 	cc := claude.NewClaudeClient(int(kai.MaxTokens), anthropic.Model(kai.Model.GetModelString()), float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), kai.SystemMessage)
 	kai.configureClaudeClientForMCP(cc)
+	cc.RequestGate = kai.enforceRateLimit
 	start := time.Now()
 	response, err := cc.ClaudeChatCompletion(messages, kai.ToolsEnabled, kai.UseMCPExecution)
 	if err != nil {
@@ -86,6 +90,9 @@ func (kai *KarmaAI) handleGeminiSinglePrompt(prompt string) (*models.AIChatRespo
 	var response *genai.GenerateContentResponse
 	var err error
 
+	if err := kai.enforceRateLimit(); err != nil {
+		return nil, err
+	}
 	if kai.ResponseType != "" {
 		response, err = gemini.RunGemini(fullPrompt, kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), int64(kai.MaxTokens), kai.ResponseType)
 	} else {
@@ -142,6 +149,7 @@ func (kai *KarmaAI) handleGeminiStreamCompletion(messages *models.AIChatHistory,
 
 func (kai *KarmaAI) handleAnthropicSinglePrompt(prompt string) (*models.AIChatResponse, error) {
 	cc := claude.NewClaudeClient(int(kai.MaxTokens), anthropic.Model(kai.Model.GetModelString()), float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), kai.SystemMessage)
+	cc.RequestGate = kai.enforceRateLimit
 	if len(kai.MCPTools) > 0 {
 		log.Println("MCPTools are not supported for Single Prompts, please create a conversation!")
 	}
@@ -183,6 +191,9 @@ func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages *models.AICh
 }
 
 func (kai *KarmaAI) handleBedrockStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
+	if err := kai.enforceRateLimit(); err != nil {
+		return nil, err
+	}
 	stream, err := bedrock.PromptModelStream(
 		kai.processMessagesForLlamaBedrockSystemPrompt(messages),
 		float32(kai.Temperature),
@@ -224,6 +235,7 @@ func (kai *KarmaAI) handleAnthropicStreamCompletion(messages models.AIChatHistor
 	start := time.Now()
 	cc := claude.NewClaudeClient(int(kai.MaxTokens), anthropic.Model(kai.Model.GetModelString()), float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), kai.SystemMessage)
 	kai.configureClaudeClientForMCP(cc)
+	cc.RequestGate = kai.enforceRateLimit
 	response, err := cc.ClaudeStreamCompletionWithTools(messages, callback, kai.ToolsEnabled, kai.UseMCPExecution)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get response from Claude: %w", err)
@@ -233,6 +245,9 @@ func (kai *KarmaAI) handleAnthropicStreamCompletion(messages models.AIChatHistor
 }
 
 func (kai *KarmaAI) handleOpenAIEmbeddingGeneration(text string) (*models.AIEmbeddingResponse, error) {
+	if err := kai.enforceRateLimit(); err != nil {
+		return nil, err
+	}
 	embeddings, err := openai.GenerateEmbeddings(text, string(kai.Model.BaseModel))
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate embeddings: %w", err)
@@ -257,6 +272,9 @@ func (kai *KarmaAI) handleOpenAIEmbeddingGeneration(text string) (*models.AIEmbe
 }
 
 func (kai *KarmaAI) handleBedrockEmbeddingGeneration(text string) (*models.AIEmbeddingResponse, error) {
+	if err := kai.enforceRateLimit(); err != nil {
+		return nil, err
+	}
 	embeddings, err := bedrock_runtime.CreateEmbeddings(text, kai.Model.GetModelString())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Bedrock embeddings: %w", err)
@@ -277,6 +295,7 @@ func (kai *KarmaAI) configureOpenAIClient(o *openai.OpenAI) {
 	kai.configureOpenaiClientForMCP(o)
 	o.ExtraFields = kai.Features.optionalFields
 	o.ReasoningEffort = kai.ReasoningEffort
+	o.RequestGate = kai.enforceRateLimit
 }
 
 func buildToolCallsFromOpenAI(toolCalls []oai.ChatCompletionMessageToolCallUnion) []models.ToolCall {

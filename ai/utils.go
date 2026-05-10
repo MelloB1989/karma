@@ -219,6 +219,7 @@ func (kai *KarmaAI) createGeminiClient() (*gemini.Gemini, error) {
 
 func (kai *KarmaAI) configureGeminiClient(g *gemini.Gemini) {
 	kai.configureGeminiClientForMCP(g)
+	g.RequestGate = kai.enforceRateLimit
 	if kai.ResponseType != "" {
 		g.SetResponseType(kai.ResponseType)
 	}

@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"reflect"
 	"testing"
 
 	"github.com/MelloB1989/karma/ai"
@@ -277,34 +276,35 @@ func TestAllProvidersHaveModels(t *testing.T) {
 
 // TestProviderModelMappingConsistency checks that all mapped models actually exist as constants
 func TestProviderModelMappingConsistency(t *testing.T) {
-	// Get all BaseModel constants using reflection
 	validModels := make(map[ai.BaseModel]bool)
 
-	// Use reflection to get all BaseModel constants
-	aiPackage := reflect.TypeOf(ai.GPT4o)
-	for i := 0; i < aiPackage.NumMethod(); i++ {
-		// This is a simplified check - in a real scenario, you'd enumerate constants differently
-	}
-
-	// Manually define expected models for now (this could be automated with build tags or reflection)
-	expectedModels := []ai.BaseModel{
+	baseModels := []ai.BaseModel{
 		ai.GPT4, ai.GPT4o, ai.GPT4oMini, ai.GPT4Turbo, ai.GPT35Turbo,
-		ai.GPT5, ai.GPT5Nano, ai.GPT5Mini, ai.O1, ai.O1Mini, ai.O1Preview,
+		ai.GPT5, ai.GPT5Nano, ai.GPT5Mini, ai.GPT5_1, ai.GPT5_2, ai.GPT5_2_Pro,
+		ai.GPT5_1Codex, ai.GPT5_1CodexMax, ai.GPT5_2Codex, ai.GPT5_2CodexMax,
+		ai.O1, ai.O1Mini, ai.O1Preview, ai.GPTOSS_20B, ai.GPTOSS_120B,
+		ai.TextEmbeddingAda002, ai.TextEmbedding3Large, ai.TextEmbedding3Small,
 		ai.Claude35Sonnet, ai.Claude35Haiku, ai.Claude3Sonnet, ai.Claude3Haiku,
 		ai.Claude3Opus, ai.Claude37Sonnet, ai.Claude4Sonnet, ai.Claude4Opus,
-		ai.ClaudeInstant, ai.ClaudeV2,
+		ai.Claude4_5Sonnet, ai.Claude4_5Opus, ai.ClaudeInstant, ai.ClaudeV2,
 		ai.Llama3_8B, ai.Llama3_70B, ai.Llama31_8B, ai.Llama31_70B,
 		ai.Llama32_1B, ai.Llama32_3B, ai.Llama32_11B, ai.Llama32_90B, ai.Llama33_70B,
+		ai.Llama31_405B, ai.Llama4_Guard_12B, ai.Llama4_Scout_17B, ai.Llama4Maverick,
 		ai.Mistral7B, ai.Mixtral8x7B, ai.MistralLarge, ai.MistralSmall,
+		ai.Quew3_32B, ai.Quew3_235B_VL_Thinking, ai.Quew3_235B_VL_Instruct,
+		ai.Quew3_235B_Thinking, ai.Quew3_235B_Instruct, ai.Qwen3_Coder_480B_Instruct,
+		ai.KimiK2Thinking, ai.KimiK2_5, ai.KimiK2_6, ai.MiniMaxM2, ai.MiniMaxM2P1,
+		ai.GLM4_7, ai.GLM4_6, ai.DeepSeekV3P2,
 		ai.TitanTextG1Large, ai.TitanTextPremier, ai.TitanTextLite, ai.TitanTextExpress,
 		ai.TitanEmbedText, ai.TitanEmbedImage,
 		ai.NovaPro, ai.NovaLite, ai.NovaCanvas, ai.NovaReel, ai.NovaMicro,
-		ai.Gemini25Flash, ai.Gemini25Pro, ai.Gemini20Flash, ai.Gemini20FlashLite,
+		ai.Gemini3FlashPreview, ai.Gemini3ProPreview, ai.Gemini25Flash, ai.Gemini25Pro, ai.Gemini20Flash, ai.Gemini20FlashLite,
 		ai.Gemini15Flash, ai.Gemini15Flash8B, ai.Gemini15Pro, ai.GeminiEmbedding, ai.PaLM2,
-		ai.Grok4, ai.Grok3, ai.Grok3Mini,
+		ai.Grok4, ai.GrokCodeFast, ai.Grok4ReasoningFast, ai.Grok4Fast, ai.Grok3, ai.Grok3Mini,
+		ai.SarvamM, ai.DeepSeekR1, ai.DeepSeekV3, ai.DeepSeekV4, ai.DeepSeekV4Flash,
 	}
 
-	for _, model := range expectedModels {
+	for _, model := range baseModels {
 		validModels[model] = true
 	}
 

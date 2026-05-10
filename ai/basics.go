@@ -501,6 +501,7 @@ type KarmaAI struct {
 	Analytics       *Analytics                      `json:"analytics"`
 	Features        *F                              `json:"features"`
 	MaxToolPasses   int                             `json:"max_tool_passes"`
+	RateLimit       *RateLimitConfig                `json:"rate_limit"`
 	// Deprecated: Use MCPServers instead
 	MCPServers []MCPServer `json:"mcp_servers"`
 	// Provider-specific configuration

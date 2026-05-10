@@ -26,6 +26,7 @@ type OpenAI struct {
 	FunctionTools   map[string]GoFunctionTool
 	ReasoningEffort *shared.ReasoningEffort
 	maxToolPasses   int
+	RequestGate     func() error
 }
 
 func NewOpenAI(model, sysmgs string, temperature float64, maxTokens int64) *OpenAI {
@@ -71,6 +72,11 @@ func (o *OpenAI) CreateChat(messages *models.AIChatHistory, enableTools bool, us
 	params := o.buildParams(*messages, enableTools)
 
 	for range o.toolPassLimit() {
+		if o.RequestGate != nil {
+			if err := o.RequestGate(); err != nil {
+				return nil, err
+			}
+		}
 		chatCompletion, err := o.Client.Chat.Completions.New(ctx, params)
 		if err != nil {
 			return nil, err
@@ -189,6 +195,11 @@ func (o *OpenAI) CreateChatStream(messages *models.AIChatHistory, chunkHandler f
 	params := o.buildParams(*messages, enableTools)
 
 	for range o.toolPassLimit() {
+		if o.RequestGate != nil {
+			if err := o.RequestGate(); err != nil {
+				return nil, err
+			}
+		}
 		acc, err := o.streamAndAccumulate(ctx, params, chunkHandler)
 		if err != nil {
 			return nil, err

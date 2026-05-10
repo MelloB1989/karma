@@ -41,6 +41,7 @@ type ClaudeClient struct {
 	SystemPrompt    string
 	MCPManager      *mcp.Manager
 	MultiMCPManager *mcp.MultiManager
+	RequestGate     func() error
 }
 
 func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP float64, topK float64, systemPrompt string) *ClaudeClient {
@@ -106,6 +107,11 @@ func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (*models.AIChatRespons
 	if cc.SystemPrompt != "" {
 		mgsParam.System = []anthropic.TextBlockParam{{Text: cc.SystemPrompt}}
 	}
+	if cc.RequestGate != nil {
+		if err := cc.RequestGate(); err != nil {
+			return nil, err
+		}
+	}
 	message, err := cc.Client.Messages.New(context.TODO(), mgsParam)
 	if err != nil {
 		return nil, err
@@ -145,6 +151,11 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 
 	ctx := context.TODO()
 	for {
+		if cc.RequestGate != nil {
+			if err := cc.RequestGate(); err != nil {
+				return nil, err
+			}
+		}
 		message, err := cc.Client.Messages.New(ctx, mgsParam)
 		if err != nil {
 			return nil, err
@@ -239,6 +250,11 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 	}
 
 	ctx := context.TODO()
+	if cc.RequestGate != nil {
+		if err := cc.RequestGate(); err != nil {
+			return nil, err
+		}
+	}
 	stream := cc.Client.Messages.NewStreaming(ctx, streamParams)
 	message := anthropic.Message{}
 	for stream.Next() {
@@ -309,6 +325,11 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 			followUpParams.Messages = processedMessages
 			followUpParams.Tools = nil // Disable tools for follow-up to avoid loops
 
+			if cc.RequestGate != nil {
+				if err := cc.RequestGate(); err != nil {
+					return nil, err
+				}
+			}
 			followUpStream := cc.Client.Messages.NewStreaming(ctx, followUpParams)
 			for followUpStream.Next() {
 				event := followUpStream.Current()
