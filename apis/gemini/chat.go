@@ -47,6 +47,7 @@ type Gemini struct {
 	FunctionTools   map[string]GoFunctionTool
 	maxToolPasses   int
 	RequestGate     func() error
+	RequestTimeout  time.Duration
 }
 
 // NewGemini creates a new Gemini client using environment variables for Vertex AI config
@@ -155,9 +156,17 @@ func (g *Gemini) SetResponseType(responseType string) {
 	g.ResponseType = responseType
 }
 
+func (g *Gemini) requestContext() (context.Context, context.CancelFunc) {
+	if g.RequestTimeout <= 0 {
+		return context.Background(), func() {}
+	}
+	return context.WithTimeout(context.Background(), g.RequestTimeout)
+}
+
 // CreateChat creates a chat completion with tool calling support
 func (g *Gemini) CreateChat(messages *models.AIChatHistory, enableTools bool, useMCPExecution bool) (*genai.GenerateContentResponse, error) {
-	ctx := context.Background()
+	ctx, cancel := g.requestContext()
+	defer cancel()
 	contents := g.formatMessages(*messages)
 	config := g.buildConfig(enableTools)
 
@@ -282,7 +291,8 @@ func (g *Gemini) CreateChat(messages *models.AIChatHistory, enableTools bool, us
 
 // CreateChatStream creates a streaming chat completion with tool calling support
 func (g *Gemini) CreateChatStream(messages *models.AIChatHistory, chunkHandler func(*genai.GenerateContentResponse), enableTools bool, useMCPExecution bool) (*genai.GenerateContentResponse, error) {
-	ctx := context.Background()
+	ctx, cancel := g.requestContext()
+	defer cancel()
 	contents := g.formatMessages(*messages)
 	config := g.buildConfig(enableTools)
 

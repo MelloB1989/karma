@@ -24,8 +24,8 @@ func TestKai() {
 	// fmt.Println(ai.Llama3_8B.IsBedrockModel())
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
-	testChatCompletion()
-	// testGenerateFromSinglePrompt()
+	// testChatCompletion()
+	testGenerateFromSinglePrompt()
 	// testGoFunctionTools()
 	// TestGeminiImageGen()
 	// testChatCompletionStream()
@@ -211,7 +211,7 @@ func testCliChatImplentation() {
 }
 
 func testChatCompletion() {
-	kai := ai.NewKarmaAI(ai.Gemini25Flash, ai.Google,
+	kai := ai.NewKarmaAI(ai.KimiK2_6, ai.NvidiaNIM,
 		ai.WithSystemMessage("You are a smart AI assistant"),
 		ai.WithTemperature(1),
 		ai.WithMaxTokens(1000),
@@ -246,16 +246,24 @@ func testChatCompletion() {
 }
 
 func testGenerateFromSinglePrompt() {
-	kai := ai.NewKarmaAI(ai.Gemini20Flash, ai.Google,
-		ai.WithSystemMessage("Act as a AI assistant, respond in clear text"),
+	kai := ai.NewKarmaAI(
+		ai.KimiK2_6,
+		ai.NvidiaNIM,
+		ai.WithSystemMessage(`Hi`),
 		ai.WithTemperature(0.5),
 		ai.WithMaxTokens(800),
-		ai.WithTopP(0.9))
-	response, err := kai.GenerateFromSinglePrompt("Hello! How are you?")
+		ai.WithTopP(0.9),
+		ai.WithRequestTimeout(30*time.Minute),
+	)
+	start := time.Now()
+	response, err := kai.GenerateFromSinglePrompt("Hi")
+	duration := time.Since(start)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(response.AIResponse)
+	fmt.Println("Response:", response.AIResponse)
+	fmt.Println("Response Time:", duration)
+
 }
 
 func testChatCompletionStream() {

@@ -27,11 +27,14 @@ type OpenAI struct {
 	ReasoningEffort *shared.ReasoningEffort
 	maxToolPasses   int
 	RequestGate     func() error
+	RequestTimeout  time.Duration
+	clientOptions   *CompatibleOptions
 }
 
 func NewOpenAI(model, sysmgs string, temperature float64, maxTokens int64) *OpenAI {
 	return &OpenAI{
 		Client:        createClient(),
+		clientOptions: nil,
 		Model:         model,
 		Temperature:   temperature,
 		MaxTokens:     maxTokens,
@@ -41,11 +44,13 @@ func NewOpenAI(model, sysmgs string, temperature float64, maxTokens int64) *Open
 }
 
 func NewOpenAICompatible(model, sysmgs string, temperature float64, maxTokens int64, baseURL, apikey string) *OpenAI {
+	clientOptions := &CompatibleOptions{
+		BaseURL: baseURL,
+		API_Key: apikey,
+	}
 	return &OpenAI{
-		Client: createClient(CompatibleOptions{
-			BaseURL: baseURL,
-			API_Key: apikey,
-		}),
+		Client:        createClient(*clientOptions),
+		clientOptions: clientOptions,
 		Model:         model,
 		Temperature:   temperature,
 		MaxTokens:     maxTokens,
@@ -66,8 +71,24 @@ func detectRawFunctionCall(content string) bool {
 	return hasOpening || hasClosing
 }
 
+func (o *OpenAI) requestContext() (context.Context, context.CancelFunc) {
+	timeout := o.RequestTimeout
+	if timeout <= 0 {
+		timeout = 75 * time.Second
+	}
+	return context.WithTimeout(context.Background(), timeout)
+}
+
+func (o *OpenAI) ApplyRequestTimeout() {
+	var opts []CompatibleOptions
+	if o.clientOptions != nil {
+		opts = append(opts, *o.clientOptions)
+	}
+	o.Client = createClientWithTimeout(o.RequestTimeout, opts...)
+}
+
 func (o *OpenAI) CreateChat(messages *models.AIChatHistory, enableTools bool, useMCPExecution bool) (*openai.ChatCompletion, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
+	ctx, cancel := o.requestContext()
 	defer cancel()
 	params := o.buildParams(*messages, enableTools)
 
@@ -190,7 +211,7 @@ func (o *OpenAI) CreateChat(messages *models.AIChatHistory, enableTools bool, us
 }
 
 func (o *OpenAI) CreateChatStream(messages *models.AIChatHistory, chunkHandler func(chunk openai.ChatCompletionChunk), enableTools bool, useMCPExecution bool) (*openai.ChatCompletion, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 75*time.Second)
+	ctx, cancel := o.requestContext()
 	defer cancel()
 	params := o.buildParams(*messages, enableTools)
 

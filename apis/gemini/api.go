@@ -9,7 +9,10 @@ import (
 )
 
 func RunGemini(prompt, model, system_prompt string, temp, topP, topK float64, maxOutputTokens int64, response_type ...string) (*genai.GenerateContentResponse, error) {
-	ctx := context.Background()
+	return RunGeminiWithContext(context.Background(), prompt, model, system_prompt, temp, topP, topK, maxOutputTokens, response_type...)
+}
+
+func RunGeminiWithContext(ctx context.Context, prompt, model, system_prompt string, temp, topP, topK float64, maxOutputTokens int64, response_type ...string) (*genai.GenerateContentResponse, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		// APIKey: config.GetEnvRaw("GOOGLE_API_KEY"),
 		Backend:  genai.BackendVertexAI,

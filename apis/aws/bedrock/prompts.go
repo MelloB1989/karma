@@ -76,6 +76,10 @@ func PromptModel(prompt string, temp float32, top_p float32, max_len int, model 
 }
 
 func PromptModelStream(prompt string, temp float32, top_p float32, max_len int, model string) (*bedrockruntime.InvokeModelWithResponseStreamOutput, error) {
+	return PromptModelStreamWithContext(context.TODO(), prompt, temp, top_p, max_len, model)
+}
+
+func PromptModelStreamWithContext(ctx context.Context, prompt string, temp float32, top_p float32, max_len int, model string) (*bedrockruntime.InvokeModelWithResponseStreamOutput, error) {
 	bedrockClient := createClient()
 	input := &bedrockruntime.InvokeModelWithResponseStreamInput{
 		Accept:      aws.String("application/json"),
@@ -97,7 +101,7 @@ func PromptModelStream(prompt string, temp float32, top_p float32, max_len int, 
 	input.Body = bytes
 
 	// Begin streaming from the model
-	stream, err := bedrockClient.InvokeModelWithResponseStream(context.TODO(), input)
+	stream, err := bedrockClient.InvokeModelWithResponseStream(ctx, input)
 	if err != nil {
 		log.Println("Error invoking model:", err)
 		return nil, err

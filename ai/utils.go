@@ -98,6 +98,7 @@ func (kai *KarmaAI) processMessagesForLlamaBedrockSystemPrompt(chat models.AICha
 }
 
 func (kai *KarmaAI) configureClaudeClientForMCP(cc *claude.ClaudeClient) {
+	cc.RequestTimeout = kai.RequestTimeout
 	if len(kai.MCPServers) > 0 {
 		kai.configureMultiMCPForClaude(cc)
 	} else if len(kai.MCPTools) > 0 {
@@ -220,6 +221,7 @@ func (kai *KarmaAI) createGeminiClient() (*gemini.Gemini, error) {
 func (kai *KarmaAI) configureGeminiClient(g *gemini.Gemini) {
 	kai.configureGeminiClientForMCP(g)
 	g.RequestGate = kai.enforceRateLimit
+	g.RequestTimeout = kai.RequestTimeout
 	if kai.ResponseType != "" {
 		g.SetResponseType(kai.ResponseType)
 	}

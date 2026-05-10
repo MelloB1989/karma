@@ -21,11 +21,18 @@ type CompatibleOptions struct {
 }
 
 func createClient(opts ...CompatibleOptions) openai.Client {
-	timeout := option.WithRequestTimeout(60 * time.Second)
-	if len(opts) > 0 {
-		return openai.NewClient(option.WithAPIKey(opts[0].API_Key), option.WithBaseURL(opts[0].BaseURL), timeout)
+	return createClientWithTimeout(60*time.Second, opts...)
+}
+
+func createClientWithTimeout(timeout time.Duration, opts ...CompatibleOptions) openai.Client {
+	if timeout <= 0 {
+		timeout = 60 * time.Second
 	}
-	return openai.NewClient(option.WithAPIKey(config.DefaultConfig().OPENAI_KEY), timeout)
+	clientTimeout := option.WithRequestTimeout(timeout)
+	if len(opts) > 0 {
+		return openai.NewClient(option.WithAPIKey(opts[0].API_Key), option.WithBaseURL(opts[0].BaseURL), clientTimeout)
+	}
+	return openai.NewClient(option.WithAPIKey(config.DefaultConfig().OPENAI_KEY), clientTimeout)
 }
 
 func formatMessages(messages models.AIChatHistory, sysmgs string) []openai.ChatCompletionMessageParamUnion {

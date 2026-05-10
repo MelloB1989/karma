@@ -49,7 +49,14 @@ func (kai *KarmaAI) handleBedrockChatCompletion(messages models.AIChatHistory) (
 	if err := kai.enforceRateLimit(); err != nil {
 		return nil, err
 	}
-	response, err := bedrock_runtime.InvokeBedrockConverseAPI(
+	ctx := context.Background()
+	if kai.RequestTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), kai.RequestTimeout)
+		defer cancel()
+	}
+	response, err := bedrock_runtime.InvokeBedrockConverseAPIWithContext(
+		ctx,
 		kai.Model.GetModelString(),
 		bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), float64(kai.Temperature), float64(kai.TopP), messages, kai.SystemMessage),
 	)
@@ -93,10 +100,16 @@ func (kai *KarmaAI) handleGeminiSinglePrompt(prompt string) (*models.AIChatRespo
 	if err := kai.enforceRateLimit(); err != nil {
 		return nil, err
 	}
+	ctx := context.Background()
+	if kai.RequestTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), kai.RequestTimeout)
+		defer cancel()
+	}
 	if kai.ResponseType != "" {
-		response, err = gemini.RunGemini(fullPrompt, kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), int64(kai.MaxTokens), kai.ResponseType)
+		response, err = gemini.RunGeminiWithContext(ctx, fullPrompt, kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), int64(kai.MaxTokens), kai.ResponseType)
 	} else {
-		response, err = gemini.RunGemini(fullPrompt, kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), int64(kai.MaxTokens))
+		response, err = gemini.RunGeminiWithContext(ctx, fullPrompt, kai.Model.GetModelString(), kai.SystemMessage, float64(kai.Temperature), float64(kai.TopP), float64(kai.TopK), int64(kai.MaxTokens))
 	}
 
 	if err != nil {
@@ -194,7 +207,14 @@ func (kai *KarmaAI) handleBedrockStreamCompletion(messages models.AIChatHistory,
 	if err := kai.enforceRateLimit(); err != nil {
 		return nil, err
 	}
-	stream, err := bedrock.PromptModelStream(
+	ctx := context.Background()
+	if kai.RequestTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), kai.RequestTimeout)
+		defer cancel()
+	}
+	stream, err := bedrock.PromptModelStreamWithContext(
+		ctx,
 		kai.processMessagesForLlamaBedrockSystemPrompt(messages),
 		float32(kai.Temperature),
 		float32(kai.TopP),
@@ -248,7 +268,13 @@ func (kai *KarmaAI) handleOpenAIEmbeddingGeneration(text string) (*models.AIEmbe
 	if err := kai.enforceRateLimit(); err != nil {
 		return nil, err
 	}
-	embeddings, err := openai.GenerateEmbeddings(text, string(kai.Model.BaseModel))
+	ctx := context.Background()
+	if kai.RequestTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), kai.RequestTimeout)
+		defer cancel()
+	}
+	embeddings, err := openai.GenerateEmbeddingsWithContext(ctx, text, string(kai.Model.BaseModel))
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate embeddings: %w", err)
 	}
@@ -296,6 +322,8 @@ func (kai *KarmaAI) configureOpenAIClient(o *openai.OpenAI) {
 	o.ExtraFields = kai.Features.optionalFields
 	o.ReasoningEffort = kai.ReasoningEffort
 	o.RequestGate = kai.enforceRateLimit
+	o.RequestTimeout = kai.RequestTimeout
+	o.ApplyRequestTimeout()
 }
 
 func buildToolCallsFromOpenAI(toolCalls []oai.ChatCompletionMessageToolCallUnion) []models.ToolCall {

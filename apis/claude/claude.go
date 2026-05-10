@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/config"
@@ -42,6 +43,7 @@ type ClaudeClient struct {
 	MCPManager      *mcp.Manager
 	MultiMCPManager *mcp.MultiManager
 	RequestGate     func() error
+	RequestTimeout  time.Duration
 }
 
 func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP float64, topK float64, systemPrompt string) *ClaudeClient {
@@ -69,6 +71,13 @@ func (cc *ClaudeClient) SetMCPServer(serverURL, authToken string) {
 // SetMultiMCPManager configures multiple MCP servers
 func (cc *ClaudeClient) SetMultiMCPManager(multiManager *mcp.MultiManager) {
 	cc.MultiMCPManager = multiManager
+}
+
+func (cc *ClaudeClient) requestContext() (context.Context, context.CancelFunc) {
+	if cc.RequestTimeout <= 0 {
+		return context.Background(), func() {}
+	}
+	return context.WithTimeout(context.Background(), cc.RequestTimeout)
 }
 
 // AddMCPTool adds an MCP tool that Claude can use
@@ -112,7 +121,9 @@ func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (*models.AIChatRespons
 			return nil, err
 		}
 	}
-	message, err := cc.Client.Messages.New(context.TODO(), mgsParam)
+	ctx, cancel := cc.requestContext()
+	defer cancel()
+	message, err := cc.Client.Messages.New(ctx, mgsParam)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +160,8 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 		mgsParam.Tools = cc.convertMCPToolsToAnthropic()
 	}
 
-	ctx := context.TODO()
+	ctx, cancel := cc.requestContext()
+	defer cancel()
 	for {
 		if cc.RequestGate != nil {
 			if err := cc.RequestGate(); err != nil {
@@ -249,7 +261,8 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 		streamParams.Tools = cc.convertMCPToolsToAnthropic()
 	}
 
-	ctx := context.TODO()
+	ctx, cancel := cc.requestContext()
+	defer cancel()
 	if cc.RequestGate != nil {
 		if err := cc.RequestGate(); err != nil {
 			return nil, err

@@ -7,8 +7,12 @@ import (
 )
 
 func GenerateEmbeddings(ofstring, model string, com ...CompatibleOptions) (*openai.CreateEmbeddingResponse, error) {
+	return GenerateEmbeddingsWithContext(context.TODO(), ofstring, model, com...)
+}
+
+func GenerateEmbeddingsWithContext(ctx context.Context, ofstring, model string, com ...CompatibleOptions) (*openai.CreateEmbeddingResponse, error) {
 	client := createClient(com...)
-	resp, err := client.Embeddings.New(context.TODO(), openai.EmbeddingNewParams{
+	resp, err := client.Embeddings.New(ctx, openai.EmbeddingNewParams{
 		Input: openai.EmbeddingNewParamsInputUnion{
 			OfString: openai.String(ofstring),
 		},

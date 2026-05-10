@@ -2,6 +2,7 @@ package bedrock_runtime
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -131,6 +132,10 @@ func CreateBedrockRequest(maxTokens int, Temperature, TopP float64, messages mod
 }
 
 func InvokeBedrockConverseAPI(modelIdentifier string, requestBody BedrockRequest) (*BedrockResponse, error) {
+	return InvokeBedrockConverseAPIWithContext(context.Background(), modelIdentifier, requestBody)
+}
+
+func InvokeBedrockConverseAPIWithContext(ctx context.Context, modelIdentifier string, requestBody BedrockRequest) (*BedrockResponse, error) {
 	// Fetch configuration
 	awsAccessKey := config.DefaultConfig().AwsAccessKey
 	awsSecretKey := config.DefaultConfig().AwsSecretKey
@@ -163,7 +168,7 @@ func InvokeBedrockConverseAPI(modelIdentifier string, requestBody BedrockRequest
 	// log.Printf("Request Payload: %s", string(payload)) // Debugging
 
 	// Create the HTTP request
-	req, err := http.NewRequest("POST", endpoint, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP request: %v", err)
 	}

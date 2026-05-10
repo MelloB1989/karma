@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/MelloB1989/karma/config"
 	internalopenai "github.com/MelloB1989/karma/internal/openai"
@@ -502,6 +503,7 @@ type KarmaAI struct {
 	Features        *F                              `json:"features"`
 	MaxToolPasses   int                             `json:"max_tool_passes"`
 	RateLimit       *RateLimitConfig                `json:"rate_limit"`
+	RequestTimeout  time.Duration                   `json:"request_timeout"`
 	// Deprecated: Use MCPServers instead
 	MCPServers []MCPServer `json:"mcp_servers"`
 	// Provider-specific configuration
@@ -581,6 +583,14 @@ func WithReasoningEffort(effort shared.ReasoningEffort) Option {
 func WithResponseType(responseType string) Option {
 	return func(kai *KarmaAI) {
 		kai.ResponseType = responseType
+	}
+}
+
+// WithRequestTimeout sets the request timeout for model calls.
+// Use a duration > 0 to enable; zero keeps provider defaults.
+func WithRequestTimeout(timeout time.Duration) Option {
+	return func(kai *KarmaAI) {
+		kai.RequestTimeout = timeout
 	}
 }
 
@@ -770,8 +780,9 @@ func NewKarmaAI(baseModel BaseModel, provider Provider, options ...Option) *Karm
 		Features: &F{
 			optionalFields: make(map[string]any),
 		},
-		MaxToolPasses: 4,
-		SpecialConfig: make(map[SpecialConfig]any),
+		MaxToolPasses:  4,
+		SpecialConfig:  make(map[SpecialConfig]any),
+		RequestTimeout: time.Minute * 30, //Default timeout to 30 minutes
 	}
 
 	for _, option := range options {
