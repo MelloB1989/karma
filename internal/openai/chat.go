@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -87,10 +88,48 @@ func (o *OpenAI) ApplyRequestTimeout() {
 	o.Client = createClientWithTimeout(o.RequestTimeout, opts...)
 }
 
+// isToolCallParsingError checks if an error is related to tool call argument parsing
+// failures from the API (e.g., Groq/OpenAI returning tool_use_failed).
+func isToolCallParsingError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "tool_use_failed") ||
+		strings.Contains(msg, "Failed to parse tool call arguments") ||
+		strings.Contains(msg, "invalid_request_error") && strings.Contains(msg, "tool") && strings.Contains(strings.ToLower(msg), "parse")
+}
+
+// extractFailedGeneration attempts to extract the failed_generation field from a
+// tool_use_failed error so the model can be asked to fix it.
+func extractFailedGeneration(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	idx := strings.Index(msg, "failed_generation")
+	if idx == -1 {
+		return ""
+	}
+	// Try to extract JSON from the error
+	braceStart := strings.Index(msg, "{")
+	if braceStart == -1 {
+		return msg[idx:]
+	}
+	var errData map[string]any
+	if jsonErr := json.Unmarshal([]byte(msg[braceStart:]), &errData); jsonErr == nil {
+		if fg, ok := errData["failed_generation"].(string); ok {
+			return fg
+		}
+	}
+	return msg[idx:]
+}
+
 func (o *OpenAI) CreateChat(messages *models.AIChatHistory, enableTools bool, useMCPExecution bool) (*openai.ChatCompletion, error) {
 	ctx, cancel := o.requestContext()
 	defer cancel()
 	params := o.buildParams(*messages, enableTools)
+	var lastParsingErr error
 
 	for range o.toolPassLimit() {
 		if o.RequestGate != nil {
@@ -100,6 +139,20 @@ func (o *OpenAI) CreateChat(messages *models.AIChatHistory, enableTools bool, us
 		}
 		chatCompletion, err := o.Client.Chat.Completions.New(ctx, params)
 		if err != nil {
+			if isToolCallParsingError(err) {
+				failedGen := extractFailedGeneration(err)
+				log.Printf("[karma] Tool call parsing error, retrying (has_failed_gen=%v)", failedGen != "")
+				lastParsingErr = err
+				correctionMsg := "Your previous tool call had malformed JSON arguments and could not be parsed. " +
+					"Please call the tool again with properly escaped JSON. " +
+					"Make sure all string values are properly escaped (no unescaped newlines, quotes, or special characters in JSON strings). " +
+					"Use \\n for newlines within string values."
+				if failedGen != "" {
+					correctionMsg += "\nThe failed generation was: " + failedGen
+				}
+				params.Messages = append(params.Messages, openai.UserMessage(correctionMsg))
+				continue
+			}
 			return nil, err
 		}
 
@@ -207,6 +260,9 @@ func (o *OpenAI) CreateChat(messages *models.AIChatHistory, enableTools bool, us
 			})
 		}
 	}
+	if lastParsingErr != nil {
+		return nil, fmt.Errorf("exceeded tool execution passes: tool call parsing failed: %w", lastParsingErr)
+	}
 	return nil, fmt.Errorf("exceeded tool execution passes")
 }
 
@@ -214,6 +270,7 @@ func (o *OpenAI) CreateChatStream(messages *models.AIChatHistory, chunkHandler f
 	ctx, cancel := o.requestContext()
 	defer cancel()
 	params := o.buildParams(*messages, enableTools)
+	var lastParsingErr error
 
 	for range o.toolPassLimit() {
 		if o.RequestGate != nil {
@@ -223,6 +280,23 @@ func (o *OpenAI) CreateChatStream(messages *models.AIChatHistory, chunkHandler f
 		}
 		acc, err := o.streamAndAccumulate(ctx, params, chunkHandler)
 		if err != nil {
+			if isToolCallParsingError(err) && acc != nil {
+				failedGen := extractFailedGeneration(err)
+				log.Printf("[karma] Tool call parsing error during streaming, retrying (has_failed_gen=%v)", failedGen != "")
+				lastParsingErr = err
+				correctionMsg := "Your previous tool call had malformed JSON arguments and could not be parsed. " +
+					"Please call the tool again with properly escaped JSON. " +
+					"Make sure all string values are properly escaped (no unescaped newlines, quotes, or special characters in JSON strings). " +
+					"Use \\n for newlines within string values."
+				if failedGen != "" {
+					correctionMsg += "\nThe failed generation was: " + failedGen
+				}
+				if len(acc.Choices) > 0 && acc.Choices[0].Message.Content != "" {
+					params.Messages = append(params.Messages, openai.AssistantMessage(acc.Choices[0].Message.Content))
+				}
+				params.Messages = append(params.Messages, openai.UserMessage(correctionMsg))
+				continue
+			}
 			return nil, err
 		}
 
@@ -329,6 +403,9 @@ func (o *OpenAI) CreateChatStream(messages *models.AIChatHistory, chunkHandler f
 				UniqueId:   utils.GenerateID(16),
 			})
 		}
+	}
+	if lastParsingErr != nil {
+		return nil, fmt.Errorf("exceeded tool execution passes: tool call parsing failed: %w", lastParsingErr)
 	}
 	return nil, fmt.Errorf("exceeded tool execution passes")
 }

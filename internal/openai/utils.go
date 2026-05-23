@@ -293,7 +293,7 @@ func (o *OpenAI) streamAndAccumulate(ctx context.Context, params openai.ChatComp
 		}
 	}
 	if err := stream.Err(); err != nil {
-		return nil, err
+		return &acc, err
 	}
 	return &acc, nil
 }
