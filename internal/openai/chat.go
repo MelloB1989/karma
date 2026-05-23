@@ -97,7 +97,7 @@ func isToolCallParsingError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "tool_use_failed") ||
 		strings.Contains(msg, "Failed to parse tool call arguments") ||
-		strings.Contains(msg, "invalid_request_error") && strings.Contains(msg, "tool")
+		strings.Contains(msg, "invalid_request_error") && strings.Contains(msg, "tool") && strings.Contains(strings.ToLower(msg), "parse")
 }
 
 // extractFailedGeneration attempts to extract the failed_generation field from a
@@ -129,6 +129,7 @@ func (o *OpenAI) CreateChat(messages *models.AIChatHistory, enableTools bool, us
 	ctx, cancel := o.requestContext()
 	defer cancel()
 	params := o.buildParams(*messages, enableTools)
+	var lastParsingErr error
 
 	for range o.toolPassLimit() {
 		if o.RequestGate != nil {
@@ -139,8 +140,9 @@ func (o *OpenAI) CreateChat(messages *models.AIChatHistory, enableTools bool, us
 		chatCompletion, err := o.Client.Chat.Completions.New(ctx, params)
 		if err != nil {
 			if isToolCallParsingError(err) {
-				log.Printf("[karma] Tool call parsing error, retrying: %v", err)
 				failedGen := extractFailedGeneration(err)
+				log.Printf("[karma] Tool call parsing error, retrying (has_failed_gen=%v)", failedGen != "")
+				lastParsingErr = err
 				correctionMsg := "Your previous tool call had malformed JSON arguments and could not be parsed. " +
 					"Please call the tool again with properly escaped JSON. " +
 					"Make sure all string values are properly escaped (no unescaped newlines, quotes, or special characters in JSON strings). " +
@@ -258,6 +260,9 @@ func (o *OpenAI) CreateChat(messages *models.AIChatHistory, enableTools bool, us
 			})
 		}
 	}
+	if lastParsingErr != nil {
+		return nil, fmt.Errorf("exceeded tool execution passes: tool call parsing failed: %w", lastParsingErr)
+	}
 	return nil, fmt.Errorf("exceeded tool execution passes")
 }
 
@@ -265,6 +270,7 @@ func (o *OpenAI) CreateChatStream(messages *models.AIChatHistory, chunkHandler f
 	ctx, cancel := o.requestContext()
 	defer cancel()
 	params := o.buildParams(*messages, enableTools)
+	var lastParsingErr error
 
 	for range o.toolPassLimit() {
 		if o.RequestGate != nil {
@@ -275,8 +281,9 @@ func (o *OpenAI) CreateChatStream(messages *models.AIChatHistory, chunkHandler f
 		acc, err := o.streamAndAccumulate(ctx, params, chunkHandler)
 		if err != nil {
 			if isToolCallParsingError(err) && acc != nil {
-				log.Printf("[karma] Tool call parsing error during streaming, retrying: %v", err)
 				failedGen := extractFailedGeneration(err)
+				log.Printf("[karma] Tool call parsing error during streaming, retrying (has_failed_gen=%v)", failedGen != "")
+				lastParsingErr = err
 				correctionMsg := "Your previous tool call had malformed JSON arguments and could not be parsed. " +
 					"Please call the tool again with properly escaped JSON. " +
 					"Make sure all string values are properly escaped (no unescaped newlines, quotes, or special characters in JSON strings). " +
@@ -396,6 +403,9 @@ func (o *OpenAI) CreateChatStream(messages *models.AIChatHistory, chunkHandler f
 				UniqueId:   utils.GenerateID(16),
 			})
 		}
+	}
+	if lastParsingErr != nil {
+		return nil, fmt.Errorf("exceeded tool execution passes: tool call parsing failed: %w", lastParsingErr)
 	}
 	return nil, fmt.Errorf("exceeded tool execution passes")
 }
