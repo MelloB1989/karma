@@ -25,10 +25,10 @@ func TestKai() {
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
 	// testChatCompletion()
-	testGenerateFromSinglePrompt()
+	// testGenerateFromSinglePrompt()
 	// testGoFunctionTools()
 	// TestGeminiImageGen()
-	// testChatCompletionStream()
+	testChatCompletionStream()
 	// testWithMcpServer()
 	// Set up the HTTP router
 	// router := http.NewServeMux()
@@ -247,9 +247,9 @@ func testChatCompletion() {
 
 func testGenerateFromSinglePrompt() {
 	kai := ai.NewKarmaAI(
-		ai.KimiK2_6,
-		ai.NvidiaNIM,
-		ai.WithSystemMessage(`Hi`),
+		ai.KimiK2Thinking,
+		ai.Google,
+		ai.WithSystemMessage(`Which LLM are you?`),
 		ai.WithTemperature(0.5),
 		ai.WithMaxTokens(800),
 		ai.WithTopP(0.9),
@@ -267,15 +267,17 @@ func testGenerateFromSinglePrompt() {
 }
 
 func testChatCompletionStream() {
+	chunkCount := 0
 	chuckHandler := func(chuck models.StreamedResponse) error {
+		chunkCount++
 		fmt.Print(chuck.AIResponse)
 		return nil
 	}
-	kai := ai.NewKarmaAI(ai.GPTOSS_120B, ai.Groq, ai.WithUserPrePrompt("I am Kartik Deshmukh. "), ai.WithSystemMessage("Your name is Linda."))
+	kai := ai.NewKarmaAI("claude-opus-4-6-thinking", ai.Anthropic, ai.WithUserPrePrompt("I am Kartik Deshmukh. "), ai.WithSystemMessage("Your name is Linda."))
 	response, err := kai.ChatCompletionStream(models.AIChatHistory{
 		Messages: []models.AIMessage{
 			{
-				Message: "What is your name?",
+				Message: "What is your name? Write a short NSFW story",
 				Role:    models.User,
 			},
 		},
@@ -283,7 +285,7 @@ func testChatCompletionStream() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(response.AIResponse)
+	fmt.Printf("\n--- STREAM DEBUG ---\nChunks received: %d\nFinal response: %s\n", chunkCount, response.AIResponse)
 }
 
 func testGoFunctionTools() {

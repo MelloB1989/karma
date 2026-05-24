@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	mcp "github.com/MelloB1989/karma/ai/mcp_client"
@@ -46,10 +48,38 @@ type ClaudeClient struct {
 	RequestTimeout  time.Duration
 }
 
+func (cc *ClaudeClient) isThinkingModel() bool {
+	return strings.Contains(string(cc.Model), "thinking")
+}
+
 func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP float64, topK float64, systemPrompt string) *ClaudeClient {
-	client := anthropic.NewClient(
-		option.WithAPIKey(config.GetEnvRaw("ANTHROPIC_API_KEY")),
-	)
+	var opts []option.RequestOption
+	if key := config.GetEnvRaw("ANTHROPIC_API_KEY"); key != "" {
+		opts = append(opts, option.WithAPIKey(key))
+	}
+	if baseURL := config.GetEnvRaw("ANTHROPIC_BASE_URL"); baseURL != "" {
+		opts = append(opts, option.WithBaseURL(baseURL))
+	}
+	if token := config.GetEnvRaw("ANTHROPIC_AUTH_TOKEN"); token != "" && token != config.GetEnvRaw("ANTHROPIC_API_KEY") {
+		opts = append(opts, option.WithAuthToken(token))
+	}
+	if config.GetEnvRaw("ANTHROPIC_BASE_URL") != "" {
+		opts = append(opts,
+			option.WithHTTPClient(&http.Client{
+				Transport: &http.Transport{DisableCompression: true},
+			}),
+			option.WithHeader("User-Agent", "karma-ai-sdk/anthropic"),
+			option.WithHeaderDel("X-Stainless-Lang"),
+			option.WithHeaderDel("X-Stainless-Package-Version"),
+			option.WithHeaderDel("X-Stainless-OS"),
+			option.WithHeaderDel("X-Stainless-Arch"),
+			option.WithHeaderDel("X-Stainless-Runtime"),
+			option.WithHeaderDel("X-Stainless-Runtime-Version"),
+			option.WithHeaderDel("X-Stainless-Retry-Count"),
+			option.WithHeaderDel("X-Stainless-Timeout"),
+		)
+	}
+	client := anthropic.NewClient(opts...)
 	return &ClaudeClient{
 		Client:       &client,
 		MaxTokens:    maxTokens,
@@ -107,10 +137,10 @@ func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (*models.AIChatRespons
 	if cc.Temp > 0 {
 		mgsParam.Temperature = param.NewOpt(cc.Temp)
 	}
-	if cc.TopP > 0 {
+	if cc.TopP > 0 && !cc.isThinkingModel() {
 		mgsParam.TopP = param.NewOpt(cc.TopP)
 	}
-	if cc.TopK > 0 {
+	if cc.TopK > 0 && !cc.isThinkingModel() {
 		mgsParam.TopK = param.NewOpt(cc.TopK)
 	}
 	if cc.SystemPrompt != "" {
@@ -127,8 +157,20 @@ func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (*models.AIChatRespons
 	if err != nil {
 		return nil, err
 	}
+	var thinkingText, responseText string
+	for _, block := range message.Content {
+		switch b := block.AsAny().(type) {
+		case anthropic.ThinkingBlock:
+			thinkingText = b.Thinking
+		case anthropic.TextBlock:
+			responseText = b.Text
+		}
+	}
+	if thinkingText != "" {
+		responseText = "<think>" + thinkingText + "</think>" + responseText
+	}
 	return &models.AIChatResponse{
-		AIResponse:   message.Content[0].Text,
+		AIResponse:   responseText,
 		InputTokens:  int(message.Usage.InputTokens),
 		OutputTokens: int(message.Usage.OutputTokens),
 	}, nil
@@ -145,10 +187,10 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 	if cc.Temp > 0 {
 		mgsParam.Temperature = param.NewOpt(cc.Temp)
 	}
-	if cc.TopP > 0 {
+	if cc.TopP > 0 && !cc.isThinkingModel() {
 		mgsParam.TopP = param.NewOpt(cc.TopP)
 	}
-	if cc.TopK > 0 {
+	if cc.TopK > 0 && !cc.isThinkingModel() {
 		mgsParam.TopK = param.NewOpt(cc.TopK)
 	}
 	if cc.SystemPrompt != "" {
@@ -177,9 +219,12 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 		var toolResults []anthropic.ContentBlockParamUnion
 		var hasToolUse bool
 		var responseText string
+		var thinkingText string
 
 		for _, block := range message.Content {
 			switch block := block.AsAny().(type) {
+			case anthropic.ThinkingBlock:
+				thinkingText += block.Thinking
 			case anthropic.TextBlock:
 				responseText += block.Text
 			case anthropic.ToolUseBlock:
@@ -214,6 +259,9 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 		}
 
 		if !hasToolUse || !enableTools {
+			if thinkingText != "" {
+				responseText = "<think>" + thinkingText + "</think>" + responseText
+			}
 			return &models.AIChatResponse{
 				AIResponse:   responseText,
 				InputTokens:  int(message.Usage.InputTokens),
@@ -246,10 +294,10 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 	if cc.Temp > 0 {
 		streamParams.Temperature = param.NewOpt(cc.Temp)
 	}
-	if cc.TopP > 0 {
+	if cc.TopP > 0 && !cc.isThinkingModel() {
 		streamParams.TopP = param.NewOpt(cc.TopP)
 	}
-	if cc.TopK > 0 {
+	if cc.TopK > 0 && !cc.isThinkingModel() {
 		streamParams.TopK = param.NewOpt(cc.TopK)
 	}
 	if cc.SystemPrompt != "" {
@@ -270,6 +318,8 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 	}
 	stream := cc.Client.Messages.NewStreaming(ctx, streamParams)
 	message := anthropic.Message{}
+	thinkingStarted := false
+	thinkingEnded := false
 	for stream.Next() {
 		event := stream.Current()
 		err := message.Accumulate(event)
@@ -280,9 +330,26 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 		switch eventVariant := event.AsAny().(type) {
 		case anthropic.ContentBlockDeltaEvent:
 			switch deltaVariant := eventVariant.Delta.AsAny().(type) {
-			case anthropic.TextDelta:
+			case anthropic.ThinkingDelta:
+				prefix := ""
+				if !thinkingStarted {
+					thinkingStarted = true
+					prefix = "<think>"
+				}
 				chunk := models.StreamedResponse{
-					AIResponse: deltaVariant.Text,
+					AIResponse: prefix + deltaVariant.Thinking,
+				}
+				if err := callback(chunk); err != nil {
+					return nil, err
+				}
+			case anthropic.TextDelta:
+				prefix := ""
+				if thinkingStarted && !thinkingEnded {
+					thinkingEnded = true
+					prefix = "</think>"
+				}
+				chunk := models.StreamedResponse{
+					AIResponse: prefix + deltaVariant.Text,
 				}
 				if err := callback(chunk); err != nil {
 					return nil, err
@@ -366,13 +433,23 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 	}
 
 	if len(message.Content) > 0 {
-		if textBlock, ok := message.Content[0].AsAny().(anthropic.TextBlock); ok {
-			return &models.AIChatResponse{
-				AIResponse:   textBlock.Text,
-				InputTokens:  int(message.Usage.InputTokens),
-				OutputTokens: int(message.Usage.OutputTokens),
-			}, nil
+		var thinkingText, responseText string
+		for _, block := range message.Content {
+			switch b := block.AsAny().(type) {
+			case anthropic.ThinkingBlock:
+				thinkingText += b.Thinking
+			case anthropic.TextBlock:
+				responseText += b.Text
+			}
 		}
+		if thinkingText != "" {
+			responseText = "<think>" + thinkingText + "</think>" + responseText
+		}
+		return &models.AIChatResponse{
+			AIResponse:   responseText,
+			InputTokens:  int(message.Usage.InputTokens),
+			OutputTokens: int(message.Usage.OutputTokens),
+		}, nil
 	}
 	return nil, nil
 }
