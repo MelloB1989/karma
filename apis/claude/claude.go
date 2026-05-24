@@ -34,6 +34,13 @@ func extractToolCallsFromClaude(content []anthropic.ContentBlockUnion) []models.
 	return toolCalls
 }
 
+type GoFunctionTool struct {
+	Name        string
+	Description string
+	Parameters  map[string]any
+	Handler     func(context.Context, map[string]any) (string, error)
+}
+
 type ClaudeClient struct {
 	Client          *anthropic.Client
 	MaxTokens       int
@@ -46,6 +53,8 @@ type ClaudeClient struct {
 	MultiMCPManager *mcp.MultiManager
 	RequestGate     func() error
 	RequestTimeout  time.Duration
+	FunctionTools   map[string]GoFunctionTool
+	MaxToolPasses   int
 }
 
 func (cc *ClaudeClient) isThinkingModel() bool {
@@ -66,7 +75,10 @@ func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP fl
 	if config.GetEnvRaw("ANTHROPIC_BASE_URL") != "" {
 		opts = append(opts,
 			option.WithHTTPClient(&http.Client{
-				Transport: &http.Transport{DisableCompression: true},
+				Transport: &http.Transport{
+					DisableCompression: true,
+					Proxy:              http.ProxyFromEnvironment,
+				},
 			}),
 			option.WithHeader("User-Agent", "karma-ai-sdk/anthropic"),
 			option.WithHeaderDel("X-Stainless-Lang"),
@@ -81,14 +93,16 @@ func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP fl
 	}
 	client := anthropic.NewClient(opts...)
 	return &ClaudeClient{
-		Client:       &client,
-		MaxTokens:    maxTokens,
-		Model:        model,
-		Temp:         temp,
-		TopP:         topP,
-		TopK:         int64(topK),
-		SystemPrompt: systemPrompt,
-		MCPManager:   nil,
+		Client:        &client,
+		MaxTokens:     maxTokens,
+		Model:         model,
+		Temp:          temp,
+		TopP:          topP,
+		TopK:          int64(topK),
+		SystemPrompt:  systemPrompt,
+		MCPManager:    nil,
+		FunctionTools: make(map[string]GoFunctionTool),
+		MaxToolPasses: 10,
 	}
 }
 
@@ -197,9 +211,9 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 		mgsParam.System = []anthropic.TextBlockParam{{Text: cc.SystemPrompt}}
 	}
 
-	// Add MCP tools if enabled and available
-	if enableTools && cc.hasMCPTools() {
-		mgsParam.Tools = cc.convertMCPToolsToAnthropic()
+	// Add tools if enabled and available
+	if enableTools && cc.hasAnyTools() {
+		mgsParam.Tools = cc.getAllToolsAsAnthropic()
 	}
 
 	ctx, cancel := cc.requestContext()
@@ -246,9 +260,9 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 						continue
 					}
 
-					result, err := cc.callMCPTool(ctx, block.Name, arguments)
+					result, err := cc.callTool(ctx, block.Name, arguments)
 					if err != nil {
-						fmt.Printf("MCP tool error: %v\n", err)
+						fmt.Printf("Tool error: %v\n", err)
 						toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID,
 							fmt.Sprintf("Error calling tool: %v", err), true))
 					} else {
@@ -304,89 +318,59 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 		streamParams.System = []anthropic.TextBlockParam{{Text: cc.SystemPrompt}}
 	}
 
-	// Add MCP tools if enabled and available
-	if enableTools && cc.hasMCPTools() {
-		streamParams.Tools = cc.convertMCPToolsToAnthropic()
+	// Add tools if enabled and available
+	if enableTools && cc.hasAnyTools() {
+		streamParams.Tools = cc.getAllToolsAsAnthropic()
 	}
 
 	ctx, cancel := cc.requestContext()
 	defer cancel()
-	if cc.RequestGate != nil {
-		if err := cc.RequestGate(); err != nil {
-			return nil, err
-		}
-	}
-	stream := cc.Client.Messages.NewStreaming(ctx, streamParams)
-	message := anthropic.Message{}
-	thinkingStarted := false
-	thinkingEnded := false
-	for stream.Next() {
-		event := stream.Current()
-		err := message.Accumulate(event)
-		if err != nil {
-			return nil, err
-		}
 
-		switch eventVariant := event.AsAny().(type) {
-		case anthropic.ContentBlockDeltaEvent:
-			switch deltaVariant := eventVariant.Delta.AsAny().(type) {
-			case anthropic.ThinkingDelta:
-				prefix := ""
-				if !thinkingStarted {
-					thinkingStarted = true
-					prefix = "<think>"
-				}
-				chunk := models.StreamedResponse{
-					AIResponse: prefix + deltaVariant.Thinking,
-				}
-				if err := callback(chunk); err != nil {
-					return nil, err
-				}
-			case anthropic.TextDelta:
-				prefix := ""
-				if thinkingStarted && !thinkingEnded {
-					thinkingEnded = true
-					prefix = "</think>"
-				}
-				chunk := models.StreamedResponse{
-					AIResponse: prefix + deltaVariant.Text,
-				}
-				if err := callback(chunk); err != nil {
-					return nil, err
-				}
+	maxPasses := cc.MaxToolPasses
+	if maxPasses <= 0 {
+		maxPasses = 10
+	}
+
+	for round := 0; round <= maxPasses; round++ {
+		if cc.RequestGate != nil {
+			if err := cc.RequestGate(); err != nil {
+				return nil, err
 			}
 		}
-	}
+		stream := cc.Client.Messages.NewStreaming(ctx, streamParams)
+		message := anthropic.Message{}
+		thinkingStarted := false
+		thinkingEnded := false
+		for stream.Next() {
+			event := stream.Current()
+			err := message.Accumulate(event)
+			if err != nil {
+				return nil, err
+			}
 
-	if stream.Err() != nil {
-		return nil, stream.Err()
-	}
-
-	// Handle tool calls if any
-	if enableTools && len(message.Content) > 0 {
-		var toolResults []anthropic.ContentBlockParamUnion
-		var hasToolUse bool
-
-		for _, block := range message.Content {
-			if block, ok := block.AsAny().(anthropic.ToolUseBlock); ok {
-				hasToolUse = true
-				var arguments map[string]any
-				err := json.Unmarshal(block.Input, &arguments)
-				if err != nil {
-					toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID,
-						fmt.Sprintf("Error parsing arguments: %v", err), true))
-					continue
-				}
-
-				result, err := cc.callMCPTool(ctx, block.Name, arguments)
-				if err != nil {
-					toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID,
-						fmt.Sprintf("Error calling tool: %v", err), true))
-				} else {
-					toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID, result, false))
-					// Stream the tool result
+			switch eventVariant := event.AsAny().(type) {
+			case anthropic.ContentBlockDeltaEvent:
+				switch deltaVariant := eventVariant.Delta.AsAny().(type) {
+				case anthropic.ThinkingDelta:
+					prefix := ""
+					if !thinkingStarted {
+						thinkingStarted = true
+						prefix = "<think>"
+					}
 					chunk := models.StreamedResponse{
-						AIResponse: fmt.Sprintf("\n[Tool Result: %s]", result),
+						AIResponse: prefix + deltaVariant.Thinking,
+					}
+					if err := callback(chunk); err != nil {
+						return nil, err
+					}
+				case anthropic.TextDelta:
+					prefix := ""
+					if thinkingStarted && !thinkingEnded {
+						thinkingEnded = true
+						prefix = "</think>"
+					}
+					chunk := models.StreamedResponse{
+						AIResponse: prefix + deltaVariant.Text,
 					}
 					if err := callback(chunk); err != nil {
 						return nil, err
@@ -395,61 +379,66 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 			}
 		}
 
-		if hasToolUse && len(toolResults) > 0 {
-			// Continue with tool results (simplified for streaming)
-			processedMessages = append(processedMessages, message.ToParam())
-			processedMessages = append(processedMessages, anthropic.NewUserMessage(toolResults...))
+		if stream.Err() != nil {
+			return nil, stream.Err()
+		}
 
-			// Make a follow-up call to get the final response
-			followUpParams := streamParams
-			followUpParams.Messages = processedMessages
-			followUpParams.Tools = nil // Disable tools for follow-up to avoid loops
-
-			if cc.RequestGate != nil {
-				if err := cc.RequestGate(); err != nil {
-					return nil, err
-				}
-			}
-			followUpStream := cc.Client.Messages.NewStreaming(ctx, followUpParams)
-			for followUpStream.Next() {
-				event := followUpStream.Current()
-				switch eventVariant := event.AsAny().(type) {
-				case anthropic.ContentBlockDeltaEvent:
-					switch deltaVariant := eventVariant.Delta.AsAny().(type) {
-					case anthropic.TextDelta:
-						chunk := models.StreamedResponse{
-							AIResponse: deltaVariant.Text,
-						}
-						if err := callback(chunk); err != nil {
-							return nil, err
-						}
+		// Check for tool calls
+		if !enableTools || message.StopReason != "tool_use" {
+			if len(message.Content) > 0 {
+				var thinkingText, responseText string
+				for _, block := range message.Content {
+					switch b := block.AsAny().(type) {
+					case anthropic.ThinkingBlock:
+						thinkingText += b.Thinking
+					case anthropic.TextBlock:
+						responseText += b.Text
 					}
 				}
+				if thinkingText != "" {
+					responseText = "<think>" + thinkingText + "</think>" + responseText
+				}
+				return &models.AIChatResponse{
+					AIResponse:   responseText,
+					InputTokens:  int(message.Usage.InputTokens),
+					OutputTokens: int(message.Usage.OutputTokens),
+				}, nil
 			}
-			if followUpStream.Err() != nil {
-				return nil, followUpStream.Err()
+			return nil, nil
+		}
+
+		// Execute tool calls and build results
+		var toolResults []anthropic.ContentBlockParamUnion
+		for _, block := range message.Content {
+			if block, ok := block.AsAny().(anthropic.ToolUseBlock); ok {
+				if !useMCPExecution {
+					return &models.AIChatResponse{
+						ToolCalls: extractToolCallsFromClaude(message.Content),
+					}, nil
+				}
+				var arguments map[string]any
+				err := json.Unmarshal(block.Input, &arguments)
+				if err != nil {
+					toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID,
+						fmt.Sprintf("Error parsing arguments: %v", err), true))
+					continue
+				}
+
+				result, err := cc.callTool(ctx, block.Name, arguments)
+				if err != nil {
+					toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID,
+						fmt.Sprintf("Error calling tool: %v", err), true))
+				} else {
+					toolResults = append(toolResults, anthropic.NewToolResultBlock(block.ID, result, false))
+				}
 			}
 		}
+
+		// Append assistant turn + tool results and continue loop
+		processedMessages = append(processedMessages, message.ToParam())
+		processedMessages = append(processedMessages, anthropic.NewUserMessage(toolResults...))
+		streamParams.Messages = processedMessages
 	}
 
-	if len(message.Content) > 0 {
-		var thinkingText, responseText string
-		for _, block := range message.Content {
-			switch b := block.AsAny().(type) {
-			case anthropic.ThinkingBlock:
-				thinkingText += b.Thinking
-			case anthropic.TextBlock:
-				responseText += b.Text
-			}
-		}
-		if thinkingText != "" {
-			responseText = "<think>" + thinkingText + "</think>" + responseText
-		}
-		return &models.AIChatResponse{
-			AIResponse:   responseText,
-			InputTokens:  int(message.Usage.InputTokens),
-			OutputTokens: int(message.Usage.OutputTokens),
-		}, nil
-	}
-	return nil, nil
+	return nil, fmt.Errorf("exceeded maximum tool passes (%d)", maxPasses)
 }

@@ -26,9 +26,9 @@ func TestKai() {
 	// testRawApi()
 	// testChatCompletion()
 	// testGenerateFromSinglePrompt()
-	// testGoFunctionTools()
+	testGoFunctionTools()
 	// TestGeminiImageGen()
-	testChatCompletionStream()
+	// testChatCompletionStream()
 	// testWithMcpServer()
 	// Set up the HTTP router
 	// router := http.NewServeMux()
@@ -290,7 +290,7 @@ func testChatCompletionStream() {
 
 func testGoFunctionTools() {
 	// Example: Using FuncParams helpers to define and use Go function tools
-	kai := ai.NewKarmaAI(ai.MiniMaxM2, ai.Google,
+	kai := ai.NewKarmaAI("claude-opus-4-6-thinking", ai.Anthropic,
 		ai.WithSystemMessage("You are a helpful assistant with access to tools. Use the tools when appropriate."),
 		ai.WithTemperature(0.7),
 		ai.WithMaxTokens(2000),

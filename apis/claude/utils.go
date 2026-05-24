@@ -9,6 +9,64 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 )
 
+func (cc *ClaudeClient) AddGoFunctionTool(tool GoFunctionTool) error {
+	if tool.Name == "" {
+		return fmt.Errorf("tool name required")
+	}
+	if tool.Handler == nil {
+		return fmt.Errorf("tool handler required")
+	}
+	cc.FunctionTools[tool.Name] = tool
+	return nil
+}
+
+func (cc *ClaudeClient) hasGoFunctionTools() bool {
+	return len(cc.FunctionTools) > 0
+}
+
+func (cc *ClaudeClient) hasAnyTools() bool {
+	return cc.hasMCPTools() || cc.hasGoFunctionTools()
+}
+
+func (cc *ClaudeClient) convertGoFunctionToolsToAnthropic() []anthropic.ToolUnionParam {
+	tools := make([]anthropic.ToolUnionParam, 0, len(cc.FunctionTools))
+	for _, tool := range cc.FunctionTools {
+		inputSchema := anthropic.ToolInputSchemaParam{}
+		if props, ok := tool.Parameters["properties"].(map[string]any); ok {
+			inputSchema.Properties = props
+		}
+		if required, ok := tool.Parameters["required"]; ok {
+			inputSchema.ExtraFields = map[string]any{"required": required}
+		}
+		tools = append(tools, anthropic.ToolUnionParam{
+			OfTool: &anthropic.ToolParam{
+				Name:        tool.Name,
+				Description: anthropic.String(tool.Description),
+				InputSchema: inputSchema,
+			},
+		})
+	}
+	return tools
+}
+
+func (cc *ClaudeClient) getAllToolsAsAnthropic() []anthropic.ToolUnionParam {
+	var tools []anthropic.ToolUnionParam
+	if cc.hasMCPTools() {
+		tools = append(tools, cc.convertMCPToolsToAnthropic()...)
+	}
+	if cc.hasGoFunctionTools() {
+		tools = append(tools, cc.convertGoFunctionToolsToAnthropic()...)
+	}
+	return tools
+}
+
+func (cc *ClaudeClient) callTool(ctx context.Context, toolName string, arguments map[string]any) (string, error) {
+	if fnTool, ok := cc.FunctionTools[toolName]; ok {
+		return fnTool.Handler(ctx, arguments)
+	}
+	return cc.callMCPTool(ctx, toolName, arguments)
+}
+
 // hasMCPTools checks if any MCP tools are available
 func (cc *ClaudeClient) hasMCPTools() bool {
 	if cc.MultiMCPManager != nil {

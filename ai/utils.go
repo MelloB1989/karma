@@ -110,6 +110,23 @@ func (kai *KarmaAI) configureClaudeClientForMCP(cc *claude.ClaudeClient) {
 			}
 		}
 	}
+	if kai.MaxToolPasses > 0 {
+		cc.MaxToolPasses = kai.MaxToolPasses
+	}
+	for _, fnTool := range kai.GoFunctionTools {
+		handler := fnTool.Handler
+		tool := claude.GoFunctionTool{
+			Name:        fnTool.Name,
+			Description: fnTool.Description,
+			Parameters:  fnTool.Parameters,
+			Handler: func(ctx context.Context, args map[string]any) (string, error) {
+				return handler(ctx, args)
+			},
+		}
+		if err := cc.AddGoFunctionTool(tool); err != nil {
+			log.Printf("Failed to add Go function tool: %v", err)
+		}
+	}
 }
 
 func (kai *KarmaAI) configureOpenaiClientForMCP(o *openai.OpenAI) {
