@@ -47,19 +47,21 @@ func (kai *KarmaAI) captureResponse(mgs models.AIChatHistory, res models.AIChatR
 			return
 		}
 
-		kai.SetAnalyticProperty(AIInputTokens, res.InputTokens)
-		kai.SetAnalyticProperty(AIOutputTokens, res.OutputTokens)
-		kai.SetAnalyticProperty(AILatency, res.TimeTaken)
-		kai.SetAnalyticProperty(AIIsError, false) // Mark as successful response
+		props := map[AIProperty]any{
+			AIInputTokens:  res.InputTokens,
+			AIOutputTokens: res.OutputTokens,
+			AILatency:      res.TimeTaken,
+			AIIsError:      false,
+		}
 
 		if kai.Analytics.CaptureUserPrompts && len(mgs.Messages) >= 1 {
-			kai.SetAnalyticProperty(AIInput, mgs.Messages[len(mgs.Messages)-1].Message)
+			props[AIInput] = mgs.Messages[len(mgs.Messages)-1].Message
 		}
 		if kai.Analytics.CaptureAIResponses {
-			kai.SetAnalyticProperty(AIOutputChoices, res.AIResponse)
+			props[AIOutputChoices] = res.AIResponse
 		}
 
-		// Send the event after setting all properties
+		kai.SetAnalyticProperties(props)
 		kai.SendEvent()
 	}()
 }
@@ -70,24 +72,27 @@ func (kai *KarmaAI) setBasicProperties() {
 		return
 	}
 
-	kai.SetAnalyticProperty(AITraceID, kai.Analytics.TraceId)
-	kai.SetAnalyticProperty(AIModel, kai.Model)
-	kai.SetAnalyticProperty(AIProvider, kai.Model.GetModelProvider())
-	kai.SetAnalyticProperty(SystemPrompt, kai.SystemMessage)
+	kai.SetAnalyticProperties(map[AIProperty]any{
+		AITraceID:    kai.Analytics.TraceId,
+		AIModel:      kai.Model,
+		AIProvider:   kai.Model.GetModelProvider(),
+		SystemPrompt: kai.SystemMessage,
+		Temperature:  strconv.FormatFloat(float64(kai.Temperature), 'f', -1, 64),
+		TopP:         strconv.FormatFloat(float64(kai.TopP), 'f', -1, 64),
+		TopK:         strconv.Itoa(int(kai.TopK)),
+		MaxTokens:    strconv.Itoa(int(kai.MaxTokens)),
+	})
 
 	if kai.ToolsEnabled {
-		kai.SetAnalyticProperty(ToolCallEnabled, strconv.FormatBool(kai.ToolsEnabled))
-		server_urls := []string{}
-		server_urls = append(server_urls, kai.MCPUrl)
+		server_urls := []string{kai.MCPUrl}
 		for _, server := range kai.MCPServers {
 			server_urls = append(server_urls, server.URL)
 		}
-		kai.SetAnalyticProperty(McpServerUrls, strings.Join(server_urls, ","))
+		kai.SetAnalyticProperties(map[AIProperty]any{
+			ToolCallEnabled: strconv.FormatBool(kai.ToolsEnabled),
+			McpServerUrls:   strings.Join(server_urls, ","),
+		})
 	}
-	kai.SetAnalyticProperty(Temperature, strconv.FormatFloat(float64(kai.Temperature), 'f', -1, 64))
-	kai.SetAnalyticProperty(TopP, strconv.FormatFloat(float64(kai.TopP), 'f', -1, 64))
-	kai.SetAnalyticProperty(TopK, strconv.Itoa(int(kai.TopK)))
-	kai.SetAnalyticProperty(MaxTokens, strconv.Itoa(int(kai.MaxTokens)))
 }
 
 func (kai *KarmaAI) SendEvent() {
@@ -151,6 +156,20 @@ func (kai *KarmaAI) SetAnalyticProperty(property AIProperty, val any) {
 		kai.Analytics.properties = make(map[string]any)
 	}
 	kai.Analytics.properties[string(property)] = val
+}
+
+func (kai *KarmaAI) SetAnalyticProperties(props map[AIProperty]any) {
+	if kai.Analytics == nil {
+		return
+	}
+	kai.Analytics.mu.Lock()
+	defer kai.Analytics.mu.Unlock()
+	if kai.Analytics.properties == nil {
+		kai.Analytics.properties = make(map[string]any, len(props))
+	}
+	for k, v := range props {
+		kai.Analytics.properties[string(k)] = v
+	}
 }
 
 func (kai *KarmaAI) DeleteAnalyticProperty(property AIProperty) {

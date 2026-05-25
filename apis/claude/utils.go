@@ -50,7 +50,13 @@ func (cc *ClaudeClient) convertGoFunctionToolsToAnthropic() []anthropic.ToolUnio
 }
 
 func (cc *ClaudeClient) getAllToolsAsAnthropic() []anthropic.ToolUnionParam {
-	var tools []anthropic.ToolUnionParam
+	n := len(cc.FunctionTools)
+	if cc.MultiMCPManager != nil {
+		n += cc.MultiMCPManager.Count()
+	} else if cc.MCPManager != nil {
+		n += cc.MCPManager.Count()
+	}
+	tools := make([]anthropic.ToolUnionParam, 0, n)
 	if cc.hasMCPTools() {
 		tools = append(tools, cc.convertMCPToolsToAnthropic()...)
 	}
@@ -134,7 +140,7 @@ func (cc *ClaudeClient) callMCPTool(ctx context.Context, toolName string, argume
 }
 
 func processMessages(messages models.AIChatHistory) []anthropic.MessageParam {
-	var processedMessages []anthropic.MessageParam
+	processedMessages := make([]anthropic.MessageParam, 0, len(messages.Messages))
 	for _, msg := range messages.Messages {
 		var role anthropic.MessageParamRole
 		if msg.Role == models.User {

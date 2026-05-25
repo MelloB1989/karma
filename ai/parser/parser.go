@@ -326,13 +326,13 @@ func stripCodeFences(s string) string {
 // appends prose after the closing brace.
 func extractBalanced(s string) (string, error) {
 	start := -1
-	var open, close rune
+	var open, close byte
 
-	for i, r := range s {
-		if r == '{' || r == '[' {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '{' || s[i] == '[' {
 			start = i
-			open = r
-			if r == '{' {
+			open = s[i]
+			if s[i] == '{' {
 				close = '}'
 			} else {
 				close = ']'
@@ -349,9 +349,8 @@ func extractBalanced(s string) (string, error) {
 	inString := false
 	escaped := false
 
-	for i := start; i < len(s); {
-		r, size := utf8.DecodeRuneInString(s[i:])
-		i += size
+	for i := start; i < len(s); i++ {
+		b := s[i]
 
 		if escaped {
 			escaped = false
@@ -359,7 +358,7 @@ func extractBalanced(s string) (string, error) {
 		}
 
 		if inString {
-			switch r {
+			switch b {
 			case '\\':
 				escaped = true
 			case '"':
@@ -368,7 +367,7 @@ func extractBalanced(s string) (string, error) {
 			continue
 		}
 
-		switch r {
+		switch b {
 		case '"':
 			inString = true
 		case open:
@@ -376,38 +375,35 @@ func extractBalanced(s string) (string, error) {
 		case close:
 			depth--
 			if depth == 0 {
-				return s[start:i], nil
+				return s[start : i+1], nil
 			}
 		}
 	}
 
-	// Depth never reached zero — the JSON is truncated.  Return what we have
-	// and let the repair step try to close it.
 	truncated := s[start:]
-	return repairTruncated(truncated, open, close), nil
+	return repairTruncatedBytes(truncated, open, close), nil
 }
 
-// repairTruncated attempts to close an unclosed JSON value by appending the
-// missing closing delimiters.  It is intentionally conservative.
-func repairTruncated(s string, open, close rune) string {
+func repairTruncatedBytes(s string, open, close byte) string {
 	depth := 0
 	inString := false
 	escaped := false
 
-	for _, r := range s {
+	for i := 0; i < len(s); i++ {
+		b := s[i]
 		if escaped {
 			escaped = false
 			continue
 		}
 		if inString {
-			if r == '\\' {
+			if b == '\\' {
 				escaped = true
-			} else if r == '"' {
+			} else if b == '"' {
 				inString = false
 			}
 			continue
 		}
-		switch r {
+		switch b {
 		case '"':
 			inString = true
 		case open:
@@ -516,12 +512,11 @@ func removeTrailingCommas(s string) string {
 	return s
 }
 
-// normaliseBoolsAndNulls fixes capitalisation variants that some models emit
-// (True, False, None, NULL, …) while staying string-aware.
-func normaliseBoolsAndNulls(s string) string {
-	// Only replace outside of quoted strings using a simple word-boundary
-	// regex; this is fast and good enough for the common cases.
-	replacements := []struct{ bad, good string }{
+var boolNullReplacements = func() []struct {
+	re   *regexp.Regexp
+	repl string
+} {
+	raw := []struct{ bad, good string }{
 		{"True", "true"},
 		{"False", "false"},
 		{"None", "null"},
@@ -531,12 +526,20 @@ func normaliseBoolsAndNulls(s string) string {
 		{"FALSE", "false"},
 		{"undefined", "null"},
 	}
+	out := make([]struct {
+		re   *regexp.Regexp
+		repl string
+	}, len(raw))
+	for i, r := range raw {
+		out[i].re = regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(r.bad) + `\b`)
+		out[i].repl = r.good
+	}
+	return out
+}()
 
-	for _, r := range replacements {
-		// Use word boundaries so we don't mangle string values that happen
-		// to contain these words.
-		re := regexp.MustCompile(`(?i)\b` + regexp.QuoteMeta(r.bad) + `\b`)
-		s = replaceOutsideStrings(s, re, r.good)
+func normaliseBoolsAndNulls(s string) string {
+	for _, r := range boolNullReplacements {
+		s = replaceOutsideStrings(s, r.re, r.repl)
 	}
 	return s
 }

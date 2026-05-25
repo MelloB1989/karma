@@ -16,26 +16,25 @@ import (
 )
 
 type OpenAI struct {
-	Client          openai.Client
-	Model           string
-	Temperature     float64
-	MaxTokens       int64
-	SystemMessage   string
-	ExtraFields     map[string]any
-	MCPManager      *mcp.Manager
-	MultiMCPManager *mcp.MultiManager
-	FunctionTools   map[string]GoFunctionTool
-	ReasoningEffort *shared.ReasoningEffort
-	maxToolPasses   int
-	RequestGate     func() error
-	RequestTimeout  time.Duration
-	clientOptions   *CompatibleOptions
+	Client            openai.Client
+	Model             string
+	Temperature       float64
+	MaxTokens         int64
+	SystemMessage     string
+	ExtraFields       map[string]any
+	MCPManager        *mcp.Manager
+	MultiMCPManager   *mcp.MultiManager
+	FunctionTools     map[string]GoFunctionTool
+	ReasoningEffort   *shared.ReasoningEffort
+	maxToolPasses     int
+	RequestGate       func() error
+	RequestTimeout    time.Duration
+	clientOptions     *CompatibleOptions
+	clientInitialized bool
 }
 
 func NewOpenAI(model, sysmgs string, temperature float64, maxTokens int64) *OpenAI {
 	return &OpenAI{
-		Client:        createClient(),
-		clientOptions: nil,
 		Model:         model,
 		Temperature:   temperature,
 		MaxTokens:     maxTokens,
@@ -50,7 +49,6 @@ func NewOpenAICompatible(model, sysmgs string, temperature float64, maxTokens in
 		API_Key: apikey,
 	}
 	return &OpenAI{
-		Client:        createClient(*clientOptions),
 		clientOptions: clientOptions,
 		Model:         model,
 		Temperature:   temperature,
@@ -81,6 +79,10 @@ func (o *OpenAI) requestContext() (context.Context, context.CancelFunc) {
 }
 
 func (o *OpenAI) ApplyRequestTimeout() {
+	if o.clientInitialized {
+		return
+	}
+	o.clientInitialized = true
 	var opts []CompatibleOptions
 	if o.clientOptions != nil {
 		opts = append(opts, *o.clientOptions)

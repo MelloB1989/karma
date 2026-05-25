@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/config"
 	internalopenai "github.com/MelloB1989/karma/internal/openai"
 	"github.com/openai/openai-go/v3/shared"
@@ -508,6 +509,8 @@ type KarmaAI struct {
 	MCPServers []MCPServer `json:"mcp_servers"`
 	// Provider-specific configuration
 	SpecialConfig map[SpecialConfig]any `json:"special_config"`
+	// Cached MCP multi-manager (built once, reused across requests)
+	cachedMultiMCP *mcp.MultiManager
 }
 
 type F struct {
@@ -651,6 +654,7 @@ func (kai *KarmaAI) ClearGoFunctionTools() {
 func SetMCPServers(servers []MCPServer) Option {
 	return func(kai *KarmaAI) {
 		kai.MCPServers = servers
+		kai.cachedMultiMCP = nil
 		var allTools []MCPTool
 		for _, server := range servers {
 			allTools = append(allTools, server.Tools...)
@@ -672,6 +676,7 @@ func NewMCPServer(url, authToken string, tools []MCPTool) MCPServer {
 func AddMCPServer(server MCPServer) Option {
 	return func(kai *KarmaAI) {
 		kai.MCPServers = append(kai.MCPServers, server)
+		kai.cachedMultiMCP = nil
 		kai.MCPTools = append(kai.MCPTools, server.Tools...)
 		if kai.MCPConfig == nil {
 			kai.MCPConfig = make(map[string]MCPTool)

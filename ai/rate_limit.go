@@ -183,8 +183,9 @@ type rateLimiter struct {
 
 func newRateLimiter(limit int) *rateLimiter {
 	return &rateLimiter{
-		limit:  limit,
-		window: time.Minute,
+		limit:    limit,
+		window:   time.Minute,
+		requests: make([]time.Time, 0, limit),
 	}
 }
 

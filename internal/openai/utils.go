@@ -36,7 +36,7 @@ func createClientWithTimeout(timeout time.Duration, opts ...CompatibleOptions) o
 }
 
 func formatMessages(messages models.AIChatHistory, sysmgs string) []openai.ChatCompletionMessageParamUnion {
-	mgs := []openai.ChatCompletionMessageParamUnion{}
+	mgs := make([]openai.ChatCompletionMessageParamUnion, 0, len(messages.Messages)+1)
 	mgs = append(mgs, openai.SystemMessage(sysmgs))
 
 	for _, message := range messages.Messages {

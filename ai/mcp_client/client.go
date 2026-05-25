@@ -8,10 +8,17 @@ import (
 	"io"
 	"net/http"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/invopop/jsonschema"
 )
+
+var bufPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
+	},
+}
 
 // Client represents an MCP (Model Context Protocol) client
 type Client struct {
@@ -194,12 +201,15 @@ func (c *Client) CallToolByName(ctx context.Context, mcpToolName string, argumen
 
 // sendRequest sends an HTTP request to the MCP server and handles the response
 func (c *Client) sendRequest(ctx context.Context, request Request) (*ToolResult, error) {
-	jsonData, err := json.Marshal(request)
-	if err != nil {
+	buf := bufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufPool.Put(buf)
+
+	if err := json.NewEncoder(buf).Encode(request); err != nil {
 		return nil, fmt.Errorf("failed to marshal MCP request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.ServerURL, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.ServerURL, buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}

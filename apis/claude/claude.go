@@ -17,16 +17,15 @@ import (
 )
 
 func extractToolCallsFromClaude(content []anthropic.ContentBlockUnion) []models.ToolCall {
-	var toolCalls []models.ToolCall
+	toolCalls := make([]models.ToolCall, 0, len(content))
 	for _, block := range content {
 		if toolUse, ok := block.AsAny().(anthropic.ToolUseBlock); ok {
-			arguments, _ := json.Marshal(toolUse.Input)
 			toolCalls = append(toolCalls, models.ToolCall{
 				ID:   toolUse.ID,
 				Type: string(toolUse.Type),
 				Function: models.ToolCallFunction{
 					Name:      toolUse.Name,
-					Arguments: string(arguments),
+					Arguments: string(toolUse.Input),
 				},
 			})
 		}
@@ -218,7 +217,13 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 
 	ctx, cancel := cc.requestContext()
 	defer cancel()
-	for {
+
+	maxPasses := cc.MaxToolPasses
+	if maxPasses <= 0 {
+		maxPasses = 10
+	}
+
+	for round := 0; round <= maxPasses; round++ {
 		if cc.RequestGate != nil {
 			if err := cc.RequestGate(); err != nil {
 				return nil, err
@@ -291,6 +296,8 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 		}
 		mgsParam.Messages = processedMessages
 	}
+
+	return nil, fmt.Errorf("exceeded maximum tool passes (%d)", maxPasses)
 }
 
 func (cc *ClaudeClient) ClaudeStreamCompletion(messages models.AIChatHistory, callback func(chunck models.StreamedResponse) error) (*models.AIChatResponse, error) {

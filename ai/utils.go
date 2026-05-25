@@ -158,13 +158,14 @@ func (kai *KarmaAI) configureOpenaiClientForMCP(o *openai.OpenAI) {
 	}
 }
 
-func (kai *KarmaAI) configureMultiMCPForOpenAI(o *openai.OpenAI) {
+func (kai *KarmaAI) getOrBuildMultiMCP() *mcp.MultiManager {
+	if kai.cachedMultiMCP != nil {
+		return kai.cachedMultiMCP
+	}
 	multiManager := mcp.NewMultiManager()
-
 	for i, server := range kai.MCPServers {
 		serverID := fmt.Sprintf("server_%d", i)
 		multiManager.AddServer(serverID, server.URL, server.AuthToken)
-
 		for _, tool := range server.Tools {
 			err := multiManager.AddToolToServer(serverID, tool.ToolName, tool.Description, tool.ToolName, tool.InputSchema)
 			if err != nil {
@@ -172,26 +173,16 @@ func (kai *KarmaAI) configureMultiMCPForOpenAI(o *openai.OpenAI) {
 			}
 		}
 	}
+	kai.cachedMultiMCP = multiManager
+	return multiManager
+}
 
-	o.SetMultiMCPManager(multiManager)
+func (kai *KarmaAI) configureMultiMCPForOpenAI(o *openai.OpenAI) {
+	o.SetMultiMCPManager(kai.getOrBuildMultiMCP())
 }
 
 func (kai *KarmaAI) configureMultiMCPForClaude(cc *claude.ClaudeClient) {
-	multiManager := mcp.NewMultiManager()
-
-	for i, server := range kai.MCPServers {
-		serverID := fmt.Sprintf("server_%d", i)
-		multiManager.AddServer(serverID, server.URL, server.AuthToken)
-
-		for _, tool := range server.Tools {
-			err := multiManager.AddToolToServer(serverID, tool.ToolName, tool.Description, tool.ToolName, tool.InputSchema)
-			if err != nil {
-				log.Printf("Failed to add MCP tool %s to server %s: %v", tool.FriendlyName, serverID, err)
-			}
-		}
-	}
-
-	cc.SetMultiMCPManager(multiManager)
+	cc.SetMultiMCPManager(kai.getOrBuildMultiMCP())
 }
 
 // createGeminiClient creates a Gemini client using SpecialConfig or environment variables
