@@ -11,6 +11,7 @@ type APIDefinition struct {
 	Endpoints          []Endpoint        `json:"endpoints"`
 	OutputFileBaseName string            `json:"-"` // Not serialized but used for exports
 	OutputFolder       string            `json:"-"` // Not serialized but used for exports
+	buildErr           error             // first error from the fluent builder, surfaced by ExportAll/Err
 }
 
 type Headers string

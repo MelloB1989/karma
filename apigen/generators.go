@@ -5,8 +5,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
+
+// sortedHeaderKeys returns a header map's keys in a stable, alphabetical order.
+// Map iteration order is random in Go; sorting keeps generated docs byte-stable
+// across runs so they diff cleanly in version control.
+func sortedHeaderKeys(h map[Headers]string) []Headers {
+	keys := make([]Headers, 0, len(h))
+	for k := range h {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	return keys
+}
 
 // Helper functions to generate different export formats
 
@@ -63,10 +76,10 @@ func generatePostmanCollection(api *APIDefinition) map[string]any {
 		// Add headers
 		if len(endpoint.Headers) > 0 {
 			headers := []any{}
-			for key, value := range endpoint.Headers {
+			for _, key := range sortedHeaderKeys(endpoint.Headers) {
 				headers = append(headers, map[string]string{
 					"key":   string(key),
-					"value": value,
+					"value": endpoint.Headers[key],
 				})
 			}
 			item["request"].(map[string]any)["header"] = headers
@@ -133,10 +146,10 @@ func generatePostmanCollection(api *APIDefinition) map[string]any {
 
 			if len(resp.Headers) > 0 {
 				headersList := []any{}
-				for key, value := range resp.Headers {
+				for _, key := range sortedHeaderKeys(resp.Headers) {
 					headersList = append(headersList, map[string]string{
 						"key":   string(key),
-						"value": value,
+						"value": resp.Headers[key],
 					})
 				}
 				response["header"] = headersList
@@ -216,14 +229,15 @@ func generateOpenAPI(api *APIDefinition) map[string]any {
 		}
 
 		// Add header parameters
-		for key := range endpoint.Headers {
+		for _, key := range sortedHeaderKeys(endpoint.Headers) {
 			parameters = append(parameters, map[string]any{
-				"name":     key,
+				"name":     string(key),
 				"in":       "header",
 				"required": true,
 				"schema": map[string]string{
 					"type": "string",
 				},
+				"example": endpoint.Headers[key],
 			})
 		}
 
@@ -323,8 +337,13 @@ func generateMarkdown(api *APIDefinition) string {
 
 	if len(api.GlobalVariables) > 0 {
 		sb.WriteString("## Global Variables\n\n")
-		for key, value := range api.GlobalVariables {
-			sb.WriteString(fmt.Sprintf("- `%s`: %s\n", key, value))
+		varKeys := make([]string, 0, len(api.GlobalVariables))
+		for key := range api.GlobalVariables {
+			varKeys = append(varKeys, key)
+		}
+		sort.Strings(varKeys)
+		for _, key := range varKeys {
+			sb.WriteString(fmt.Sprintf("- `%s`: %s\n", key, api.GlobalVariables[key]))
 		}
 		sb.WriteString("\n")
 	}
@@ -334,6 +353,14 @@ func generateMarkdown(api *APIDefinition) string {
 		sb.WriteString(fmt.Sprintf("### %s\n\n", endpoint.Summary))
 		sb.WriteString(fmt.Sprintf("**Path:** `%s`\n\n", endpoint.Path))
 		sb.WriteString(fmt.Sprintf("**Method:** `%s`\n\n", endpoint.Method))
+
+		if endpoint.Authentication != nil {
+			sb.WriteString(fmt.Sprintf("**Auth:** `%s`", endpoint.Authentication.Type))
+			if endpoint.Authentication.Description != "" {
+				sb.WriteString(" — " + endpoint.Authentication.Description)
+			}
+			sb.WriteString("\n\n")
+		}
 
 		if endpoint.Description != "" {
 			sb.WriteString(fmt.Sprintf("%s\n\n", endpoint.Description))
@@ -353,8 +380,8 @@ func generateMarkdown(api *APIDefinition) string {
 
 		if len(endpoint.Headers) > 0 {
 			sb.WriteString("#### Headers\n\n")
-			for key, value := range endpoint.Headers {
-				sb.WriteString(fmt.Sprintf("- `%s`: %s\n", key, value))
+			for _, key := range sortedHeaderKeys(endpoint.Headers) {
+				sb.WriteString(fmt.Sprintf("- `%s`: %s\n", key, endpoint.Headers[key]))
 			}
 			sb.WriteString("\n")
 		}
@@ -397,6 +424,14 @@ func generateMarkdown(api *APIDefinition) string {
 		sb.WriteString("#### Responses\n\n")
 		for _, resp := range endpoint.Responses {
 			sb.WriteString(fmt.Sprintf("**%d**: %s\n\n", resp.StatusCode, resp.Description))
+
+			if len(resp.Headers) > 0 {
+				sb.WriteString("Headers:\n\n")
+				for _, key := range sortedHeaderKeys(resp.Headers) {
+					sb.WriteString(fmt.Sprintf("- `%s`: %s\n", key, resp.Headers[key]))
+				}
+				sb.WriteString("\n")
+			}
 
 			if len(resp.Fields) > 0 {
 				sb.WriteString("Fields:\n\n")

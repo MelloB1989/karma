@@ -75,6 +75,7 @@ func RequestBodyFromStruct(structPtr any, contentType ContentType, required bool
 
 	// Create a map for our example instead of using reflection directly
 	exampleMap := make(map[string]interface{})
+	gen := newExampleGen(t.String())
 
 	// Add any completely new fields specified in overrides
 	for _, override := range overrides {
@@ -124,12 +125,11 @@ func RequestBodyFromStruct(structPtr any, contentType ContentType, required bool
 			continue
 		}
 
-		// Add field to example with its zero value or override example
+		// Add field to example with a generated value or override example
 		if override, exists := overrideMap[fieldName]; exists && override.Example != nil {
 			exampleMap[jsonName] = override.Example
 		} else {
-			// Use zero value
-			exampleMap[jsonName] = getZeroValue(field.Type)
+			exampleMap[jsonName] = gen.forField(field, 0)
 		}
 	}
 
@@ -169,6 +169,7 @@ func ResponseFromStruct(statusCode int, description string, structPtr any, conte
 
 	// Create a map for our example
 	exampleMap := make(map[string]interface{})
+	gen := newExampleGen(t.String())
 
 	// Populate the example map with fields that aren't excluded
 	for i := 0; i < t.NumField(); i++ {
@@ -223,8 +224,7 @@ func ResponseFromStruct(statusCode int, description string, structPtr any, conte
 				exampleMap[jsonName] = override.Example
 			}
 		} else {
-			// Use zero value for fields without overrides
-			exampleMap[jsonName] = getZeroValue(field.Type)
+			exampleMap[jsonName] = gen.forField(field, 0)
 		}
 	}
 

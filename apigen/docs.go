@@ -68,6 +68,11 @@ func (api *APIDefinition) ExportToMarkdown() error {
 
 // ExportAll exports to all supported formats
 func (api *APIDefinition) ExportAll() error {
+	// Surface any error accumulated by the fluent builder first.
+	if api.buildErr != nil {
+		return api.buildErr
+	}
+
 	if err := api.SaveToFile(); err != nil {
 		return err
 	}
