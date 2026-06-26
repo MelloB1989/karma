@@ -37,8 +37,14 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 		response, err = kai.handleOpenAICompatibleChatCompletion(m, TOGETHER_API, config.GetEnvRaw("TOGETHER_API_KEY"))
 	case NvidiaNIM:
 		response, err = kai.handleOpenAICompatibleChatCompletion(m, NVIDIA_NIM_API, config.GetEnvRaw("NVIDIA_API_KEY"))
+	case Codex:
+		response, err = kai.handleCodexChatCompletion(m)
 	default:
-		return nil, errors.New("this provider is not supported yet")
+		if pp, ok := kai.resolveProxy(); ok {
+			response, err = kai.handleOpenAICompatibleChatCompletion(m, pp.BaseURL(), pp.APIKey())
+		} else {
+			return nil, errors.New("this provider is not supported yet")
+		}
 	}
 
 	// Handle analytics and errors asynchronously after getting the response
@@ -92,8 +98,14 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 		response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, TOGETHER_API, config.GetEnvRaw("TOGETHER_API_KEY"))
 	case NvidiaNIM:
 		response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, NVIDIA_NIM_API, config.GetEnvRaw("NVIDIA_API_KEY"))
+	case Codex:
+		response, err = kai.handleCodexChatCompletion(&singleMessage)
 	default:
-		return nil, errors.New("this provider is not supported yet")
+		if pp, ok := kai.resolveProxy(); ok {
+			response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, pp.BaseURL(), pp.APIKey())
+		} else {
+			return nil, errors.New("this provider is not supported yet")
+		}
 	}
 
 	// Handle analytics and errors asynchronously after getting the response
@@ -137,8 +149,14 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, TOGETHER_API, config.GetEnvRaw("TOGETHER_API_KEY"))
 	case NvidiaNIM:
 		response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, NVIDIA_NIM_API, config.GetEnvRaw("NVIDIA_API_KEY"))
+	case Codex:
+		response, err = kai.handleCodexStreamCompletion(m, callback)
 	default:
-		return nil, errors.New("this provider is not supported yet")
+		if pp, ok := kai.resolveProxy(); ok {
+			response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, pp.BaseURL(), pp.APIKey())
+		} else {
+			return nil, errors.New("this provider is not supported yet")
+		}
 	}
 
 	// Handle analytics and errors asynchronously after getting the response
@@ -187,8 +205,14 @@ func (kai *KarmaAI) ChatCompletionManaged(history *models.AIChatHistory) (*model
 		response, err = kai.handleOpenAICompatibleChatCompletion(history, TOGETHER_API, config.GetEnvRaw("TOGETHER_API_KEY"))
 	case NvidiaNIM:
 		response, err = kai.handleOpenAICompatibleChatCompletion(history, NVIDIA_NIM_API, config.GetEnvRaw("NVIDIA_API_KEY"))
+	case Codex:
+		response, err = kai.handleCodexChatCompletion(history)
 	default:
-		return nil, errors.New("this provider is not supported yet")
+		if pp, ok := kai.resolveProxy(); ok {
+			response, err = kai.handleOpenAICompatibleChatCompletion(history, pp.BaseURL(), pp.APIKey())
+		} else {
+			return nil, errors.New("this provider is not supported yet")
+		}
 	}
 
 	// Handle analytics and errors asynchronously after getting the response
@@ -237,8 +261,14 @@ func (kai *KarmaAI) ChatCompletionStreamManaged(history *models.AIChatHistory, c
 		response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, TOGETHER_API, config.GetEnvRaw("TOGETHER_API_KEY"))
 	case NvidiaNIM:
 		response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, NVIDIA_NIM_API, config.GetEnvRaw("NVIDIA_API_KEY"))
+	case Codex:
+		response, err = kai.handleCodexStreamCompletion(history, callback)
 	default:
-		return nil, errors.New("this provider is not supported yet")
+		if pp, ok := kai.resolveProxy(); ok {
+			response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, pp.BaseURL(), pp.APIKey())
+		} else {
+			return nil, errors.New("this provider is not supported yet")
+		}
 	}
 
 	// Handle analytics and errors asynchronously after getting the response

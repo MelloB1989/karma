@@ -34,6 +34,9 @@ const (
 	GPT5_1     BaseModel = "gpt-5.1"
 	GPT5_2     BaseModel = "gpt-5.2"
 	GPT5_2_Pro BaseModel = "gpt-5.2-pro"
+	GPT5_4     BaseModel = "gpt-5.4"
+	GPT5_4Mini BaseModel = "gpt-5.4-mini"
+	GPT5_5     BaseModel = "gpt-5.5"
 
 	GPT5_1Codex    BaseModel = "gpt-5.1-codex"
 	GPT5_1CodexMax BaseModel = "gpt-5.1-codex-max"
@@ -422,12 +425,23 @@ func (mc ModelConfig) GetProvider() Provider {
 // IsOpenAICompatibleModel checks if the model is OpenAI API compatible
 func (mc ModelConfig) IsOpenAICompatibleModel() bool {
 	provider := mc.GetProvider()
-	return provider == OpenAI || provider == XAI || provider == Groq || provider == TogetherAI || provider == NvidiaNIM
+	if provider == OpenAI || provider == XAI || provider == Groq || provider == TogetherAI || provider == NvidiaNIM {
+		return true
+	}
+	// Unofficial proxies always speak the OpenAI Chat Completions format.
+	_, ok := lookupProxyProvider(provider)
+	return ok
 }
 
 // SupportsMCP checks if the model supports MCP
 func (mc ModelConfig) SupportsMCP() bool {
-	return mc.Provider == OpenAI || mc.Provider == XAI || mc.Provider == Anthropic || mc.Provider == TogetherAI || mc.Provider == NvidiaNIM
+	if mc.Provider == OpenAI || mc.Provider == XAI || mc.Provider == Anthropic || mc.Provider == TogetherAI || mc.Provider == NvidiaNIM || mc.Provider == Codex {
+		return true
+	}
+	if pp, ok := lookupProxyProvider(mc.Provider); ok {
+		return pp.SupportsMCP
+	}
+	return false
 }
 
 // GetModelProvider returns the provider for a given model config
