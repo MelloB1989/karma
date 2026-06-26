@@ -2,6 +2,7 @@ package codex
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -151,10 +152,67 @@ func TestConsumeToolCall(t *testing.T) {
 }
 
 func TestConsumeStreamError(t *testing.T) {
-	sse := "event: error\ndata: {\"error\":{\"code\":\"rate_limit\",\"message\":\"slow down\"}}\n\n"
+	// error event with a rate-limit code -> APIError(429), retryable.
+	sse := "event: error\ndata: {\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"slow down\"}}\n\n"
 	_, err := Consume(fakeResponse(sse), nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "rate_limit") {
-		t.Errorf("expected rate_limit error, got %v", err)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var ae *APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *APIError, got %T: %v", err, err)
+	}
+	if ae.Status != 429 {
+		t.Errorf("status = %d, want 429", ae.Status)
+	}
+	if !IsRetryable(err) {
+		t.Errorf("rate-limit error should be retryable: %v", err)
+	}
+	if !strings.Contains(err.Error(), "slow down") || !strings.Contains(err.Error(), "rate_limit") {
+		t.Errorf("error message lost detail: %v", err)
+	}
+}
+
+func TestConsumeResponseFailedNestedError(t *testing.T) {
+	// The real response.failed shape nests the error under response.error.
+	sse := `event: response.failed
+data: {"type":"response.failed","response":{"id":"resp_9","status":"failed","error":{"type":"server_error","code":"","message":"An error occurred while processing the request."}}}
+
+`
+	_, err := Consume(fakeResponse(sse), nil, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var ae *APIError
+	if !errors.As(err, &ae) {
+		t.Fatalf("expected *APIError, got %T", err)
+	}
+	// No code -> generic 502, which is retryable (transient backend failure).
+	if ae.Status != 502 {
+		t.Errorf("status = %d, want 502", ae.Status)
+	}
+	if !IsRetryable(err) {
+		t.Errorf("codeless response.failed should be retryable")
+	}
+	if !strings.Contains(err.Error(), "An error occurred while processing the request") {
+		t.Errorf("nested message not surfaced: %v", err)
+	}
+}
+
+func TestStatusForCode(t *testing.T) {
+	cases := map[string]int{
+		"rate_limit_exceeded": 429,
+		"usage_limit_reached": 429,
+		"invalid_request":     400,
+		"unauthorized":        401,
+		"insufficient_quota":  402,
+		"":                    502,
+		"weird_unknown":       502,
+	}
+	for code, want := range cases {
+		if got := statusForCode(code); got != want {
+			t.Errorf("statusForCode(%q) = %d, want %d", code, got, want)
+		}
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -33,7 +34,11 @@ const (
 	defaultResidency  = "us"
 )
 
-// APIError is returned for non-2xx responses from the Codex backend.
+// APIError is returned for non-2xx HTTP responses and for mid-stream
+// `error` / `response.failed` events from the Codex backend. Stream events are
+// mapped to an HTTP-equivalent Status (see statusForCode) so callers can apply
+// one consistent retry/recovery policy — mirroring codex-proxy's
+// codexApiErrorFromEvent.
 type APIError struct {
 	Status int
 	Body   string
@@ -41,21 +46,52 @@ type APIError struct {
 
 func (e *APIError) Error() string {
 	detail := e.Body
-	// Try to surface a clean message from common error envelopes.
 	var env struct {
 		Detail string `json:"detail"`
 		Error  struct {
 			Message string `json:"message"`
+			Code    string `json:"code"`
+			Type    string `json:"type"`
 		} `json:"error"`
 	}
+	code := ""
 	if json.Unmarshal([]byte(e.Body), &env) == nil {
 		if env.Error.Message != "" {
 			detail = env.Error.Message
 		} else if env.Detail != "" {
 			detail = env.Detail
 		}
+		code = env.Error.Code
+		if code == "" {
+			code = env.Error.Type
+		}
+	}
+	if code != "" && code != "unknown" && code != "error" {
+		return fmt.Sprintf("codex API error (%d): %s [code=%s]", e.Status, detail, code)
 	}
 	return fmt.Sprintf("codex API error (%d): %s", e.Status, detail)
+}
+
+// Retryable reports whether the failure is transient and worth retrying
+// (timeouts, conflicts, rate limits, and 5xx — including the generic 502 that a
+// codeless mid-stream failure maps to).
+func (e *APIError) Retryable() bool {
+	switch e.Status {
+	case 408, 409, 425, 429, 500, 502, 503, 504:
+		return true
+	}
+	return false
+}
+
+// IsRetryable reports whether err (or anything it wraps) is a transient
+// *APIError. HTTP- and stream-layer Codex failures both flow through APIError,
+// so this is the single retry signal for the Codex provider.
+func IsRetryable(err error) bool {
+	var ae *APIError
+	if errors.As(err, &ae) {
+		return ae.Retryable()
+	}
+	return false
 }
 
 // Config configures a Client. Zero values fall back to sensible defaults and

@@ -46,11 +46,7 @@ func (kai *KarmaAI) handleCodexChatCompletion(history *models.AIChatHistory) (*m
 			Tools:           tools,
 			ReasoningEffort: kai.codexReasoningEffort(),
 		})
-		resp, err := client.CreateResponse(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		result, err := codex.Consume(resp, nil, nil)
+		result, err := kai.codexGenerate(ctx, client, req)
 		if err != nil {
 			return nil, err
 		}
@@ -96,19 +92,88 @@ func (kai *KarmaAI) handleCodexStreamCompletion(history *models.AIChatHistory, c
 		Tools:           kai.codexTools(),
 		ReasoningEffort: kai.codexReasoningEffort(),
 	})
-	resp, err := client.CreateResponse(ctx, req)
-	if err != nil {
-		return nil, err
-	}
 
-	onText := func(delta string) error {
-		return callback(models.StreamedResponse{AIResponse: delta, TimeTaken: -1})
+	var lastErr error
+	for attempt := 0; attempt <= codexMaxRetries; attempt++ {
+		if attempt > 0 {
+			if werr := codexWait(ctx, attempt); werr != nil {
+				return nil, werr
+			}
+		}
+		resp, err := client.CreateResponse(ctx, req)
+		if err != nil {
+			lastErr = err
+			if codex.IsRetryable(err) {
+				continue
+			}
+			return nil, err
+		}
+		// Retry is only safe before any text has been emitted to the callback;
+		// otherwise a retry would duplicate already-streamed content.
+		started := false
+		onText := func(delta string) error {
+			started = true
+			return callback(models.StreamedResponse{AIResponse: delta, TimeTaken: -1})
+		}
+		result, err := codex.Consume(resp, onText, nil)
+		if err == nil {
+			return codexResult(result, start), nil
+		}
+		lastErr = err
+		if started || !codex.IsRetryable(err) {
+			return nil, err
+		}
 	}
-	result, err := codex.Consume(resp, onText, nil)
-	if err != nil {
-		return nil, err
+	return nil, lastErr
+}
+
+// codexMaxRetries is the number of extra attempts on transient Codex failures
+// (HTTP 429/5xx or codeless mid-stream response.failed events).
+const codexMaxRetries = 2
+
+// codexWait sleeps before retry attempt n with linear backoff, honoring ctx.
+func codexWait(ctx context.Context, attempt int) error {
+	delay := time.Duration(attempt) * 750 * time.Millisecond
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(delay):
+		return nil
 	}
-	return codexResult(result, start), nil
+}
+
+// codexGenerate performs a single (non-streaming) model call, retrying transient
+// failures with backoff.
+func (kai *KarmaAI) codexGenerate(ctx context.Context, client *codex.Client, req *codex.ResponsesRequest) (*codex.Result, error) {
+	var lastErr error
+	for attempt := 0; attempt <= codexMaxRetries; attempt++ {
+		if attempt > 0 {
+			if werr := codexWait(ctx, attempt); werr != nil {
+				return nil, werr
+			}
+		}
+		resp, err := client.CreateResponse(ctx, req)
+		if err == nil {
+			var result *codex.Result
+			result, err = codex.Consume(resp, nil, nil)
+			if err == nil {
+				return result, nil
+			}
+		}
+		lastErr = err
+		if !codex.IsRetryable(err) {
+			return nil, err
+		}
+	}
+	return nil, lastErr
+}
+
+// IsCodexRetryable reports whether err is a transient Codex failure (HTTP 429/5xx
+// or a codeless mid-stream response.failed). Exposed so callers driving their own
+// retry/fallback loop (e.g. a karmahelper) can classify Codex errors without
+// string-matching.
+func IsCodexRetryable(err error) bool {
+	return codex.IsRetryable(err)
 }
 
 // CodexModel describes a model available to the authenticated Codex account.

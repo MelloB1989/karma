@@ -187,28 +187,129 @@ type sseFnArgs struct {
 	Name      string `json:"name"`
 }
 
-type sseError struct {
-	Error struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
-	Code    string `json:"code"`
-	Message string `json:"message"`
+// codexErrorInfo is the normalized error extracted from an `error` /
+// `response.failed` SSE event.
+type codexErrorInfo struct {
+	Type    string
+	Code    string
+	Message string
 }
 
-func (e sseError) toError() error {
-	msg := e.Error.Message
-	if msg == "" {
-		msg = e.Message
+// extractCodexError mirrors codex-proxy's extractCodexError: it locates the
+// error record in `error`, then `response.error`, then the event root, and
+// pulls type/code/message with the same fallbacks so the real reason surfaces
+// even when the backend nests it (response.failed) or omits a code.
+func extractCodexError(data json.RawMessage) codexErrorInfo {
+	root := objOf(data)
+	if root == nil {
+		// Non-object payload (e.g. a bare string) — surface it verbatim.
+		return codexErrorInfo{Type: "error", Code: "unknown", Message: rawString(data)}
 	}
-	code := e.Error.Code
+
+	response := objField(root, "response")
+	errRec := objField(root, "error")
+	if errRec == nil {
+		errRec = objField(response, "error")
+	}
+	if errRec == nil {
+		errRec = root
+	}
+
+	message := firstStringField(
+		errRec["message"], errRec["detail"], errRec["error_description"],
+		root["message"], root["detail"],
+		response["message"], response["detail"],
+	)
+	if message == "" {
+		message = rawString(data)
+	}
+	typ := firstStringField(errRec["type"], root["type"])
+	if typ == "" {
+		typ = "error"
+	}
+	code := firstStringField(errRec["code"], response["code"])
 	if code == "" {
-		code = e.Code
+		if typ != "error" && typ != "response.failed" {
+			code = typ
+		} else {
+			code = "unknown"
+		}
 	}
-	if code != "" {
-		return fmt.Errorf("codex stream error (%s): %s", code, msg)
+	return codexErrorInfo{Type: typ, Code: code, Message: message}
+}
+
+// streamErrorToAPIError maps a mid-stream error event onto an HTTP-equivalent
+// *APIError (port of codex-proxy's codexApiErrorFromEvent), so a single retry
+// policy covers both HTTP- and stream-layer failures.
+func streamErrorToAPIError(info codexErrorInfo) *APIError {
+	body, _ := json.Marshal(map[string]any{
+		"error": map[string]string{
+			"type":    info.Type,
+			"code":    info.Code,
+			"message": info.Message,
+		},
+	})
+	return &APIError{Status: statusForCode(info.Code), Body: string(body)}
+}
+
+// statusForCode maps a Codex error code to an HTTP-equivalent status, matching
+// codex-proxy's statusForCode. Unknown/generic failures become 502.
+func statusForCode(code string) int {
+	lower := strings.ToLower(code)
+	switch {
+	case strings.Contains(lower, "invalid_request"), strings.Contains(lower, "not_found"):
+		return 400
+	case strings.Contains(lower, "rate_limit"), strings.Contains(lower, "usage_limit"):
+		return 429
+	case strings.Contains(lower, "unauthorized"), strings.Contains(lower, "invalid_api_key"):
+		return 401
+	case strings.Contains(lower, "forbidden"), strings.Contains(lower, "banned"):
+		return 403
+	case strings.Contains(lower, "payment"), strings.Contains(lower, "quota"):
+		return 402
+	default:
+		return 502
 	}
-	return fmt.Errorf("codex stream error: %s", msg)
+}
+
+// objOf unmarshals data into a JSON object map, or nil if it is not an object.
+func objOf(data json.RawMessage) map[string]json.RawMessage {
+	var out map[string]json.RawMessage
+	if json.Unmarshal(data, &out) != nil {
+		return nil
+	}
+	return out
+}
+
+// objField returns m[key] decoded as a JSON object, or nil. Safe on a nil map.
+func objField(m map[string]json.RawMessage, key string) map[string]json.RawMessage {
+	if m == nil {
+		return nil
+	}
+	return objOf(m[key])
+}
+
+// firstStringField returns the first value that decodes to a non-empty string.
+func firstStringField(vals ...json.RawMessage) string {
+	for _, v := range vals {
+		if len(v) == 0 {
+			continue
+		}
+		var s string
+		if json.Unmarshal(v, &s) == nil && s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+// rawString returns the JSON string value, or the raw JSON text if not a string.
+func rawString(data json.RawMessage) string {
+	var s string
+	if json.Unmarshal(data, &s) == nil {
+		return s
+	}
+	return string(data)
 }
 
 type toolAccum struct {
@@ -332,20 +433,16 @@ func Consume(resp *http.Response, onText, onReasoning func(string) error) (*Resu
 			}
 
 		case "error":
-			var e sseError
-			_ = json.Unmarshal(evt.Data, &e)
-			streamErr = e.toError()
+			streamErr = streamErrorToAPIError(extractCodexError(evt.Data))
 			return streamErr
 
 		case "response.failed":
-			var e sseError
-			_ = json.Unmarshal(evt.Data, &e)
 			var env sseRespEnvelope
 			if json.Unmarshal(evt.Data, &env) == nil && env.Response.ID != "" {
 				responseID = env.Response.ID
 			}
 			sawTerminal = true
-			streamErr = e.toError()
+			streamErr = streamErrorToAPIError(extractCodexError(evt.Data))
 			return streamErr
 		}
 		return nil
