@@ -71,7 +71,7 @@ func formatMessages(messages models.AIChatHistory, sysmgs string) []openai.ChatC
 						OfFunction: &openai.ChatCompletionMessageFunctionToolCallParam{
 							ID: tc.ID,
 							Function: openai.ChatCompletionMessageFunctionToolCallFunctionParam{
-								Name:      tc.Function.Name,
+								Name:      sanitizeToolName(tc.Function.Name),
 								Arguments: tc.Function.Arguments,
 							},
 						},
@@ -139,7 +139,7 @@ func (o *OpenAI) convertMCPToolsToOpenAI() []openai.ChatCompletionToolUnionParam
 		}
 
 		tools[i] = openai.ChatCompletionFunctionTool(openai.FunctionDefinitionParam{
-			Name:        mcpTool.Name,
+			Name:        o.mapToolName(mcpTool.Name),
 			Description: openai.String(mcpTool.Description),
 			Parameters:  parameters,
 		})
@@ -232,6 +232,8 @@ func (o *OpenAI) toolPassLimit() int {
 }
 
 func (o *OpenAI) callAnyTool(ctx context.Context, name string, arguments map[string]any) (string, error) {
+	// The model echoes the sanitized name; restore it to find the real handler.
+	name = o.RestoreToolName(name)
 	if fn, ok := o.FunctionTools[name]; ok && fn.Handler != nil {
 		return fn.Handler(ctx, FuncParams(arguments))
 	}
@@ -270,6 +272,10 @@ func normalizeFunctionParameters(params openai.FunctionParameters) openai.Functi
 	if _, ok := params["properties"]; !ok {
 		params["properties"] = map[string]any{}
 	}
+	// NewFuncParams stuffs a runtime-only "history" key into the schema map; it
+	// is not valid JSON Schema (OpenAI ignores it, Codex 502s on it) and serves
+	// no purpose in the request, so drop it.
+	delete(params, "history")
 	return params
 }
 
@@ -306,6 +312,7 @@ func (o *OpenAI) convertGoFunctionToolsToOpenAI() []openai.ChatCompletionToolUni
 	tools := make([]openai.ChatCompletionToolUnionParam, 0, len(o.FunctionTools))
 	for _, tool := range o.FunctionTools {
 		def := tool.toFunctionDefinitionParam()
+		def.Name = o.mapToolName(def.Name)
 		tools = append(tools, openai.ChatCompletionFunctionTool(def))
 	}
 	return tools

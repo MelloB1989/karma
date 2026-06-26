@@ -183,8 +183,18 @@ type sseItem struct {
 type sseFnArgs struct {
 	Delta     string `json:"delta"`
 	Arguments string `json:"arguments"`
-	CallID    string `json:"call_id"`
-	Name      string `json:"name"`
+	// The Responses API keys argument deltas by item_id (the output item that
+	// response.output_item.added registered), though some events also carry
+	// call_id. We accept either.
+	ItemID string `json:"item_id"`
+	CallID string `json:"call_id"`
+	Name   string `json:"name"`
+}
+
+// key returns the identifier used to correlate an arguments event back to the
+// function-call item registered by response.output_item.added.
+func (fa sseFnArgs) key() string {
+	return firstNonEmpty(fa.ItemID, fa.CallID)
 }
 
 // codexErrorInfo is the normalized error extracted from an `error` /
@@ -403,18 +413,20 @@ func processEvents(onText, onReasoning func(string) error, pump func(func(SSEEve
 		case "response.function_call_arguments.delta":
 			var fa sseFnArgs
 			if json.Unmarshal(evt.Data, &fa) == nil {
-				callID := resolve(fa.CallID)
+				key := fa.key()
+				callID := resolve(key)
 				argsSeen[callID] = true
-				ensure(callID, itemIDToName[fa.CallID]).args.WriteString(fa.Delta)
+				ensure(callID, itemIDToName[key]).args.WriteString(fa.Delta)
 			}
 
 		case "response.function_call_arguments.done":
 			var fa sseFnArgs
 			if json.Unmarshal(evt.Data, &fa) == nil {
-				callID := resolve(fa.CallID)
+				key := fa.key()
+				callID := resolve(key)
 				name := fa.Name
 				if name == "" {
-					name = itemIDToName[fa.CallID]
+					name = itemIDToName[key]
 				}
 				t := ensure(callID, name)
 				if !argsSeen[callID] {

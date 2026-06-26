@@ -28,7 +28,8 @@ func (kai *KarmaAI) handleOpenAIChatCompletion(messages *models.AIChatHistory) (
 		return nil, err
 	}
 
-	return buildOpenAIChatResponse(chat, start)
+	res, err := buildOpenAIChatResponse(chat, start)
+	return finalizeOpenAIResponse(res, err, o)
 }
 
 func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages *models.AIChatHistory, base_url string, apikey string) (*models.AIChatResponse, error) {
@@ -41,7 +42,8 @@ func (kai *KarmaAI) handleOpenAICompatibleChatCompletion(messages *models.AIChat
 		return nil, err
 	}
 
-	return buildOpenAIChatResponse(chat, start)
+	res, err := buildOpenAIChatResponse(chat, start)
+	return finalizeOpenAIResponse(res, err, o)
 }
 
 func (kai *KarmaAI) handleBedrockChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
@@ -186,7 +188,8 @@ func (kai *KarmaAI) handleOpenAIStreamCompletion(messages *models.AIChatHistory,
 		return nil, err
 	}
 
-	return buildOpenAIChatResponse(chat, start)
+	res, err := buildOpenAIChatResponse(chat, start)
+	return finalizeOpenAIResponse(res, err, o)
 }
 
 func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages *models.AIChatHistory, callback func(chunk models.StreamedResponse) error, base_url string, apikey string) (*models.AIChatResponse, error) {
@@ -200,7 +203,8 @@ func (kai *KarmaAI) handleOpenAICompatibleStreamCompletion(messages *models.AICh
 		return nil, err
 	}
 
-	return buildOpenAIChatResponse(chat, start)
+	res, err := buildOpenAIChatResponse(chat, start)
+	return finalizeOpenAIResponse(res, err, o)
 }
 
 func (kai *KarmaAI) handleBedrockStreamCompletion(messages models.AIChatHistory, callback func(chunk models.StreamedResponse) error) (*models.AIChatResponse, error) {
@@ -339,6 +343,19 @@ func buildToolCallsFromOpenAI(toolCalls []oai.ChatCompletionMessageToolCallUnion
 		}
 	}
 	return result
+}
+
+// finalizeOpenAIResponse restores any sanitized tool-call names (e.g. dotted
+// KARMAX names rewritten for the OpenAI/Codex name constraint) back to their
+// originals so callers dispatching on the name find the right tool. No-op when
+// no names were rewritten.
+func finalizeOpenAIResponse(res *models.AIChatResponse, err error, o *openai.OpenAI) (*models.AIChatResponse, error) {
+	if res != nil {
+		for i := range res.ToolCalls {
+			res.ToolCalls[i].Function.Name = o.RestoreToolName(res.ToolCalls[i].Function.Name)
+		}
+	}
+	return res, err
 }
 
 func buildOpenAIChatResponse(chat *oai.ChatCompletion, startTime time.Time) (*models.AIChatResponse, error) {

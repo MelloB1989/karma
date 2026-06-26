@@ -152,6 +152,39 @@ func TestConsumeToolCall(t *testing.T) {
 	}
 }
 
+// The real Responses API keys argument events by item_id (not call_id); the
+// arguments must still correlate to the call_id from output_item.added.
+func TestConsumeToolCallByItemID(t *testing.T) {
+	sse := strings.Join([]string{
+		`event: response.output_item.added`,
+		`data: {"item":{"type":"function_call","id":"fc_1","call_id":"call_99","name":"calendar_add"}}`,
+		``,
+		`event: response.function_call_arguments.delta`,
+		`data: {"item_id":"fc_1","delta":"{\"title\":"}`,
+		``,
+		`event: response.function_call_arguments.delta`,
+		`data: {"item_id":"fc_1","delta":"\"Dentist\"}"}`,
+		``,
+		`event: response.function_call_arguments.done`,
+		`data: {"item_id":"fc_1","arguments":"{\"title\":\"Dentist\"}"}`,
+		``,
+		`event: response.completed`,
+		`data: {"response":{"id":"r","usage":{"input_tokens":1,"output_tokens":1}}}`,
+		``,
+	}, "\n")
+	res, err := Consume(fakeResponse(sse), nil, nil)
+	if err != nil {
+		t.Fatalf("Consume error: %v", err)
+	}
+	if len(res.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %d, want 1: %+v", len(res.ToolCalls), res.ToolCalls)
+	}
+	tc := res.ToolCalls[0]
+	if tc.ID != "call_99" || tc.Name != "calendar_add" || tc.Arguments != `{"title":"Dentist"}` {
+		t.Errorf("tool call (item_id correlation) = %+v", tc)
+	}
+}
+
 func TestConsumeStreamError(t *testing.T) {
 	// error event with a rate-limit code -> APIError(429), retryable.
 	sse := "event: error\ndata: {\"error\":{\"code\":\"rate_limit_exceeded\",\"message\":\"slow down\"}}\n\n"

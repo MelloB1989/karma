@@ -31,6 +31,9 @@ type OpenAI struct {
 	RequestTimeout    time.Duration
 	clientOptions     *CompatibleOptions
 	clientInitialized bool
+	// toolNameMap maps sanitized tool names (sent upstream) back to their
+	// originals, so dotted names like "calendar.add" round-trip correctly.
+	toolNameMap map[string]string
 }
 
 func NewOpenAI(model, sysmgs string, temperature float64, maxTokens int64) *OpenAI {

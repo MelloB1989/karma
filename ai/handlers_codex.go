@@ -30,7 +30,7 @@ func (kai *KarmaAI) handleCodexChatCompletion(history *models.AIChatHistory) (*m
 
 	instructions := kai.codexInstructions(history)
 	messages := kai.codexMessages(history)
-	tools := kai.codexTools()
+	tools, toolNames := kai.codexTools()
 	execEnabled := kai.ToolsEnabled && kai.UseMCPExecution && len(tools) > 0
 
 	maxPasses := kai.MaxToolPasses
@@ -56,10 +56,11 @@ func (kai *KarmaAI) handleCodexChatCompletion(history *models.AIChatHistory) (*m
 		if len(result.ToolCalls) == 0 || !execEnabled {
 			break
 		}
-		// Replay the assistant turn + execute tools, then loop for the answer.
+		// Replay the assistant turn (sanitized names, as Codex emitted them) +
+		// execute tools under their original names so dispatch resolves them.
 		messages = append(messages, codexAssistantTurn(result))
 		for _, tc := range result.ToolCalls {
-			out, terr := kai.executeCodexTool(ctx, tc.Name, tc.Arguments)
+			out, terr := kai.executeCodexTool(ctx, restoreToolName(toolNames, tc.Name), tc.Arguments)
 			if terr != nil {
 				out = fmt.Sprintf("Error: %v", terr)
 			}
@@ -67,7 +68,7 @@ func (kai *KarmaAI) handleCodexChatCompletion(history *models.AIChatHistory) (*m
 		}
 	}
 
-	return codexResult(final, start), nil
+	return codexResult(final, toolNames, start), nil
 }
 
 // handleCodexStreamCompletion streams text deltas via callback. Tool calls are
@@ -86,11 +87,12 @@ func (kai *KarmaAI) handleCodexStreamCompletion(history *models.AIChatHistory, c
 	ctx, cancel := kai.codexContext()
 	defer cancel()
 
+	tools, toolNames := kai.codexTools()
 	req := codex.BuildRequest(codex.RequestOptions{
 		Model:           kai.Model.GetModelString(),
 		Instructions:    kai.codexInstructions(history),
 		Messages:        kai.codexMessages(history),
-		Tools:           kai.codexTools(),
+		Tools:           tools,
 		ReasoningEffort: kai.codexReasoningEffort(),
 	})
 
@@ -110,7 +112,7 @@ func (kai *KarmaAI) handleCodexStreamCompletion(history *models.AIChatHistory, c
 		}
 		result, err := client.Generate(ctx, req, onText, nil)
 		if err == nil {
-			return codexResult(result, start), nil
+			return codexResult(result, toolNames, start), nil
 		}
 		lastErr = err
 		if started || !codex.IsRetryable(err) {
@@ -259,9 +261,12 @@ func (kai *KarmaAI) codexMessages(history *models.AIChatHistory) []codex.Message
 			ToolCallID: m.ToolCallId,
 		}
 		for _, tc := range m.ToolCalls {
+			// Sanitize so replayed assistant tool calls in the history don't
+			// carry dotted names upstream (which 502 the Responses API). Outputs
+			// correlate by call_id, so only the name needs rewriting.
 			msg.ToolCalls = append(msg.ToolCalls, codex.ToolCall{
 				ID:        tc.ID,
-				Name:      tc.Function.Name,
+				Name:      sanitizeToolName(tc.Function.Name),
 				Arguments: tc.Function.Arguments,
 			})
 		}
@@ -271,30 +276,92 @@ func (kai *KarmaAI) codexMessages(history *models.AIChatHistory) []codex.Message
 }
 
 // codexTools builds Codex tool definitions from Go function tools and MCP tools.
-// Returns nil when tools are disabled.
-func (kai *KarmaAI) codexTools() []codex.Tool {
+// Tool names are sanitized to satisfy the OpenAI/Codex constraint
+// (^[a-zA-Z0-9_-]{1,64}$); the returned map (sanitized -> original) lets the
+// caller restore the real name on tool-call return. Returns nil when tools are
+// disabled.
+func (kai *KarmaAI) codexTools() ([]codex.Tool, map[string]string) {
 	if !kai.ToolsEnabled {
-		return nil
+		return nil, nil
 	}
 	var tools []codex.Tool
-	for _, fn := range kai.GoFunctionTools {
+	nameMap := map[string]string{} // sanitized -> original (only when they differ)
+	addTool := func(name, description string, params map[string]any, strict bool) {
+		sanitized := sanitizeToolName(name)
+		if sanitized != name {
+			nameMap[sanitized] = name
+		}
 		tools = append(tools, codex.Tool{
 			Type:        "function",
-			Name:        fn.Name,
-			Description: fn.Description,
-			Parameters:  map[string]any(fn.Parameters),
-			Strict:      fn.Strict,
+			Name:        sanitized,
+			Description: description,
+			Parameters:  params,
+			Strict:      strict,
 		})
+	}
+	for _, fn := range kai.GoFunctionTools {
+		addTool(fn.Name, fn.Description, sanitizeToolSchema(map[string]any(fn.Parameters)), fn.Strict)
 	}
 	for _, t := range kai.MCPTools {
-		tools = append(tools, codex.Tool{
-			Type:        "function",
-			Name:        t.ToolName,
-			Description: t.Description,
-			Parameters:  toSchemaMap(t.InputSchema),
-		})
+		addTool(t.ToolName, t.Description, sanitizeToolSchema(toSchemaMap(t.InputSchema)), false)
 	}
-	return tools
+	return tools, nameMap
+}
+
+// sanitizeToolSchema strips karma-internal artifacts from a tool's parameter
+// schema before it goes upstream. NewFuncParams stuffs a "history" key into the
+// FuncParams map (a runtime hack to pass chat history to handlers); it is not
+// valid JSON Schema and the Codex Responses API returns 502 server_error on it.
+// Handlers read history from the runtime call arguments, not the schema, so
+// removing it is side-effect free. Clones only when a change is needed.
+func sanitizeToolSchema(params map[string]any) map[string]any {
+	if params == nil {
+		return nil
+	}
+	if _, ok := params["history"]; !ok {
+		return params
+	}
+	cloned := make(map[string]any, len(params))
+	for k, v := range params {
+		if k == "history" {
+			continue
+		}
+		cloned[k] = v
+	}
+	return cloned
+}
+
+// sanitizeToolName rewrites a tool name to satisfy the OpenAI/Codex function
+// name constraint ^[a-zA-Z0-9_-]{1,64}$. Any disallowed character — notably the
+// dots in KARMAX names like "calendar.add" — becomes "_". The Codex Responses
+// API 502s on invalid names rather than returning a clean error, so every name
+// sent upstream must pass through this. It is deterministic, so a given original
+// maps to the same sanitized name in both tool definitions and replayed history.
+func sanitizeToolName(name string) string {
+	var b strings.Builder
+	b.Grow(len(name))
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('_')
+		}
+	}
+	s := b.String()
+	if len(s) > 64 {
+		s = s[:64]
+	}
+	return s
+}
+
+// restoreToolName maps a sanitized tool name back to its original via nameMap,
+// falling back to the name itself when it was never rewritten.
+func restoreToolName(nameMap map[string]string, sanitized string) string {
+	if orig, ok := nameMap[sanitized]; ok {
+		return orig
+	}
+	return sanitized
 }
 
 func (kai *KarmaAI) codexReasoningEffort() string {
@@ -339,7 +406,7 @@ func codexAssistantTurn(r *codex.Result) codex.Message {
 	return msg
 }
 
-func codexResult(r *codex.Result, start time.Time) *models.AIChatResponse {
+func codexResult(r *codex.Result, nameMap map[string]string, start time.Time) *models.AIChatResponse {
 	res := &models.AIChatResponse{
 		AIResponse:   r.Text,
 		InputTokens:  r.Usage.InputTokens,
@@ -351,7 +418,7 @@ func codexResult(r *codex.Result, start time.Time) *models.AIChatResponse {
 		res.ToolCalls = append(res.ToolCalls, models.ToolCall{
 			ID:       tc.ID,
 			Type:     "function",
-			Function: models.ToolCallFunction{Name: tc.Name, Arguments: tc.Arguments},
+			Function: models.ToolCallFunction{Name: restoreToolName(nameMap, tc.Name), Arguments: tc.Arguments},
 		})
 	}
 	return res
