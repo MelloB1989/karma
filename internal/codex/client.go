@@ -171,14 +171,15 @@ func IsRetryable(err error) bool {
 // Config configures a Client. Zero values fall back to sensible defaults and
 // the CODEX_* environment variables.
 type Config struct {
-	BaseURL       string
-	Originator    string
-	AppVersion    string
-	UserAgent     string // full User-Agent override; default derived from host
-	Residency     string // x-openai-internal-codex-residency override
-	ClientID      string // OAuth client id (refresh grant)
-	TokenEndpoint string // OAuth token endpoint
-	HTTPClient    *http.Client
+	BaseURL          string
+	Originator       string
+	AppVersion       string
+	UserAgent        string // full User-Agent override; default derived from host
+	Residency        string // x-openai-internal-codex-residency override
+	ClientID         string // OAuth client id (refresh grant)
+	TokenEndpoint    string // OAuth token endpoint
+	HTTPClient       *http.Client
+	DisableWebSocket bool // force HTTP-SSE transport (skip the WebSocket primary)
 }
 
 // Client talks to the Codex Responses API on behalf of a ChatGPT account.
@@ -231,6 +232,11 @@ func NewClient(cfg Config) (*Client, error) {
 	if cfg.Residency == "" {
 		cfg.Residency = strings.TrimSpace(os.Getenv("CODEX_RESIDENCY"))
 	}
+	if !cfg.DisableWebSocket {
+		if v := strings.TrimSpace(os.Getenv("CODEX_DISABLE_WEBSOCKET")); v == "1" || strings.EqualFold(v, "true") {
+			cfg.DisableWebSocket = true
+		}
+	}
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
 		// No client-wide timeout: streaming responses can run for minutes; the
@@ -255,38 +261,88 @@ func (c *Client) AccountID() string {
 	return id
 }
 
-// CreateResponse POSTs a streaming Responses request and returns the raw HTTP
-// response. The caller owns response.Body and must Close it. Non-2xx responses
-// are returned as *APIError.
-func (c *Client) CreateResponse(ctx context.Context, req *ResponsesRequest) (*http.Response, error) {
-	req.Stream = true
-	req.Store = false
-
+// Generate runs a Responses request over the most reliable available transport
+// and consumes the stream, returning the fully collected Result. onText /
+// onReasoning, when non-nil, receive streamed deltas.
+//
+// WebSocket is tried first — it is the transport codex-proxy uses for its
+// primary endpoints and the one the backend advertises via prefer_websockets;
+// the HTTP-SSE POST path is markedly more prone to transient 502s. On a
+// WebSocket *transport* failure (before any output) it transparently falls back
+// to HTTP SSE. A genuine upstream API error (rate limit, etc.) is surfaced as
+// *APIError and not retried over the other transport.
+func (c *Client) Generate(ctx context.Context, req *ResponsesRequest, onText, onReasoning func(string) error) (*Result, error) {
+	c.prepareRequest(req)
 	c.warmup(ctx)
 
+	if !c.cfg.DisableWebSocket {
+		started := false
+		wsText := onText
+		if onText != nil {
+			wsText = func(s string) error { started = true; return onText(s) }
+		}
+		result, err := c.generateWS(ctx, req, wsText, onReasoning)
+		if err == nil {
+			return result, nil
+		}
+		// Surface real upstream errors (and anything emitted) without retrying
+		// over HTTP, which would hit the same condition.
+		var apiErr *APIError
+		if errors.As(err, &apiErr) || started {
+			return nil, err
+		}
+		// WebSocket transport failure before any output -> fall back to HTTP SSE.
+	}
+	return c.generateHTTP(ctx, req, onText, onReasoning)
+}
+
+// generateHTTP runs the request over HTTP SSE and consumes the stream.
+func (c *Client) generateHTTP(ctx context.Context, req *ResponsesRequest, onText, onReasoning func(string) error) (*Result, error) {
+	resp, err := c.createResponseHTTP(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return Consume(resp, onText, onReasoning)
+}
+
+// CreateResponse POSTs a streaming Responses request over HTTP and returns the
+// raw response. The caller owns response.Body and must Close it. Non-2xx
+// responses are returned as *APIError. Prefer Generate, which adds the
+// WebSocket transport + consumption.
+func (c *Client) CreateResponse(ctx context.Context, req *ResponsesRequest) (*http.Response, error) {
+	c.prepareRequest(req)
+	c.warmup(ctx)
+	return c.createResponseHTTP(ctx, req)
+}
+
+// prepareRequest enforces the required stream/store flags and attaches the
+// stable installation id (header + client_metadata) so the backend load
+// balancer pins us to one instance, keeping the prompt cache warm.
+func (c *Client) prepareRequest(req *ResponsesRequest) {
+	req.Stream = true
+	req.Store = false
+	if req.ClientMetadata == nil {
+		req.ClientMetadata = map[string]string{}
+	}
+	req.ClientMetadata["x-codex-installation-id"] = getInstallationID()
+}
+
+// createResponseHTTP performs the POST /codex/responses. req must already be
+// prepared (see prepareRequest) and warmup already run.
+func (c *Client) createResponseHTTP(ctx context.Context, req *ResponsesRequest) (*http.Response, error) {
 	token, accountID, err := c.tokens.Token(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	// Attach a stable installation id (header + client_metadata) so the backend
-	// load balancer pins us to one instance, keeping the prompt cache warm.
-	installID := getInstallationID()
-	if req.ClientMetadata == nil {
-		req.ClientMetadata = map[string]string{}
-	}
-	req.ClientMetadata["x-codex-installation-id"] = installID
-
 	body, err := json.Marshal(req)
 	if err != nil {
 		return nil, fmt.Errorf("codex: marshal request: %w", err)
 	}
-
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+"/codex/responses", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	c.applyHeaders(httpReq.Header, token, accountID, installID, "text/event-stream", true)
+	c.applyHeaders(httpReq.Header, token, accountID, getInstallationID(), "text/event-stream", true)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -344,7 +400,9 @@ func (c *Client) applyHeaders(h http.Header, token, accountID, installID, accept
 	if withContentType {
 		h.Set("Content-Type", "application/json")
 	}
-	h.Set("Accept", accept)
+	if accept != "" {
+		h.Set("Accept", accept)
+	}
 }
 
 // residency resolves the compute-residency header value: explicit config/env >

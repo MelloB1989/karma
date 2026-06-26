@@ -318,12 +318,22 @@ type toolAccum struct {
 	args strings.Builder
 }
 
-// Consume reads a Codex Responses SSE stream to completion. When onText is
-// non-nil it is invoked for each text delta (streaming); onReasoning, likewise,
-// for reasoning-summary deltas. It always returns the fully collected Result.
+// Consume reads a Codex Responses SSE stream (HTTP transport) to completion.
+// When onText is non-nil it is invoked for each text delta (streaming);
+// onReasoning, likewise, for reasoning-summary deltas. It always returns the
+// fully collected Result.
 func Consume(resp *http.Response, onText, onReasoning func(string) error) (*Result, error) {
 	defer resp.Body.Close()
+	return processEvents(onText, onReasoning, func(fn func(SSEEvent) error) error {
+		return parseSSE(resp.Body, fn)
+	})
+}
 
+// processEvents runs the Codex event state machine, pulling events from pump
+// (HTTP SSE or WebSocket) and assembling text, tool calls, reasoning and usage.
+// pump must call fn for each event until the stream ends; if fn returns an
+// error (terminal upstream error), pump should stop and return it.
+func processEvents(onText, onReasoning func(string) error, pump func(func(SSEEvent) error) error) (*Result, error) {
 	var text, reasoning strings.Builder
 	var usage Usage
 	var responseID string
@@ -355,7 +365,7 @@ func Consume(resp *http.Response, onText, onReasoning func(string) error) (*Resu
 	}
 
 	var streamErr error
-	perr := parseSSE(resp.Body, func(evt SSEEvent) error {
+	perr := pump(func(evt SSEEvent) error {
 		switch evt.Event {
 		case "response.created", "response.in_progress", "response.queued":
 			var e sseRespEnvelope

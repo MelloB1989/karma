@@ -101,14 +101,6 @@ func (kai *KarmaAI) handleCodexStreamCompletion(history *models.AIChatHistory, c
 				return nil, werr
 			}
 		}
-		resp, err := client.CreateResponse(ctx, req)
-		if err != nil {
-			lastErr = err
-			if codex.IsRetryable(err) {
-				continue
-			}
-			return nil, err
-		}
 		// Retry is only safe before any text has been emitted to the callback;
 		// otherwise a retry would duplicate already-streamed content.
 		started := false
@@ -116,7 +108,7 @@ func (kai *KarmaAI) handleCodexStreamCompletion(history *models.AIChatHistory, c
 			started = true
 			return callback(models.StreamedResponse{AIResponse: delta, TimeTaken: -1})
 		}
-		result, err := codex.Consume(resp, onText, nil)
+		result, err := client.Generate(ctx, req, onText, nil)
 		if err == nil {
 			return codexResult(result, start), nil
 		}
@@ -167,13 +159,9 @@ func (kai *KarmaAI) codexGenerate(ctx context.Context, client *codex.Client, req
 				return nil, werr
 			}
 		}
-		resp, err := client.CreateResponse(ctx, req)
+		result, err := client.Generate(ctx, req, nil, nil)
 		if err == nil {
-			var result *codex.Result
-			result, err = codex.Consume(resp, nil, nil)
-			if err == nil {
-				return result, nil
-			}
+			return result, nil
 		}
 		lastErr = err
 		if !codex.IsRetryable(err) {

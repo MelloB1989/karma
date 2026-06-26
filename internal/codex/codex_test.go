@@ -279,6 +279,40 @@ func TestParseModelList(t *testing.T) {
 	}
 }
 
+func TestToWSURL(t *testing.T) {
+	cases := map[string]string{
+		"https://chatgpt.com/backend-api": "wss://chatgpt.com/backend-api",
+		"http://localhost:8080/v1":        "ws://localhost:8080/v1",
+		"wss://already":                   "wss://already",
+	}
+	for in, want := range cases {
+		if got := toWSURL(in); got != want {
+			t.Errorf("toWSURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestWSCreateMessageShape(t *testing.T) {
+	req := BuildRequest(RequestOptions{
+		Model:    "gpt-5.5",
+		Messages: []Message{{Role: "user", Content: "hi"}},
+	})
+	msg := wsCreateMessage{Type: "response.create", ResponsesRequest: req}
+	raw, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	for _, want := range []string{`"type":"response.create"`, `"model":"gpt-5.5"`, `"stream":true`, `"store":false`, `"input":`} {
+		if !strings.Contains(s, want) {
+			t.Errorf("ws message missing %s: %s", want, s)
+		}
+	}
+	if typ := wsEventType([]byte(`{"type":"response.completed","x":1}`)); typ != "response.completed" {
+		t.Errorf("wsEventType = %q", typ)
+	}
+}
+
 func TestJWTHelpers(t *testing.T) {
 	// header.payload.signature with payload containing the auth claim + exp.
 	payload := `{"exp":4102444800,"https://api.openai.com/auth":{"chatgpt_account_id":"acct_123"}}`
