@@ -9,14 +9,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 // DefaultBaseURL is the Codex backend the Codex CLI / Desktop use.
@@ -40,8 +44,9 @@ const (
 // one consistent retry/recovery policy — mirroring codex-proxy's
 // codexApiErrorFromEvent.
 type APIError struct {
-	Status int
-	Body   string
+	Status  int
+	Body    string
+	Headers http.Header // response headers, when from an HTTP response
 }
 
 func (e *APIError) Error() string {
@@ -73,14 +78,83 @@ func (e *APIError) Error() string {
 }
 
 // Retryable reports whether the failure is transient and worth retrying
-// (timeouts, conflicts, rate limits, and 5xx — including the generic 502 that a
-// codeless mid-stream failure maps to).
+// (timeouts, conflicts, rate limits, 5xx — including the generic 502 a codeless
+// mid-stream failure maps to — and Cloudflare challenges).
 func (e *APIError) Retryable() bool {
+	if e.IsCloudflareChallenge() {
+		return true
+	}
 	switch e.Status {
 	case 408, 409, 425, 429, 500, 502, 503, 504:
 		return true
 	}
 	return false
+}
+
+// IsCloudflareChallenge reports whether the response is a Cloudflare bot
+// challenge (vs. an application error). Port of codex-proxy's isCfChallengeError:
+// a 403/503 whose body or headers carry CF challenge markers.
+func (e *APIError) IsCloudflareChallenge() bool {
+	if e.Status != 403 && e.Status != 503 {
+		return false
+	}
+	hay := strings.ToLower(e.Body + " " + headerHaystack(e.Headers))
+	for _, marker := range []string{"cf-mitigated", "cf-chl-bypass", "_cf_chl", "cf_chl", "attention required", "just a moment"} {
+		if strings.Contains(hay, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// RetryAfter returns how long to wait before retrying, from the Retry-After
+// header or the error body's resets_in_seconds / resets_at (Codex 429s), or 0.
+func (e *APIError) RetryAfter() time.Duration {
+	if e.Headers != nil {
+		if ra := strings.TrimSpace(e.Headers.Get("Retry-After")); ra != "" {
+			if secs, err := strconv.Atoi(ra); err == nil && secs > 0 {
+				return time.Duration(secs) * time.Second
+			}
+			if t, err := http.ParseTime(ra); err == nil {
+				if d := time.Until(t); d > 0 {
+					return d
+				}
+			}
+		}
+	}
+	var env struct {
+		Error struct {
+			ResetsInSeconds float64 `json:"resets_in_seconds"`
+			ResetsAt        float64 `json:"resets_at"`
+		} `json:"error"`
+	}
+	if json.Unmarshal([]byte(e.Body), &env) == nil {
+		if env.Error.ResetsInSeconds > 0 {
+			return time.Duration(env.Error.ResetsInSeconds * float64(time.Second))
+		}
+		if env.Error.ResetsAt > 0 {
+			if d := time.Until(time.Unix(int64(env.Error.ResetsAt), 0)); d > 0 {
+				return d
+			}
+		}
+	}
+	return 0
+}
+
+func headerHaystack(h http.Header) string {
+	if h == nil {
+		return ""
+	}
+	var b strings.Builder
+	for k, vals := range h {
+		b.WriteString(k)
+		b.WriteByte(' ')
+		for _, v := range vals {
+			b.WriteString(v)
+			b.WriteByte(' ')
+		}
+	}
+	return b.String()
 }
 
 // IsRetryable reports whether err (or anything it wraps) is a transient
@@ -112,6 +186,31 @@ type Client struct {
 	cfg        Config
 	tokens     *TokenSource
 	httpClient *http.Client
+	warmupOnce sync.Once
+}
+
+var (
+	sharedMu      sync.Mutex
+	sharedClients = map[string]*Client{}
+)
+
+// Shared returns a process-wide cached Client for the given config so the
+// session cookie jar (cf_clearance / __cf_bm), warmup state, and token-refresh
+// state stay warm across calls — the single-process analogue of codex-proxy's
+// long-lived account sessions. Falls back to a fresh client on cache miss.
+func Shared(cfg Config) (*Client, error) {
+	key := strings.Join([]string{cfg.BaseURL, cfg.Originator, cfg.AppVersion, cfg.UserAgent, cfg.Residency}, "|")
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+	if c, ok := sharedClients[key]; ok {
+		return c, nil
+	}
+	c, err := NewClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	sharedClients[key] = c
+	return c, nil
 }
 
 // NewClient builds a Codex client, resolving credentials via NewTokenSource.
@@ -135,8 +234,11 @@ func NewClient(cfg Config) (*Client, error) {
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
 		// No client-wide timeout: streaming responses can run for minutes; the
-		// caller's context governs cancellation.
-		httpClient = &http.Client{}
+		// caller's context governs cancellation. A cookie jar keeps the
+		// Cloudflare session (cf_clearance / __cf_bm) warm across requests,
+		// reducing bot challenges.
+		jar, _ := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
+		httpClient = &http.Client{Jar: jar}
 	}
 	cfg.HTTPClient = httpClient
 
@@ -159,6 +261,8 @@ func (c *Client) AccountID() string {
 func (c *Client) CreateResponse(ctx context.Context, req *ResponsesRequest) (*http.Response, error) {
 	req.Stream = true
 	req.Store = false
+
+	c.warmup(ctx)
 
 	token, accountID, err := c.tokens.Token(ctx)
 	if err != nil {
@@ -191,9 +295,36 @@ func (c *Client) CreateResponse(ctx context.Context, req *ResponsesRequest) (*ht
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		errBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 		resp.Body.Close()
-		return nil, &APIError{Status: resp.StatusCode, Body: string(errBody)}
+		return nil, &APIError{Status: resp.StatusCode, Body: string(errBody), Headers: resp.Header}
 	}
 	return resp, nil
+}
+
+// warmup performs a one-time GET /codex/usage to establish session cookies
+// (cf_clearance, __cf_bm, …) before the first real request, so the POST looks
+// like a continuous session rather than a cold start. Best-effort: any failure
+// is ignored. Port of codex-proxy's CodexApi.warmup.
+func (c *Client) warmup(ctx context.Context) {
+	c.warmupOnce.Do(func() {
+		if c.httpClient.Jar == nil {
+			return // no cookie jar -> nothing to prime
+		}
+		token, accountID, err := c.tokens.Token(ctx)
+		if err != nil {
+			return
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.BaseURL+"/codex/usage", nil)
+		if err != nil {
+			return
+		}
+		c.applyHeaders(req.Header, token, accountID, getInstallationID(), "application/json", false)
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return
+		}
+		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+		resp.Body.Close()
+	})
 }
 
 // applyHeaders sets the Codex CLI request headers. Accept-Encoding is left unset

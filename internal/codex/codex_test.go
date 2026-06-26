@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestParseModelName(t *testing.T) {
@@ -196,6 +197,40 @@ data: {"type":"response.failed","response":{"id":"resp_9","status":"failed","err
 	}
 	if !strings.Contains(err.Error(), "An error occurred while processing the request") {
 		t.Errorf("nested message not surfaced: %v", err)
+	}
+}
+
+func TestAPIErrorRetryAfter(t *testing.T) {
+	// Numeric Retry-After header.
+	e := &APIError{Status: 429, Headers: http.Header{"Retry-After": {"5"}}}
+	if d := e.RetryAfter(); d != 5*time.Second {
+		t.Errorf("Retry-After header = %v, want 5s", d)
+	}
+	// Body resets_in_seconds.
+	e = &APIError{Status: 429, Body: `{"error":{"code":"rate_limit_exceeded","resets_in_seconds":12}}`}
+	if d := e.RetryAfter(); d != 12*time.Second {
+		t.Errorf("resets_in_seconds = %v, want 12s", d)
+	}
+	if !e.Retryable() {
+		t.Errorf("429 should be retryable")
+	}
+}
+
+func TestCloudflareChallenge(t *testing.T) {
+	cf := &APIError{Status: 403, Body: "<html><title>Just a moment...</title>"}
+	if !cf.IsCloudflareChallenge() || !cf.Retryable() {
+		t.Errorf("CF challenge should be detected and retryable: %+v", cf)
+	}
+	cfHdr := &APIError{Status: 503, Headers: http.Header{"Cf-Mitigated": {"challenge"}}}
+	if !cfHdr.IsCloudflareChallenge() {
+		t.Errorf("CF header challenge not detected")
+	}
+	ban := &APIError{Status: 403, Body: `{"error":{"message":"account banned"}}`}
+	if ban.IsCloudflareChallenge() {
+		t.Errorf("plain 403 ban must not be classified as CF challenge")
+	}
+	if ban.Retryable() {
+		t.Errorf("403 ban should not be retryable")
 	}
 }
 

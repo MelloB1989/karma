@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -96,7 +97,7 @@ func (kai *KarmaAI) handleCodexStreamCompletion(history *models.AIChatHistory, c
 	var lastErr error
 	for attempt := 0; attempt <= codexMaxRetries; attempt++ {
 		if attempt > 0 {
-			if werr := codexWait(ctx, attempt); werr != nil {
+			if werr := codexWait(ctx, lastErr, attempt); werr != nil {
 				return nil, werr
 			}
 		}
@@ -131,9 +132,23 @@ func (kai *KarmaAI) handleCodexStreamCompletion(history *models.AIChatHistory, c
 // (HTTP 429/5xx or codeless mid-stream response.failed events).
 const codexMaxRetries = 2
 
-// codexWait sleeps before retry attempt n with linear backoff, honoring ctx.
-func codexWait(ctx context.Context, attempt int) error {
+// codexMaxBackoff caps how long a single retry will wait, even if the backend
+// asks for longer via Retry-After / resets_at.
+const codexMaxBackoff = 60 * time.Second
+
+// codexWait sleeps before a retry, honoring ctx. It prefers a server-provided
+// Retry-After / resets_at delay (from a 429) and otherwise uses linear backoff.
+func codexWait(ctx context.Context, err error, attempt int) error {
 	delay := time.Duration(attempt) * 750 * time.Millisecond
+	var ae *codex.APIError
+	if errors.As(err, &ae) {
+		if ra := ae.RetryAfter(); ra > 0 {
+			delay = ra
+		}
+	}
+	if delay > codexMaxBackoff {
+		delay = codexMaxBackoff
+	}
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -148,7 +163,7 @@ func (kai *KarmaAI) codexGenerate(ctx context.Context, client *codex.Client, req
 	var lastErr error
 	for attempt := 0; attempt <= codexMaxRetries; attempt++ {
 		if attempt > 0 {
-			if werr := codexWait(ctx, attempt); werr != nil {
+			if werr := codexWait(ctx, lastErr, attempt); werr != nil {
 				return nil, werr
 			}
 		}
@@ -189,7 +204,7 @@ type CodexModel struct {
 // extracted automatically from $CODEX_HOME/auth.json (or the CODEX_* env vars).
 // Any returned id can be used directly via SetCustomModelVariant.
 func ListCodexModels(ctx context.Context) ([]CodexModel, error) {
-	client, err := codex.NewClient(codex.Config{})
+	client, err := codex.Shared(codex.Config{})
 	if err != nil {
 		return nil, err
 	}
@@ -212,7 +227,9 @@ func ListCodexModels(ctx context.Context) ([]CodexModel, error) {
 // ---- helpers ----
 
 func (kai *KarmaAI) newCodexClient() (*codex.Client, error) {
-	return codex.NewClient(codex.Config{})
+	// Shared, process-wide client so the session cookie jar and token-refresh
+	// state stay warm across calls.
+	return codex.Shared(codex.Config{})
 }
 
 func (kai *KarmaAI) codexContext() (context.Context, context.CancelFunc) {
