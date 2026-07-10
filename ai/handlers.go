@@ -10,7 +10,6 @@ import (
 	"github.com/MelloB1989/karma/apis/aws/bedrock"
 	"github.com/MelloB1989/karma/apis/claude"
 	"github.com/MelloB1989/karma/apis/gemini"
-	"github.com/MelloB1989/karma/internal/aws/bedrock_runtime"
 	"github.com/MelloB1989/karma/internal/openai"
 	"github.com/MelloB1989/karma/models"
 	"github.com/anthropics/anthropic-sdk-go"
@@ -57,24 +56,36 @@ func (kai *KarmaAI) handleBedrockChatCompletion(messages models.AIChatHistory) (
 		ctx, cancel = context.WithTimeout(context.Background(), kai.RequestTimeout)
 		defer cancel()
 	}
-	response, err := bedrock_runtime.InvokeBedrockConverseAPIWithContext(
-		ctx,
-		kai.Model.GetModelString(),
-		bedrock_runtime.CreateBedrockRequest(int(kai.MaxTokens), float64(kai.Temperature), float64(kai.TopP), messages, kai.SystemMessage),
-	)
+	response, err := bedrock.Converse(ctx, kai.bedrockConverseParams(messages))
 	if err != nil {
 		return nil, err
 	}
-	if len(response.Output.Message.Content) == 0 {
+	if response.Text == "" {
 		return nil, errors.New("No response from Bedrock")
 	}
 	return &models.AIChatResponse{
-		AIResponse:   response.Output.Message.Content[0].Text,
-		Tokens:       response.Usage.TotalTokens,
-		InputTokens:  response.Usage.InputTokens,
-		OutputTokens: response.Usage.OutputTokens,
+		AIResponse:   response.Text,
+		Tokens:       response.TotalTokens,
+		InputTokens:  response.InputTokens,
+		OutputTokens: response.OutputTokens,
 		TimeTaken:    int(time.Since(start).Milliseconds()),
 	}, nil
+}
+
+// bedrockConverseParams builds the shared Converse parameters from the KarmaAI
+// configuration.
+func (kai *KarmaAI) bedrockConverseParams(messages models.AIChatHistory) bedrock.ConverseParams {
+	return bedrock.ConverseParams{
+		ModelID:     kai.Model.GetModelString(),
+		System:      kai.SystemMessage,
+		History:     messages,
+		MaxTokens:   int(kai.MaxTokens),
+		Temperature: float32(kai.Temperature),
+		TopP:        float32(kai.TopP),
+		TopK:        int(kai.TopK),
+		APIKey:      kai.BedrockAPIKey,
+		Region:      kai.BedrockRegion,
+	}
 }
 
 func (kai *KarmaAI) handleAnthropicChatCompletion(messages models.AIChatHistory) (*models.AIChatResponse, error) {
@@ -217,41 +228,26 @@ func (kai *KarmaAI) handleBedrockStreamCompletion(messages models.AIChatHistory,
 		ctx, cancel = context.WithTimeout(context.Background(), kai.RequestTimeout)
 		defer cancel()
 	}
-	stream, err := bedrock.PromptModelStreamWithContext(
-		ctx,
-		kai.processMessagesForLlamaBedrockSystemPrompt(messages),
-		float32(kai.Temperature),
-		float32(kai.TopP),
-		int(kai.MaxTokens),
-		kai.Model.GetModelString(),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	var response string
-	var totalTokens int
 	generationStart := time.Now()
 
-	chunkHandler := func(ctx context.Context, part bedrock.Generation) error {
-		response += string(part.Generation)
-		totalTokens += part.GenerationTokenCount
+	onText := func(text string) error {
 		return callback(models.StreamedResponse{
-			AIResponse: part.Generation,
-			TokenUsed:  part.GenerationTokenCount,
+			AIResponse: text,
 			TimeTaken:  -1,
 		})
 	}
 
-	_, err = bedrock.ProcessStreamingOutput(stream, chunkHandler)
+	result, err := bedrock.ConverseStream(ctx, kai.bedrockConverseParams(messages), onText)
 	if err != nil {
 		return nil, err
 	}
 
 	return &models.AIChatResponse{
-		AIResponse: response,
-		Tokens:     totalTokens,
-		TimeTaken:  int(time.Since(generationStart).Milliseconds()),
+		AIResponse:   result.Text,
+		Tokens:       result.TotalTokens,
+		InputTokens:  result.InputTokens,
+		OutputTokens: result.OutputTokens,
+		TimeTaken:    int(time.Since(generationStart).Milliseconds()),
 	}, nil
 }
 
@@ -305,7 +301,12 @@ func (kai *KarmaAI) handleBedrockEmbeddingGeneration(text string) (*models.AIEmb
 	if err := kai.enforceRateLimit(); err != nil {
 		return nil, err
 	}
-	embeddings, err := bedrock_runtime.CreateEmbeddings(text, kai.Model.GetModelString())
+	embeddings, err := bedrock.CreateEmbeddings(
+		context.Background(),
+		text,
+		kai.Model.GetModelString(),
+		bedrock.ClientOptions{Region: kai.BedrockRegion, APIKey: kai.BedrockAPIKey},
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get Bedrock embeddings: %w", err)
 	}

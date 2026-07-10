@@ -521,6 +521,13 @@ type KarmaAI struct {
 	RequestTimeout  time.Duration                   `json:"request_timeout"`
 	// Deprecated: Use MCPServers instead
 	MCPServers []MCPServer `json:"mcp_servers"`
+	// BedrockAPIKey is an Amazon Bedrock API key (bearer token). When set, the
+	// Bedrock provider authenticates with it instead of AWS SigV4 credentials.
+	// If empty, the AWS_BEARER_TOKEN_BEDROCK env var and the default AWS
+	// credential chain are used.
+	BedrockAPIKey string `json:"bedrock_api_key"`
+	// BedrockRegion optionally overrides the resolved AWS region for Bedrock.
+	BedrockRegion string `json:"bedrock_region"`
 	// Provider-specific configuration
 	SpecialConfig map[SpecialConfig]any `json:"special_config"`
 	// Cached MCP multi-manager (built once, reused across requests)
@@ -572,6 +579,22 @@ func WithTemperature(temp float32) Option {
 func WithMaxTokens(tokens int) Option {
 	return func(kai *KarmaAI) {
 		kai.MaxTokens = tokens
+	}
+}
+
+// WithBedrockAPIKey sets an Amazon Bedrock API key (bearer token) used to
+// authenticate Bedrock requests instead of AWS SigV4 credentials. Both
+// short-term and long-term Bedrock API keys are supported.
+func WithBedrockAPIKey(apiKey string) Option {
+	return func(kai *KarmaAI) {
+		kai.BedrockAPIKey = apiKey
+	}
+}
+
+// WithBedrockRegion overrides the AWS region used for Bedrock requests.
+func WithBedrockRegion(region string) Option {
+	return func(kai *KarmaAI) {
+		kai.BedrockRegion = region
 	}
 }
 

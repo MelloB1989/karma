@@ -25,8 +25,8 @@ func TestKai() {
 	// fmt.Println(bedrock.GetModels())
 	// testRawApi()
 	// testChatCompletion()
-	// testGenerateFromSinglePrompt()
-	testGoFunctionTools()
+	testGenerateFromSinglePrompt()
+	// testGoFunctionTools()
 	// TestGeminiImageGen()
 	// testChatCompletionStream()
 	// testWithMcpServer()
@@ -247,12 +247,11 @@ func testChatCompletion() {
 
 func testGenerateFromSinglePrompt() {
 	kai := ai.NewKarmaAI(
-		ai.KimiK2Thinking,
-		ai.Google,
+		"global.anthropic.claude-sonnet-4-6",
+		ai.Bedrock,
 		ai.WithSystemMessage(`Which LLM are you?`),
 		ai.WithTemperature(0.5),
 		ai.WithMaxTokens(800),
-		ai.WithTopP(0.9),
 		ai.WithRequestTimeout(30*time.Minute),
 	)
 	start := time.Now()
