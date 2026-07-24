@@ -1,5 +1,13 @@
 package ai
 
+// SetOptionalField injects an arbitrary top-level field into the request
+// body sent to the provider (e.g. vendor extensions like vLLM's
+// chat_template_kwargs, or Groq/xAI-specific parameters not otherwise
+// exposed by karma).
+func (f *F) SetOptionalField(key string, val any) {
+	f.optionalFields[key] = val
+}
+
 func (f *F) EnableGrokLiveSearch(opts struct {
 	ReturnCitations  bool             `json:"return_citations"`
 	MaxSearchResults int              `json:"max_search_results"`
