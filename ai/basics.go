@@ -193,6 +193,12 @@ type ModelConfig struct {
 
 type providerMap map[Provider]map[BaseModel]string
 
+// providerModelMappingMu guards ProviderModelMapping. Reads happen on every
+// request (getCanonicalModelString); writes happen at package init and
+// whenever RegisterCustomProvider is called, which may be after init (e.g. a
+// multi-tenant app registering a provider at runtime).
+var providerModelMappingMu sync.RWMutex
+
 var (
 	ProviderModelMapping providerMap = map[Provider]map[BaseModel]string{
 		OpenAI: {
@@ -428,8 +434,8 @@ func (mc ModelConfig) IsOpenAICompatibleModel() bool {
 	if provider == OpenAI || provider == XAI || provider == Groq || provider == TogetherAI || provider == NvidiaNIM {
 		return true
 	}
-	// Unofficial proxies always speak the OpenAI Chat Completions format.
-	_, ok := lookupProxyProvider(provider)
+	// Registered custom providers always speak the OpenAI Chat Completions format.
+	_, ok := lookupCustomProvider(provider)
 	return ok
 }
 
@@ -438,7 +444,7 @@ func (mc ModelConfig) SupportsMCP() bool {
 	if mc.Provider == OpenAI || mc.Provider == XAI || mc.Provider == Anthropic || mc.Provider == TogetherAI || mc.Provider == NvidiaNIM || mc.Provider == Codex {
 		return true
 	}
-	if pp, ok := lookupProxyProvider(mc.Provider); ok {
+	if pp, ok := lookupCustomProvider(mc.Provider); ok {
 		return pp.SupportsMCP
 	}
 	return false
@@ -450,6 +456,9 @@ func (mc ModelConfig) GetModelProvider() Provider {
 }
 
 func getCanonicalModelString(baseModel BaseModel, provider Provider) string {
+	providerModelMappingMu.RLock()
+	defer providerModelMappingMu.RUnlock()
+
 	if providerMappings, exists := ProviderModelMapping[provider]; exists {
 		if modelString, found := providerMappings[baseModel]; found {
 			return modelString
@@ -528,6 +537,14 @@ type KarmaAI struct {
 	BedrockAPIKey string `json:"bedrock_api_key"`
 	// BedrockRegion optionally overrides the resolved AWS region for Bedrock.
 	BedrockRegion string `json:"bedrock_region"`
+	// CustomProviderBaseURL, when set, points this instance directly at an
+	// OpenAI-compatible endpoint without going through the CustomProvider
+	// registry — see WithCustomProvider. Takes precedence over any provider
+	// registered via RegisterCustomProvider for the same Provider value.
+	CustomProviderBaseURL string `json:"custom_provider_base_url,omitempty"`
+	// CustomProviderAPIKey is the bearer API key sent alongside
+	// CustomProviderBaseURL.
+	CustomProviderAPIKey string `json:"custom_provider_api_key,omitempty"`
 	// Provider-specific configuration
 	SpecialConfig map[SpecialConfig]any `json:"special_config"`
 	// Cached MCP multi-manager (built once, reused across requests)
@@ -595,6 +612,25 @@ func WithBedrockAPIKey(apiKey string) Option {
 func WithBedrockRegion(region string) Option {
 	return func(kai *KarmaAI) {
 		kai.BedrockRegion = region
+	}
+}
+
+// WithCustomProvider points this KarmaAI instance directly at an
+// OpenAI-Chat-Completions-compatible endpoint (self-hosted server, internal
+// gateway, etc.), bypassing the RegisterCustomProvider registry entirely.
+// Use this for one-off or per-request endpoints — e.g. a multi-tenant app
+// where each tenant supplies their own base URL and key at request time; use
+// RegisterCustomProvider instead for a fixed provider reused by name across
+// the app.
+//
+// The Provider value passed to NewKarmaAI can be anything that doesn't
+// collide with a built-in provider constant (OpenAI, Anthropic, ...) or a
+// name already registered via RegisterCustomProvider, since this option takes
+// precedence over the registry for the same instance.
+func WithCustomProvider(baseURL, apiKey string) Option {
+	return func(kai *KarmaAI) {
+		kai.CustomProviderBaseURL = baseURL
+		kai.CustomProviderAPIKey = apiKey
 	}
 }
 

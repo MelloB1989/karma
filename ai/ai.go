@@ -40,8 +40,8 @@ func (kai *KarmaAI) ChatCompletion(messages models.AIChatHistory) (*models.AICha
 	case Codex:
 		response, err = kai.handleCodexChatCompletion(m)
 	default:
-		if pp, ok := kai.resolveProxy(); ok {
-			response, err = kai.handleOpenAICompatibleChatCompletion(m, pp.BaseURL(), pp.APIKey())
+		if baseURL, apiKey, ok := kai.resolveOpenAICompatibleEndpoint(); ok {
+			response, err = kai.handleOpenAICompatibleChatCompletion(m, baseURL, apiKey)
 		} else {
 			return nil, errors.New("this provider is not supported yet")
 		}
@@ -101,8 +101,8 @@ func (kai *KarmaAI) GenerateFromSinglePrompt(prompt string) (*models.AIChatRespo
 	case Codex:
 		response, err = kai.handleCodexChatCompletion(&singleMessage)
 	default:
-		if pp, ok := kai.resolveProxy(); ok {
-			response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, pp.BaseURL(), pp.APIKey())
+		if baseURL, apiKey, ok := kai.resolveOpenAICompatibleEndpoint(); ok {
+			response, err = kai.handleOpenAICompatibleChatCompletion(&singleMessage, baseURL, apiKey)
 		} else {
 			return nil, errors.New("this provider is not supported yet")
 		}
@@ -152,8 +152,8 @@ func (kai *KarmaAI) ChatCompletionStream(messages models.AIChatHistory, callback
 	case Codex:
 		response, err = kai.handleCodexStreamCompletion(m, callback)
 	default:
-		if pp, ok := kai.resolveProxy(); ok {
-			response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, pp.BaseURL(), pp.APIKey())
+		if baseURL, apiKey, ok := kai.resolveOpenAICompatibleEndpoint(); ok {
+			response, err = kai.handleOpenAICompatibleStreamCompletion(m, callback, baseURL, apiKey)
 		} else {
 			return nil, errors.New("this provider is not supported yet")
 		}
@@ -208,8 +208,8 @@ func (kai *KarmaAI) ChatCompletionManaged(history *models.AIChatHistory) (*model
 	case Codex:
 		response, err = kai.handleCodexChatCompletion(history)
 	default:
-		if pp, ok := kai.resolveProxy(); ok {
-			response, err = kai.handleOpenAICompatibleChatCompletion(history, pp.BaseURL(), pp.APIKey())
+		if baseURL, apiKey, ok := kai.resolveOpenAICompatibleEndpoint(); ok {
+			response, err = kai.handleOpenAICompatibleChatCompletion(history, baseURL, apiKey)
 		} else {
 			return nil, errors.New("this provider is not supported yet")
 		}
@@ -264,8 +264,8 @@ func (kai *KarmaAI) ChatCompletionStreamManaged(history *models.AIChatHistory, c
 	case Codex:
 		response, err = kai.handleCodexStreamCompletion(history, callback)
 	default:
-		if pp, ok := kai.resolveProxy(); ok {
-			response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, pp.BaseURL(), pp.APIKey())
+		if baseURL, apiKey, ok := kai.resolveOpenAICompatibleEndpoint(); ok {
+			response, err = kai.handleOpenAICompatibleStreamCompletion(history, callback, baseURL, apiKey)
 		} else {
 			return nil, errors.New("this provider is not supported yet")
 		}
