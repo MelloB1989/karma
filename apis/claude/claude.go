@@ -12,8 +12,10 @@ import (
 	"github.com/MelloB1989/karma/config"
 	"github.com/MelloB1989/karma/models"
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/anthropics/anthropic-sdk-go/bedrock"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/packages/param"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 )
 
 func extractToolCallsFromClaude(content []anthropic.ContentBlockUnion) []models.ToolCall {
@@ -60,8 +62,37 @@ func (cc *ClaudeClient) isThinkingModel() bool {
 	return strings.Contains(string(cc.Model), "thinking")
 }
 
+// UseBedrockTransport reports whether the Anthropic client should be signed with
+// SigV4 and routed to Bedrock instead of api.anthropic.com.
+//
+// The native Bedrock provider (ai.Bedrock) talks the Converse API and carries no
+// tool definitions, so it cannot run a tool loop. Routing the *Anthropic* client
+// at Bedrock keeps the entire tool-calling path — GoFunctionTools, MCP, managed
+// multi-pass completions — byte-identical between local and deployed, with only
+// the transport and the model string differing.
+func UseBedrockTransport() bool {
+	switch strings.ToLower(strings.TrimSpace(config.GetEnvRaw("KARMA_ANTHROPIC_BEDROCK"))) {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
+}
+
 func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP float64, topK float64, systemPrompt string) *ClaudeClient {
 	var opts []option.RequestOption
+	if UseBedrockTransport() {
+		// Credentials, region and endpoint all come from the ambient AWS config
+		// (env, shared config, or the Lambda execution role). Deliberately not
+		// combined with the ANTHROPIC_* options below: those set x-api-key and
+		// override the base URL, which would defeat SigV4 signing.
+		var loadOpts []func(*awsconfig.LoadOptions) error
+		if region := config.GetEnvRaw("KARMA_ANTHROPIC_BEDROCK_REGION"); region != "" {
+			loadOpts = append(loadOpts, awsconfig.WithRegion(region))
+		}
+		opts = append(opts, bedrock.WithLoadDefaultConfig(context.Background(), loadOpts...))
+		client := anthropic.NewClient(opts...)
+		return newClaudeClient(&client, maxTokens, model, temp, topP, topK, systemPrompt)
+	}
 	if key := config.GetEnvRaw("ANTHROPIC_API_KEY"); key != "" {
 		opts = append(opts, option.WithAPIKey(key))
 	}
@@ -91,8 +122,12 @@ func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP fl
 		)
 	}
 	client := anthropic.NewClient(opts...)
+	return newClaudeClient(&client, maxTokens, model, temp, topP, topK, systemPrompt)
+}
+
+func newClaudeClient(client *anthropic.Client, maxTokens int, model anthropic.Model, temp float64, topP float64, topK float64, systemPrompt string) *ClaudeClient {
 	return &ClaudeClient{
-		Client:        &client,
+		Client:        client,
 		MaxTokens:     maxTokens,
 		Model:         model,
 		Temp:          temp,
