@@ -14,7 +14,6 @@ import (
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/bedrock"
 	"github.com/anthropics/anthropic-sdk-go/option"
-	"github.com/anthropics/anthropic-sdk-go/packages/param"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 )
 
@@ -56,6 +55,9 @@ type ClaudeClient struct {
 	RequestTimeout  time.Duration
 	FunctionTools   map[string]GoFunctionTool
 	MaxToolPasses   int
+	// Cache controls prompt caching. The zero value caches when it is worth it;
+	// see CachePolicy.
+	Cache CachePolicy
 }
 
 func (cc *ClaudeClient) isThinkingModel() bool {
@@ -182,17 +184,9 @@ func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (*models.AIChatRespons
 		}},
 		Model: cc.Model,
 	}
-	if cc.Temp > 0 {
-		mgsParam.Temperature = param.NewOpt(cc.Temp)
-	}
-	if cc.TopP > 0 && !cc.isThinkingModel() {
-		mgsParam.TopP = param.NewOpt(cc.TopP)
-	}
-	if cc.TopK > 0 && !cc.isThinkingModel() {
-		mgsParam.TopK = param.NewOpt(cc.TopK)
-	}
+	cc.applyTo(&mgsParam)
 	if cc.SystemPrompt != "" {
-		mgsParam.System = []anthropic.TextBlockParam{{Text: cc.SystemPrompt}}
+		mgsParam.System = cc.systemBlocks()
 	}
 	if cc.RequestGate != nil {
 		if err := cc.RequestGate(); err != nil {
@@ -218,9 +212,11 @@ func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (*models.AIChatRespons
 		responseText = "<think>" + thinkingText + "</think>" + responseText
 	}
 	return &models.AIChatResponse{
-		AIResponse:   responseText,
-		InputTokens:  int(message.Usage.InputTokens),
-		OutputTokens: int(message.Usage.OutputTokens),
+		AIResponse:       responseText,
+		InputTokens:      int(message.Usage.InputTokens),
+		OutputTokens:     int(message.Usage.OutputTokens),
+		CacheReadTokens:  int(message.Usage.CacheReadInputTokens),
+		CacheWriteTokens: int(message.Usage.CacheCreationInputTokens),
 	}, nil
 }
 
@@ -232,17 +228,9 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 		Messages:  processedMessages,
 		Model:     cc.Model,
 	}
-	if cc.Temp > 0 {
-		mgsParam.Temperature = param.NewOpt(cc.Temp)
-	}
-	if cc.TopP > 0 && !cc.isThinkingModel() {
-		mgsParam.TopP = param.NewOpt(cc.TopP)
-	}
-	if cc.TopK > 0 && !cc.isThinkingModel() {
-		mgsParam.TopK = param.NewOpt(cc.TopK)
-	}
+	cc.applyTo(&mgsParam)
 	if cc.SystemPrompt != "" {
-		mgsParam.System = []anthropic.TextBlockParam{{Text: cc.SystemPrompt}}
+		mgsParam.System = cc.systemBlocks()
 	}
 
 	// Add tools if enabled and available
@@ -317,10 +305,12 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 				responseText = "<think>" + thinkingText + "</think>" + responseText
 			}
 			return &models.AIChatResponse{
-				AIResponse:   responseText,
-				InputTokens:  int(message.Usage.InputTokens),
-				OutputTokens: int(message.Usage.OutputTokens),
-				Tokens:       int(message.Usage.InputTokens) + int(message.Usage.OutputTokens),
+				AIResponse:       responseText,
+				InputTokens:      int(message.Usage.InputTokens),
+				OutputTokens:     int(message.Usage.OutputTokens),
+				CacheReadTokens:  int(message.Usage.CacheReadInputTokens),
+				CacheWriteTokens: int(message.Usage.CacheCreationInputTokens),
+				Tokens:           int(message.Usage.InputTokens) + int(message.Usage.OutputTokens),
 			}, nil
 		}
 
@@ -347,17 +337,9 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 		Messages:  processedMessages,
 		Model:     cc.Model,
 	}
-	if cc.Temp > 0 {
-		streamParams.Temperature = param.NewOpt(cc.Temp)
-	}
-	if cc.TopP > 0 && !cc.isThinkingModel() {
-		streamParams.TopP = param.NewOpt(cc.TopP)
-	}
-	if cc.TopK > 0 && !cc.isThinkingModel() {
-		streamParams.TopK = param.NewOpt(cc.TopK)
-	}
+	streamParams.Temperature, streamParams.TopP, streamParams.TopK = cc.sampling()
 	if cc.SystemPrompt != "" {
-		streamParams.System = []anthropic.TextBlockParam{{Text: cc.SystemPrompt}}
+		streamParams.System = cc.systemBlocks()
 	}
 
 	// Add tools if enabled and available

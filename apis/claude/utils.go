@@ -3,6 +3,8 @@ package claude
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 
 	mcp "github.com/MelloB1989/karma/ai/mcp_client"
 	"github.com/MelloB1989/karma/models"
@@ -28,9 +30,25 @@ func (cc *ClaudeClient) hasAnyTools() bool {
 	return cc.hasMCPTools() || cc.hasGoFunctionTools()
 }
 
+// convertGoFunctionToolsToAnthropic renders the tool definitions, in a stable
+// order.
+//
+// The order is load-bearing, not cosmetic. Tools render ahead of the system
+// prompt, so they are part of the cached prefix — and ranging a Go map gives a
+// different order on every call, which changed those bytes every time and meant
+// prompt caching wrote an entry per request and never once read one. Sorting by
+// name makes the prefix byte-identical between turns, which is the entire
+// precondition for caching to do anything.
 func (cc *ClaudeClient) convertGoFunctionToolsToAnthropic() []anthropic.ToolUnionParam {
+	names := make([]string, 0, len(cc.FunctionTools))
+	for name := range cc.FunctionTools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
 	tools := make([]anthropic.ToolUnionParam, 0, len(cc.FunctionTools))
-	for _, tool := range cc.FunctionTools {
+	for _, name := range names {
+		tool := cc.FunctionTools[name]
 		inputSchema := anthropic.ToolInputSchemaParam{}
 		if props, ok := tool.Parameters["properties"].(map[string]any); ok {
 			inputSchema.Properties = props
@@ -93,6 +111,10 @@ func (cc *ClaudeClient) convertMCPToolsToAnthropic() []anthropic.ToolUnionParam 
 	} else {
 		mcpTools = cc.MCPManager.GetAllTools()
 	}
+	// Sorted for the same reason as the Go function tools: these are part of the
+	// cached prefix, and a manager that returns them in map order would change
+	// those bytes between calls.
+	sort.Slice(mcpTools, func(a, b int) bool { return mcpTools[a].Name < mcpTools[b].Name })
 	tools := make([]anthropic.ToolUnionParam, len(mcpTools))
 
 	for i, mcpTool := range mcpTools {
@@ -139,9 +161,30 @@ func (cc *ClaudeClient) callMCPTool(ctx context.Context, toolName string, argume
 	return result.Content, nil
 }
 
+// processMessages converts chat history into Anthropic message params.
+//
+// AIChatHistory.Context is delivered on the LAST user message rather than the
+// system prompt, and that placement is the whole point. Callers put per-turn
+// context there — the time, retrieved memory, whatever changed since the last
+// turn — and putting volatile text into the system block would change the
+// cached prefix on every call and defeat prompt caching entirely.
+//
+// It used to be dropped on the floor: the field was set by callers and read by
+// nothing, so every scrap of per-turn context silently never reached the model.
 func processMessages(messages models.AIChatHistory) []anthropic.MessageParam {
 	processedMessages := make([]anthropic.MessageParam, 0, len(messages.Messages))
-	for _, msg := range messages.Messages {
+	lastUser := -1
+	if strings.TrimSpace(messages.Context) != "" {
+		for i, msg := range messages.Messages {
+			if msg.Role == models.User {
+				lastUser = i
+			}
+		}
+	}
+	for i, msg := range messages.Messages {
+		if i == lastUser {
+			msg.Message = messages.Context + "\n\n" + msg.Message
+		}
 		var role anthropic.MessageParamRole
 		if msg.Role == models.User {
 			role = anthropic.MessageParamRoleUser

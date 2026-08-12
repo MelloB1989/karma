@@ -93,6 +93,11 @@ type AIChatResponse struct {
 	OutputTokens int        `json:"output_tokens"`
 	TimeTaken    int        `json:"time_taken"`
 	ToolCalls    []ToolCall `json:"tool_calls,omitempty"`
+	// CacheReadTokens is the part of the prompt served from cache, billed at
+	// roughly a tenth of fresh input. CacheWriteTokens is what was written to
+	// cache this call, billed at a premium. Zero on providers without caching.
+	CacheReadTokens  int `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
 }
 
 type AIImageResponse struct {
