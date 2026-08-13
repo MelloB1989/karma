@@ -115,8 +115,14 @@ func unknownToolError(want string, have map[string]GoFunctionTool) error {
 	}
 	sort.Strings(names)
 
+	// "Not in this request" rather than "does not exist". A caller may hold tools
+	// back and hand them over on a later turn, and an error that declares the
+	// name imaginary talks the model out of asking for it — it substitutes
+	// something worse, or reports the task impossible, instead of requesting the
+	// tool it correctly named.
 	if near := nearestNames(want, names); len(near) > 0 {
-		return fmt.Errorf("no tool named %q. Did you mean: %s? Do not retry %q — it does not exist",
+		return fmt.Errorf("%q is not among the tools available in this request. Closest available: %s. "+
+			"Use one of those, or request %q if this caller lets you ask for tools",
 			want, strings.Join(near, ", "), want)
 	}
 	shown := names
@@ -124,7 +130,8 @@ func unknownToolError(want string, have map[string]GoFunctionTool) error {
 	if len(shown) > maxNamesInError {
 		shown, suffix = shown[:maxNamesInError], fmt.Sprintf(" (and %d more)", len(names)-maxNamesInError)
 	}
-	return fmt.Errorf("no tool named %q. Available: %s%s. Use one of these or say you cannot do it — do not retry %q",
+	return fmt.Errorf("%q is not among the tools available in this request. Available: %s%s. "+
+		"Use one of those, request %q if this caller lets you ask for tools, or say you cannot do it",
 		want, strings.Join(shown, ", "), suffix, want)
 }
 

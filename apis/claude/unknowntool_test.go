@@ -18,7 +18,7 @@ func TestUnknownToolErrorSuggestsTheFamily(t *testing.T) {
 		t.Fatal("expected an error")
 	}
 	msg := err.Error()
-	for _, want := range []string{"whatsapp_list_chats", "whatsapp_search_messages", "does not exist"} {
+	for _, want := range []string{"whatsapp_list_chats", "whatsapp_search_messages", "is not among the tools available"} {
 		if !contains(msg, want) {
 			t.Errorf("error should mention %q, got: %s", want, msg)
 		}
