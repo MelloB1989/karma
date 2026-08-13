@@ -88,7 +88,74 @@ func (cc *ClaudeClient) callTool(ctx context.Context, toolName string, arguments
 	if fnTool, ok := cc.FunctionTools[toolName]; ok {
 		return fnTool.Handler(ctx, arguments)
 	}
+	// A name that is in neither the function tools nor any MCP server is a model
+	// guessing, not infrastructure failing. Saying "MCP server not configured" to
+	// a caller that never configured one sends it looking for a broken bridge;
+	// naming what it actually has lets it correct itself on the next step.
+	if cc.MultiMCPManager == nil && cc.MCPManager == nil {
+		return "", unknownToolError(toolName, cc.FunctionTools)
+	}
 	return cc.callMCPTool(ctx, toolName, arguments)
+}
+
+// maxNamesInError bounds the tool list an error carries. Enough to choose from,
+// not so many that a mistaken call costs more context than the work.
+const maxNamesInError = 40
+
+// unknownToolError explains a tool name nothing answers to, and points at the
+// nearest real ones.
+func unknownToolError(want string, have map[string]GoFunctionTool) error {
+	if len(have) == 0 {
+		return fmt.Errorf("no tool named %q: this request carries no tools at all", want)
+	}
+
+	names := make([]string, 0, len(have))
+	for name := range have {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	if near := nearestNames(want, names); len(near) > 0 {
+		return fmt.Errorf("no tool named %q. Did you mean: %s? Do not retry %q — it does not exist",
+			want, strings.Join(near, ", "), want)
+	}
+	shown := names
+	suffix := ""
+	if len(shown) > maxNamesInError {
+		shown, suffix = shown[:maxNamesInError], fmt.Sprintf(" (and %d more)", len(names)-maxNamesInError)
+	}
+	return fmt.Errorf("no tool named %q. Available: %s%s. Use one of these or say you cannot do it — do not retry %q",
+		want, strings.Join(shown, ", "), suffix, want)
+}
+
+// nearestNames finds plausible intended targets: a shared prefix up to the
+// separator, or one name containing the other. Enough to catch the way models
+// miss — whatsapp_get_chat for whatsapp_list_chats — without a edit-distance
+// library for an error path.
+func nearestNames(want string, names []string) []string {
+	norm := func(s string) string { return strings.ToLower(strings.ReplaceAll(s, ".", "_")) }
+	w := norm(want)
+	family, _, _ := strings.Cut(w, "_")
+
+	var exact, kin []string
+	for _, n := range names {
+		c := norm(n)
+		switch {
+		case c == w:
+			continue
+		case strings.Contains(c, w) || strings.Contains(w, c):
+			exact = append(exact, n)
+		case family != "" && family != w && strings.HasPrefix(c, family+"_"):
+			kin = append(kin, n)
+		}
+	}
+	if len(exact) > 0 {
+		return exact
+	}
+	if len(kin) > maxNamesInError {
+		kin = kin[:maxNamesInError]
+	}
+	return kin
 }
 
 // hasMCPTools checks if any MCP tools are available
