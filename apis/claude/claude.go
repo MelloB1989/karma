@@ -92,6 +92,11 @@ func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP fl
 			loadOpts = append(loadOpts, awsconfig.WithRegion(region))
 		}
 		opts = append(opts, bedrock.WithLoadDefaultConfig(context.Background(), loadOpts...))
+		// Same fixed ceiling as the gateway path below, for the same reason:
+		// the SDK otherwise derives the request timeout from max_tokens, and a
+		// tight completion cap becomes a ~2-second deadline that fails any
+		// slower pass.
+		opts = append(opts, option.WithRequestTimeout(5*time.Minute))
 		client := anthropic.NewClient(opts...)
 		return newClaudeClient(&client, maxTokens, model, temp, topP, topK, systemPrompt)
 	}
@@ -112,6 +117,14 @@ func NewClaudeClient(maxTokens int, model anthropic.Model, temp float64, topP fl
 					Proxy:              http.ProxyFromEnvironment,
 				},
 			}),
+			// The SDK derives a non-streaming request timeout FROM max_tokens —
+			// 3600s scaled by max_tokens/128000 — so a 90-token cap becomes a
+			// 2.5-second deadline and a 64-token cap a 1.8-second one. Small
+			// completions are exactly where a caller wants tight output, and the
+			// heuristic turned that thrift into random "context deadline
+			// exceeded" failures on any pass slower than the cap. A fixed
+			// ceiling replaces it; callers still bound real time via their ctx.
+			option.WithRequestTimeout(5*time.Minute),
 			option.WithHeader("User-Agent", "karma-ai-sdk/anthropic"),
 			option.WithHeaderDel("X-Stainless-Lang"),
 			option.WithHeaderDel("X-Stainless-Package-Version"),
