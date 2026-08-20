@@ -199,7 +199,7 @@ func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (*models.AIChatRespons
 	}
 	cc.applyTo(&mgsParam)
 	if cc.SystemPrompt != "" {
-		mgsParam.System = cc.systemBlocks()
+		mgsParam.System = cc.systemBlocks(0)
 	}
 	if cc.RequestGate != nil {
 		if err := cc.RequestGate(); err != nil {
@@ -228,8 +228,8 @@ func (cc *ClaudeClient) ClaudeSinglePrompt(prompt string) (*models.AIChatRespons
 		AIResponse:       responseText,
 		InputTokens:      int(message.Usage.InputTokens),
 		OutputTokens:     int(message.Usage.OutputTokens),
-		CacheReadTokens:  int(message.Usage.CacheReadInputTokens),
-		CacheWriteTokens: int(message.Usage.CacheCreationInputTokens),
+		CacheReadTokens:  int(cacheStatsFrom(message.Usage).Read),
+		CacheWriteTokens: int(cacheStatsFrom(message.Usage).Written),
 	}, nil
 }
 
@@ -242,14 +242,22 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 		Model:     cc.Model,
 	}
 	cc.applyTo(&mgsParam)
-	if cc.SystemPrompt != "" {
-		mgsParam.System = cc.systemBlocks()
-	}
 
-	// Add tools if enabled and available
+	// Tools are assembled BEFORE the system blocks, because they render in
+	// front of the system prompt and therefore count toward the prefix a
+	// breakpoint on it would cache.
 	if enableTools && cc.hasAnyTools() {
 		mgsParam.Tools = cc.getAllToolsAsAnthropic()
 	}
+	prefixChars := toolChars(mgsParam.Tools)
+	if cc.SystemPrompt != "" {
+		mgsParam.System = cc.systemBlocks(prefixChars)
+		prefixChars += len(cc.SystemPrompt)
+	}
+
+	// Cache the conversation prefix too. Without this the history — by far the
+	// largest part of a long turn — is re-billed in full every request.
+	cacheHistory(mgsParam.Messages, historyBoundary(mgsParam.Messages, strings.TrimSpace(messages.Context) != ""), prefixChars, cc.cachePolicy())
 
 	ctx, cancel := cc.requestContext()
 	defer cancel()
@@ -260,6 +268,14 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 	}
 
 	for round := 0; round <= maxPasses; round++ {
+		// The last permitted round is answered without tools. Running out of
+		// passes used to fail the whole turn — a caller got an error, not an
+		// answer, after every tool it asked for had already run and their
+		// results were sitting in the messages. On the final round the model
+		// is told it may not call tools, so it says what it has.
+		if round == maxPasses && len(mgsParam.Tools) > 0 {
+			mgsParam.ToolChoice = anthropic.ToolChoiceUnionParam{OfNone: &anthropic.ToolChoiceNoneParam{}}
+		}
 		if cc.RequestGate != nil {
 			if err := cc.RequestGate(); err != nil {
 				return nil, err
@@ -321,8 +337,8 @@ func (cc *ClaudeClient) ClaudeChatCompletion(messages models.AIChatHistory, enab
 				AIResponse:       responseText,
 				InputTokens:      int(message.Usage.InputTokens),
 				OutputTokens:     int(message.Usage.OutputTokens),
-				CacheReadTokens:  int(message.Usage.CacheReadInputTokens),
-				CacheWriteTokens: int(message.Usage.CacheCreationInputTokens),
+				CacheReadTokens:  int(cacheStatsFrom(message.Usage).Read),
+				CacheWriteTokens: int(cacheStatsFrom(message.Usage).Written),
 				Tokens:           int(message.Usage.InputTokens) + int(message.Usage.OutputTokens),
 			}, nil
 		}
@@ -351,14 +367,18 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 		Model:     cc.Model,
 	}
 	streamParams.Temperature, streamParams.TopP, streamParams.TopK = cc.sampling()
-	if cc.SystemPrompt != "" {
-		streamParams.System = cc.systemBlocks()
-	}
 
-	// Add tools if enabled and available
+	// Tools first: they render ahead of the system prompt and count toward the
+	// prefix a breakpoint on it would cache.
 	if enableTools && cc.hasAnyTools() {
 		streamParams.Tools = cc.getAllToolsAsAnthropic()
 	}
+	prefixChars := toolChars(streamParams.Tools)
+	if cc.SystemPrompt != "" {
+		streamParams.System = cc.systemBlocks(prefixChars)
+		prefixChars += len(cc.SystemPrompt)
+	}
+	cacheHistory(streamParams.Messages, historyBoundary(streamParams.Messages, strings.TrimSpace(messages.Context) != ""), prefixChars, cc.cachePolicy())
 
 	ctx, cancel := cc.requestContext()
 	defer cancel()
@@ -369,6 +389,14 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 	}
 
 	for round := 0; round <= maxPasses; round++ {
+		// The last permitted round is answered without tools. Running out of
+		// passes used to fail the whole turn — a caller got an error, not an
+		// answer, after every tool it asked for had already run and their
+		// results were sitting in the messages. On the final round the model
+		// is told it may not call tools, so it says what it has.
+		if round == maxPasses && len(streamParams.Tools) > 0 {
+			streamParams.ToolChoice = anthropic.ToolChoiceUnionParam{OfNone: &anthropic.ToolChoiceNoneParam{}}
+		}
 		if cc.RequestGate != nil {
 			if err := cc.RequestGate(); err != nil {
 				return nil, err
@@ -435,10 +463,13 @@ func (cc *ClaudeClient) ClaudeStreamCompletionWithTools(messages models.AIChatHi
 				if thinkingText != "" {
 					responseText = "<think>" + thinkingText + "</think>" + responseText
 				}
+				stats := cacheStatsFrom(message.Usage)
 				return &models.AIChatResponse{
-					AIResponse:   responseText,
-					InputTokens:  int(message.Usage.InputTokens),
-					OutputTokens: int(message.Usage.OutputTokens),
+					AIResponse:       responseText,
+					InputTokens:      int(message.Usage.InputTokens),
+					OutputTokens:     int(message.Usage.OutputTokens),
+					CacheReadTokens:  int(stats.Read),
+					CacheWriteTokens: int(stats.Written),
 				}, nil
 			}
 			return nil, nil
