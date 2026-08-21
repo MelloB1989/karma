@@ -83,11 +83,15 @@ func NewRuntimeClient(ctx context.Context, opts ClientOptions) (*bedrockruntime.
 	loadOpts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(region)}
 
 	// Prefer explicit static credentials from the karma config when present so
-	// callers that inject keys programmatically keep working.
+	// callers that inject keys programmatically keep working. The session token
+	// rides along when the environment carries one: on Lambda, ECS and STS
+	// sessions the access key in the environment is a *temporary* credential
+	// that is only valid together with AWS_SESSION_TOKEN — signing with the
+	// pair alone yields UnrecognizedClientException.
 	cfg := c.DefaultConfig()
 	if cfg.AwsAccessKey != "" && cfg.AwsSecretKey != "" {
 		loadOpts = append(loadOpts, awsconfig.WithCredentialsProvider(
-			credentials.NewStaticCredentialsProvider(cfg.AwsAccessKey, cfg.AwsSecretKey, ""),
+			credentials.NewStaticCredentialsProvider(cfg.AwsAccessKey, cfg.AwsSecretKey, os.Getenv("AWS_SESSION_TOKEN")),
 		))
 	}
 
