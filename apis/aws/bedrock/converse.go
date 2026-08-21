@@ -212,6 +212,13 @@ func isAnthropicModel(modelID string) bool {
 // mapMessages converts karma chat history into Converse messages, merging
 // consecutive turns with the same role into a single message (Converse requires
 // strictly alternating user/assistant turns).
+//
+// AIChatHistory.Context is delivered on the LAST user message, exactly as the
+// direct Anthropic path does (see apis/claude/utils.go): callers put per-turn
+// context there — retrieved memory, the time, whatever changed since the last
+// turn — and volatile text in the system block would invalidate the cached
+// prefix on every call. This path used to drop the field on the floor, which
+// meant every memory a wrapper retrieved silently never reached the model.
 func mapMessages(history models.AIChatHistory) []types.Message {
 	var out []types.Message
 	var lastRole types.ConversationRole
@@ -224,7 +231,16 @@ func mapMessages(history models.AIChatHistory) []types.Message {
 		}
 	}
 
-	for _, msg := range history.Messages {
+	lastUser := -1
+	if strings.TrimSpace(history.Context) != "" {
+		for i, msg := range history.Messages {
+			if msg.Role == models.User {
+				lastUser = i
+			}
+		}
+	}
+
+	for i, msg := range history.Messages {
 		var role types.ConversationRole
 		switch msg.Role {
 		case models.User:
@@ -235,7 +251,11 @@ func mapMessages(history models.AIChatHistory) []types.Message {
 			continue // system/tool/function roles are handled elsewhere or unsupported here
 		}
 
-		if msg.Message == "" {
+		text := msg.Message
+		if i == lastUser {
+			text = history.Context + "\n\n" + text
+		}
+		if text == "" {
 			continue
 		}
 
@@ -243,7 +263,7 @@ func mapMessages(history models.AIChatHistory) []types.Message {
 			flush()
 			lastRole = role
 		}
-		current = append(current, &types.ContentBlockMemberText{Value: msg.Message})
+		current = append(current, &types.ContentBlockMemberText{Value: text})
 	}
 	flush()
 
