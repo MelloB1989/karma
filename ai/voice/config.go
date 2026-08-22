@@ -42,6 +42,14 @@ func defaultConfig() Config {
 			STTLanguageCode:            config.GetEnvRaw("KARMA_VOICE_ELEVENLABS_STT_LANGUAGE"),
 			ReadTimeout:                60 * time.Second,
 		},
+		Sarvam: SarvamConfig{
+			APIKey:      config.GetEnvRaw("SARVAM_API_KEY"),
+			STTModel:    SarvamSaarasV3,
+			TTSModel:    SarvamBulbulV3,
+			TTSSpeaker:  config.GetEnvRaw("KARMA_VOICE_SARVAM_TTS_SPEAKER"),
+			TTSLanguage: firstNonEmpty(config.GetEnvRaw("KARMA_VOICE_SARVAM_TTS_LANGUAGE"), "en-IN"),
+			TTSCodec:    firstNonEmpty(config.GetEnvRaw("KARMA_VOICE_SARVAM_TTS_FORMAT"), "mp3"),
+		},
 		Vapi: VapiConfig{
 			APIKey:              config.GetEnvRaw("VAPI_API_KEY"),
 			BaseURL:             config.GetEnvRaw("VAPI_BASE_URL"),

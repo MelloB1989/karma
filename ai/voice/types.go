@@ -16,6 +16,7 @@ const (
 	ProviderTogether   Provider = "together"
 	ProviderElevenLabs Provider = "elevenlabs"
 	ProviderVapi       Provider = "vapi"
+	ProviderSarvam     Provider = "sarvam"
 )
 
 // TextAI is the text reasoning interface used by the voice agent.
@@ -51,6 +52,7 @@ type Config struct {
 	Together   TogetherConfig
 	ElevenLabs ElevenLabsConfig
 	Vapi       VapiConfig
+	Sarvam     SarvamConfig
 
 	// StripThinkingTokens removes <think>...</think> blocks from AI text before
 	// history/update output by default.
@@ -68,6 +70,19 @@ type OpenAIConfig struct {
 	TTSModel  VoiceModel
 	TTSVoice  string
 	TTSFormat string
+}
+
+// SarvamConfig configures the Sarvam AI speech provider.
+type SarvamConfig struct {
+	APIKey        string
+	BaseURL       string
+	STTModel      VoiceModel
+	TTSModel      VoiceModel
+	TTSSpeaker    string
+	TTSLanguage   string
+	TTSCodec      string
+	TTSSampleRate int
+	TTSPace       float64
 }
 
 // TogetherConfig configures the Together speech provider.
