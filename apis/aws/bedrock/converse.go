@@ -255,7 +255,25 @@ func mapMessages(history models.AIChatHistory) []types.Message {
 		if i == lastUser {
 			text = history.Context + "\n\n" + text
 		}
-		if text == "" {
+
+		// Attachments ride user turns as their own content blocks. A
+		// reference that cannot be resolved is skipped rather than failing
+		// the whole call — the text still deserves an answer.
+		var media []types.ContentBlock
+		if role == types.ConversationRoleUser {
+			for _, ref := range msg.Images {
+				if block, err := imageBlock(ref); err == nil {
+					media = append(media, block)
+				}
+			}
+			for j, ref := range msg.Files {
+				name := fmt.Sprintf("attachment-%d", j+1)
+				if block, err := documentBlock(ref, name); err == nil {
+					media = append(media, block)
+				}
+			}
+		}
+		if text == "" && len(media) == 0 {
 			continue
 		}
 
@@ -263,7 +281,10 @@ func mapMessages(history models.AIChatHistory) []types.Message {
 			flush()
 			lastRole = role
 		}
-		current = append(current, &types.ContentBlockMemberText{Value: text})
+		current = append(current, media...)
+		if text != "" {
+			current = append(current, &types.ContentBlockMemberText{Value: text})
+		}
 	}
 	flush()
 
